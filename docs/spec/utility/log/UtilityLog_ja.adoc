@@ -1,0 +1,1496 @@
+= UtilityLog機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.11
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOSのデバイス異常状態やデバイス状態のログ出力要求を処理する、UtilityLogモジュールについて定義します。 +
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+本書中で使用する用語の一覧を示します。
+
+=== Dlog
+AITRIOS内部システム開発者が使用する異常解析ログ（Debug Log）
+
+=== Elog
+デバイスで発生したイベントをAITRIOSユーザに通知するログ（Event Log）
+
+=== EVP
+デバイスとクラウド(オンプレサーバ含む)間の認証や通信を担うプラットフォーム(Edge Virtualization Platform)。
+
+=== モジュールID
+モジュールIDは以下用途で使用するためのもので、各モジュールごとに指定するモジュールIDは以下ファイルを参照して下さい。 +
+
+** モジュールID定義ヘッダ +
+
+*** src/utility/log/include/utility_log_module_id.h +
+
+** 使用用途
+*** ログ出力内容にログ出力元識別情報として付加します。
+*** ログフィルタ機能のログ出力する／出力しない判定に使用します。
+
+=== イベントID
+イベントIDはデバイスで発生したイベントを識別するために利用します。イベントIDは各モジュールで独自に定義できます。
+
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+UtilityLogはログ出力要求を処理するブロックで、条件を満たしたログを指定出力先に通知処理を行います。
+
+- UtilityLog処理概要図 +
+  各矢印はデータの流れ、入出力を示しています。
+
+[{mermaid_block}]
+....
+graph LR;
+subgraph master
+subgraph master2
+UtilityLog["UtilityLog"]
+end
+style master2 color:#fff, fill:#fff, stroke:#fff 
+log["LogManager"]
+Module["Module"]
+repo[("データ保存領域")]
+OS["OSの機能"]
+
+Module -->|"ログ出力<br>(UART/強制UART/ログ蓄積/多量ログ送信)"| UtilityLog
+UtilityLog -->|"UART出力"| skeleton
+UtilityLog -->|"強制UART出力"| OS
+UtilityLog -->|"ログデータ(Dlog/Elog)"| log
+log -->|"ログデータ蓄積"| repo
+log -->|"ログデータ送信"| cloud
+style master color:#fff, fill:#fff, stroke:#fff 
+style skeleton color:#fff, fill:#fff, stroke:#fff 
+end
+....
+
+- ログレベル設定処理概要図 +
+  各矢印はデータの流れ、入出力を示しています。
+
+[{mermaid_block}]
+....
+graph LR;
+subgraph master
+subgraph master2
+Module["Module"]
+UtilityLog["UtilityLog"]
+end
+style master2 color:#fff, fill:#fff, stroke:#fff 
+log["LogManager"]
+
+Module -->|"ログレベル設定コールバック関数<br>(登録/解除)"| UtilityLog
+UtilityLog -.->|"ログレベル設定コールバック実行関数/ログレベル"| Module
+
+UtilityLog -->|"起動時ログレベル変更通知コールバック登録"| log
+log -.->|"ログレベル変更時コールバック通知/ログレベル"| UtilityLog
+
+style master color:#fff, fill:#fff, stroke:#fff 
+end
+....
+
+<<<
+
+
+=== コンポーネントの詳細説明
+UtilityLogと他モジュールとの関係は、以下のようにコンポーネント図で表しています。  +
+各矢印はデータの流れ、入出力を示しています。
+
+.コンポーネント図
+[{mermaid_block}]
+....
+flowchart TB
+subgraph master
+  direction LR
+  subgraph left
+    subgraph Module
+      Module_WriteCtrl[Log記録]
+      Module_logLevel[ログレベル<br>必要に応じて管理]
+    end
+  end
+  style left color:#fff, fill:#fff, stroke:#fff 
+
+  subgraph center
+    direction TB
+    subgraph UtilityLog
+      LOG_Write[Log書込み]
+      LOG_level_update[ログレベル設定CB実行]
+    end
+    subgraph LogManager
+    end
+    style UtilityLog fill:#f9f
+  end
+  style center color:#fff, fill:#fff, stroke:#fff 
+
+  subgraph right
+    subgraph OS
+      OS_func[UART操作]
+    end
+
+  end
+  style right color:#fff, fill:#fff, stroke:#fff 
+  style master color:#fff, fill:#fff, stroke:#fff 
+
+Module --> |初期化/終了要求<br>Dlog出力/Elog出力/強制UART出力要求/多量DLog送信<br>ログレベル設定コールバック関数登録/解除 | UtilityLog
+UtilityLog -.-> |ログレベル| Module
+
+UtilityLog
+
+UtilityLog --> |DLog出力先/DLogレベル/DLogフィルタ設定取得要求<br>DLog蓄積要求/多量DLog送信要求/Elog出力要求 | LogManager
+UtilityLog --> |UART出力| id4((UART))
+UtilityLog --> |強制UART出力| OS_func
+LogManager --> |  DLog出力先/DLogレベル/DLogフィルタ設定 |UtilityLog 
+
+end
+....
+<<<
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|Module
+|・UtilityLogの開始・終了を行う +
+・DLog/ELog/強制UART出力を行う +
+・ログレベル設定コールバック関数の登録/解除を行う
+|
+
+|LogManager
+|・ログレベル変更通知コールバックの登録とコールバック通知でDLog出力先/DLogレベル/DLogフィルタ値を受け取る。 +
+・ログデータを蓄積する。
+|
+
+|===
+
+<<<
+
+=== 状態遷移
+UtilityLogの取り得る状態を<<#_TableStates>>に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明
+
+|inactive
+|UtilityLog未初期化状態。
+
+|active
+|UtilityLog動作状態。
+
+|===
+
+UtilityLogでは各APIを呼び出すことで<<#_状態遷移図>>に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_状態遷移図]
+.状態遷移図
+[{mermaid_block}]
+....
+stateDiagram-v2
+    [*] --> inactive
+    inactive --> active : UtilityLogInit
+    active --> inactive : UtilityLogDeinit
+    active --> active : その他API
+....
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。×はAPI受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_UtilityLogStatus>>を参照してください。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|状態
+|inactive |active
+.10+|API名
+
+|``**UtilityLogInit**``
+|active
+|×
+
+|``**UtilityLogDeinit**``
+|×
+|inactive
+
+|``**その他API**``
+|×
+|active
+
+|===
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|初期化機能
+|UtilityLogを初期化します。
+|<<#_初期化機能>>
+
+|終了機能
+|UtilityLogを終了します。
+|<<#_終了機能>>
+
+|UARTログ出力
+|UARTにDlogデータを出力する機能です。
+|<<#_UARTログ出力>>
+
+|Dlogログ蓄積
+|Dlogデータの蓄積を行う機能です。
+|<<#_Dlogログ蓄積>>
+
+|強制UARTログ出力
+|強制的にUARTにログ出力します。
+|<<#_強制UARTログ出力>>
+
+|多量ログ出力・送信機能
+|多量のログをUARTに出力またはクラウドへ送信します。
+|<<#_多量ログ出力・送信機能>>
+
+|Elogログ出力
+|Elogデータの出力を行う機能です。
+|<<#_Elogログ出力>>
+
+|モジュール別ログレベル管理機能
+|モジュール別でログレベルを管理できる機能です。
+|<<#_モジュール別ログレベル管理機能>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_初期化機能]
+==== 初期化機能
+* 機能概要
+    ** UtilityLogの初期化を行います。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** 初期化とUtilityLogの状態をactiveにします。 +
+    ** 初期化処理でLogManagerからDlogのパラメータを受け取るためにコールバック関数を登録します。登録できなかった場合はログレベルをInfo・ログ出力先情報をUART出力に設定してUtilityLogを動作させます。
+
+
+[#_終了機能]
+==== 終了機能
+* 機能概要
+    ** UtilityLogの終了処理を行います。
+    
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+
+* 機能詳細
+    ** LogManagerに登録したコールバック関数を解除して、UtilityLogの状態をinactiveにします。
+
+[#_UARTログ出力]
+==== UARTログ出力
+* 機能概要
+    ** DlogデータをUARTにログ出力します。
+    
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+    ** UtilityLogがLogManagerから受け取ったDlog出力先情報がUARTまたはBothであること。
+
+* 機能詳細
+    ** 出力要求時に受理したDlogデータに都度、時間情報、ログレベル、モジュールIDを付与した形式でUARTに出力します。 
+    ** ログレベルはCriticalが最上位、Traceが最下位です。ユーザーがUtilityLogに対してDlog出力を要求する際に指定したDlogレベルが、LogManagerに設定されているDlogレベルより低い場合、出力を行いません。
+    ** ログレベルが不正の場合はエラーとなります。
+
+[#_Dlogログ蓄積]
+==== Dlogログ蓄積
+* 機能概要
+    ** Dlogデータの蓄積を行います。
+    
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+    ** UtilityLogがLogManagerから受け取ったDlog出力先情報がStoreまたはBothであること。
+
+* 機能詳細
+    ** Dlog出力要求時、LogManagerの蓄積用APIをコールし、Dlogデータをログ蓄積します。
+    ** UtilityLogは、Dlogデータに時間情報、ログレベル、モジュールIDを付与した文字列を作成し、LogManagerに渡します。
+    ** ログレベルはCriticalが最上位、Traceが最下位です。ユーザーがUtilityLogに対してDlog出力を要求する際に指定したDlogレベルが、LogManagerに設定されているDlogレベルより低い場合、出力を行いません。
+    ** 蓄積用APIの戻り値がエラーの場合、Dlogデータのログ蓄積は行わずエラー値を返します。
+    ** ログレベルが不正の場合もエラーとなります。
+
+
+[#_強制UARTログ出力]
+==== 強制UARTログ出力
+* 機能概要
+    ** 強制的にUARTにログ出力します。
+    
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+
+* 機能詳細
+    ** 強制的にUARTに出力します。
+    ** 主にDlogデータの出力が抑制されているときに使用するものです。 
+
+
+[#_多量ログ出力・送信機能]
+==== 多量ログ出力・送信機能
+* 機能概要
+    ** 多量のログをUARTに出力またはクラウドへ送信します。
+    
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+
+* 機能詳細
+    ** UtilityLogがLogManagerから受け取ったDlog出力先情報がUARTまたはBothの場合、ユーザが指定した多量のログをUARTへ出力します。
+    ** UtilityLogがLogManagerから受け取ったDlog出力先情報がStoreまたはBothの場合、ユーザが指定した多量のログをLogManagerのAPIを使用して、ログ蓄積を行わずにクラウドへ送信します。
+    ** UART出力またはクラウド送信後ユーザが指定したコールバック関数を呼び完了通知を行います。Dlog出力先情報がBothの場合はクラウドへ送信が完了したタイミングで完了通知を実行します。
+
+
+[#_Elogログ出力]
+==== Elogログ出力
+* 機能概要
+    ** Elogデータの送信を行います。
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+    ** LogManagerが初期化済みであること。
+* 機能詳細
+    ** Elog出力要求時、LogManagerのElog送信用APIをコールし、ElogデータをLogManagerに送信します。
+    ** Elogデータには時間情報、ログレベル、モジュールID、イベントIDが含まれています。
+    ** 送信用APIの戻り値がエラーの場合、Elogデータの送信は行わずエラー値を返します。
+
+[#_モジュール別ログレベル管理機能]
+==== モジュール別ログレベル管理機能
+* 機能概要
+    ** モジュール別でログレベルを管理できる機能です。
+    
+* 前提条件
+    ** UtilityLogが初期化済みであること。
+    ** LogManagerが初期化済みであること。
+
+* 機能詳細
+    ** 任意のモジュールが持つログレベルをユーザが指定したコールバック関数を使用してLogManagerが持つログレベルと同期して更新するようにします。
+    ** この機能は主に任意のモジュール内でログレベルによって任意の処理を行いたいときに使用します。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+2024/12/06 現在、最大処理時間、ヒープメモリ使用量はT.B.Dです。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|256 byte
+|<<#_Stack最大使用量>>
+
+|スレッド使用数
+|スレッドは使用しません
+|<<#_スレッド使用数>>
+
+|最大処理時間
+|XXXX ms
+|<<#_最大処理時間>>
+
+|ヒープメモリ使用量
+|XXXX byte
+|<<#_ヒープメモリ使用量>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+2024/12/06 現在、最大処理時間、ヒープメモリ使用量はT.B.Dです。
+
+[#_Stack最大使用量]
+==== Stack最大使用量
+設計時点での目標値は 256byte。
+
+[#_スレッド使用数]
+==== スレッド使用数
+スレッドは使用しません。
+
+[#_最大処理時間]
+==== 最大処理時間
+設計時点での目標値は XXms。
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+設計時点での目標値は XXXbyte。
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== Config一覧
+<<#_TableConfigType>>にConfigの一覧を示します。
+
+[#_TableConfigType]
+.Config一覧
+[width="100%", options="header"]
+|===
+|Config名 |デフォルト値 | 概要
+|CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE
+|4096
+|UtilityLogWriteBulkDLogで指定するログのサイズの最大値です。
+
+|CONFIG_UTILITY_LOG_ENABLE_SYSLOG
+|n
+|DlogでUartに出力する時にsyslog関数を使用するようにします。指定されていない場合はprintf関数を使用します。
+|===
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|UtilityLogStatus
+|APIの実行結果を定義する列挙型です。
+|<<#_UtilityLogStatus>>
+
+|UtilityLogDlogLevel
+|Dlogのログレベルを定義する列挙型です。
+|<<#_UtilityLogDlogLevel>>
+
+|UtilityLogElogLevel
+|Elogのログレベルを定義する列挙型です。
+|<<#_UtilityLogElogLevel>>
+
+|UtilityLogNotificationCallback
+|多量ログの出力・送信完了通知用のコールバック関数です。
+|<<#_UtilityLogNotificationCallback>>
+
+|UtilityLogSetDlogLevelCallback
+|ログレベル設定用のコールバック関数です。
+|<<#_UtilityLogSetDlogLevelCallback>>
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|UtilityLogInit
+|UtilityLogの初期化を行います。
+|<<#_UtilityLogInit>>
+
+|UtilityLogDeinit
+|UtilityLogの終了処理を行います。
+|<<#_UtilityLogDeinit>>
+
+|UtilityLogWriteDLog
+|DlogデータをUART出力及びログ蓄積します。
+|<<#_UtilityLogWriteDLog>>
+
+|UtilityLogWriteVDLog
+|UtilityLogWriteDLogのva_listバージョンです。
+|<<#_UtilityLogWriteVDLog>>
+
+|UtilityLogWriteELog
+|ElogデータをLogManagerに出力します。
+|<<#_UtilityLogWriteELog>>
+
+|UtilityLogForcedOutputToUart
+|強制的にデータをUARTに出力します。
+|<<#_UtilityLogForcedOutputToUart>>
+
+|UtilityLogWriteBulkDLog
+|多量のログをUARTに出力またはクラウドへ送信します。
+|<<#_UtilityLogWriteBulkDLog>>
+
+|UtilityLogWriteBulkDLogNonNotify
+|UtilityLogWriteBulkDLogの通知なしバージョンです。
+|<<#_UtilityLogWriteBulkDLogNonNotify>>
+
+|UtilityLogRegisterSetDLogLevelCallback
+|任意のモジュールが持つログレベルを最新のログレベルに同期するためのログレベル設定コールバック関数を登録します。
+|<<#_UtilityLogRegisterSetDLogLevelCallback>>
+
+|UtilityLogUnregisterSetDLogLevelCallback
+|UtilityLogRegisterSetLogLevelCallbackで登録したログレベル設定コールバック関数を解除します。
+|<<#_UtilityLogUnregisterSetDLogLevelCallback>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_UtilityLogStatus]
+==== UtilityLogStatus
+APIの実行結果を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kUtilityLogStatusOk,
+  kUtilityLogStatusFailed,
+  kUtilityLogStatusParamError,
+  kUtilityLogStatusNum
+} UtilityLogStatus;
+....
+
+* *値* 
++
+[#_UtilityLogStatusの値の説明]
+.UtilityLogStatusの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kUtilityLogStatusOk
+|エラーなし
+|kUtilityLogStatusFailed
+|エラー
+|kUtilityLogStatusParamError
+|パラメータエラー
+|kUtilityLogStatusNum
+|UtilityLogStatus要素数(メンバ最後に配置)
+|===
+
+[#_UtilityLogDlogLevel]
+==== UtilityLogDlogLevel
+
+Dlogのログレベルを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kUtilityLogDlogLevelCritical,
+  kUtilityLogDlogLevelError,
+  kUtilityLogDlogLevelWarn,
+  kUtilityLogDlogLevelInfo,
+  kUtilityLogDlogLevelDebug,
+  kUtilityLogDlogLevelTrace,
+  kUtilityLogDlogLevelNum
+} UtilityLogDlogLevel;
+....
+
+* *値* 
++
+[#_UtilityLogDlogLevelの値の説明]
+.UtilityLogDlogLevelの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kUtilityLogDlogLevelCritical
+|Critical
+|kUtilityLogDlogLevelError
+|Error
+|kUtilityLogDlogLevelWarn
+|Warning
+|kUtilityLogDlogLevelInfo
+|Info
+|kUtilityLogDlogLevelDebug
+|Debug
+|kUtilityLogDlogLevelTrace
+|Trace
+|kUtilityLogDlogLevelNum
+|UtilityLogDlogLevel要素数(メンバ最後に配置)
+|===
+
+[#_UtilityLogElogLevel]
+==== UtilityLogElogLevel
+
+Elogのログレベルを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kUtilityLogElogLevelCritical,
+  kUtilityLogElogLevelError,
+  kUtilityLogElogLevelWarn,
+  kUtilityLogElogLevelInfo,
+  kUtilityLogElogLevelDebug,
+  kUtilityLogElogLevelTrace,
+  kUtilityLogElogLevelNum
+} UtilityLogElogLevel;
+....
+
+* *値* 
++
+[#_UtilityLogElogLevelの値の説明]
+.UtilityLogElogLevelの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kUtilityLogElogLevelCritical
+|Critical
+|kUtilityLogElogLevelError
+|Error
+|kUtilityLogElogLevelWarn
+|Warning
+|kUtilityLogElogLevelInfo
+|Info
+|kUtilityLogElogLevelDebug
+|Debug
+|kUtilityLogElogLevelTrace
+|Trace
+|kUtilityLogElogLevelNum
+|UtilityLogElogLevel要素数(メンバ最後に配置)
+|===
+
+[#_UtilityLogNotificationCallback]
+==== UtilityLogNotificationCallback
+多量ログの出力・送信完了通知用のコールバック関数です。
+
+* *書式*
++
+[source, C]
+....
+typedef void (*UtilityLogNotificationCallback)(size_t size, void *user_data);
+....
+
+* *引数*
+**``[IN] size_t size``**::
+送信したログデータのサイズです。送信に失敗した場合は0が格納されます。
+
+**``[IN] void *user_data``**::
+コールバック登録時に渡されたユーザー定義のデータです。
+
+[#_UtilityLogSetDlogLevelCallback]
+==== UtilityLogSetDlogLevelCallback
+ログレベル設定用のコールバック関数です。
+
+* *書式*
++
+[source, C]
+....
+typedef void (*UtilityLogSetDlogLevelCallback)(UtilityLogDlogLevel level);
+....
+
+* *引数*
+**``[IN] UtilityLogDlogLevel level``**::
+ログレベルです。最新のログレベルが渡されます。
+
+=== API定義
+
+[#_UtilityLogInit]
+==== UtilityLogInit
+* *機能* 
++
+UtilityLogの初期化を行います。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogInit(void) **``  
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusFailed
+|異常終了 +
+ UtilityLogを起動できない場合
+|===
+
+* *説明* +
+UtilityLogの状態をactiveに遷移し、各種要求の受付を開始します。 +
+LogManagerからDlogのパラメータを受け取るためにコールバック関数を登録します。登録できなかった場合はログレベルをInfo・ログ出力先情報をUART出力に設定してUtilityLogを動作させます。 +
+エラーの場合、状態遷移は行われません。
+
+[#_UtilityLogDeinit]
+==== UtilityLogDeinit
+* *機能* 
++
+UtilityLogの終了処理を行います。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogDeinit(void) **``  
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusFailed
+|異常終了 +
+ UtilityLogを終了できない場合
+|===
+
+* *説明* +
+UtilityLogの終了処理を行い、状態をinactiveに遷移し、各種要求の受付を終了します。 +
+エラーの場合、状態遷移は行いません。 +
+
+[#_UtilityLogWriteDLog]
+==== UtilityLogWriteDLog
+* *機能* 
++
+format指定した文字列を、UART出力及びログ蓄積します。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogWriteDLog(uint32_t module_id, UtilityLogDlogLevel level, const char *format, ...) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+**``[IN] UtilityLogDlogLevel level``**:: 
+Dlog出力のログレベルを<<#_UtilityLogDlogLevel>>より設定ください。 +
+
+**``[IN] const char *format``**:: 
+Dlogデータのフォーマットを指定します。 +
+指定方法は、printfフォーマット指定子に準じます。
+NULLもしくは空文字が指定された場合、データが出力されないのみでエラーにはなりません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+levelが``kUtilityLogDlogLevelNum``の場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+format指定した文字列を、ログレベル、ログ出力先に応じて、UART出力及びログ蓄積します。 +
+ログレベルはCriticalが最上位、Traceが最下位となり、引数のlevelが現在のログレベルより低い場合、データは読み捨てられます。 +
+UtilityLogのログ出力先 +
+・UART、Bothの場合: UART出力します。 +
+・Store、Bothの場合: format文字列を、LogManagerに通知してログ蓄積します。 +
+formatの表示は最大512Byte(終端文字を含めません)です。それ以上は破棄され表示されません。 +
+本APIは、多重呼び出し可能です。 +
+表示形式は、``<年>-<月>-<日>T<時>:<分>:<秒>.<ミリ秒><タイムゾーンオフセット>:<ログレベル>:<module_id>:<format>``です。詳細は以下です。 +
+[#_Dlogログ出力形式の説明]
+.Dlogログ出力形式の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|値  |出力例
+|年 (4桁)
+|1970
+
+|月 (2桁)
+|01
+
+|日 (2桁)
+|02
+
+|時 (2桁)
+|17
+
+|分 (2桁)
+|40
+
+|秒 (2桁)
+|48
+
+|ミリ秒 (3桁)
+|976
+
+|タイムゾーンオフセット (1文字)
+|タイムゾーンはUTCの固定のため、Zと表示します。
+
+|ログレベル (先頭1文字)
+|C
+
+|module_id (16進数)
+|0x00000002
+
+|format
+|Any format
+|===
+実際に表示される出力例は以下になります。 +
+``1970-01-02T17:40:48.976Z:C:0x00000002:Any format``
+
+[#_UtilityLogWriteVDLog]
+==== UtilityLogWriteVDLog
+* *機能* 
++
+UtilityLogWriteDLogのva_listバージョンです。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogWriteVDLog(uint32_t module_id, UtilityLogDlogLevel level, const char *format, va_list list) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+**``[IN] UtilityLogDlogLevel level``**:: 
+Dlog出力のログレベルを<<#_UtilityLogDlogLevel>>より設定ください。 +
+
+**``[IN] const char *format``**:: 
+Dlogデータのフォーマットを指定します。 +
+指定方法は、printfフォーマット指定子に準じます。
+NULLもしくは空文字が指定された場合、データが出力されないのみでエラーにはなりません。
+
+**``[IN] va_list list``**:: 
+va_listです。
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+levelが``kUtilityLogDlogLevelNum``の場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+UtilityLogWriteDLogと機能は同じになります。<<#_UtilityLogWriteDLog>>を参照してください。
+
+[#_UtilityLogWriteELog]
+==== UtilityLogWriteELog
+* *機能* 
++
+ElogデータをLogManagerに送信します。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogWriteELog(uint32_t module_id, UtilityLogElogLevel level, uint16_t event_id) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+**``[IN] UtilityLogElogLevel level``**:: 
+Elogデータのログレベルを<<_UtilityLogElogLevel>>より設定ください。
+
+**``[IN] uint16_t event_id``**:: 
+固有のエラーコードを指定ください。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+levelが``kUtilityLogElogLevelNum``の場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+* *説明* +
+ElogデータをLogManagerに送信します。 +
+エラーの場合、Elogデータは送信されません。 + 
+本APIは、多重呼び出し可能です。
+
+
+[#_UtilityLogForcedOutputToUart]
+==== UtilityLogForcedOutputToUart
+* *機能* 
++
+強制的にデータをUARTに出力します。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogForcedOutputToUart(const char *format, ...) **``  
+
+* *引数の説明* +
++
+**``[IN] const char *format``**:: 
+強制出力するデータのフォーマットを指定します。 +
+指定方法は、printfフォーマット指定子に準じます。
+NULLもしくは空文字が指定された場合、データ出力されないのみでエラーにはなりません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+LogManagerから情報取得を行わず、強制的にデータをOSの機能を使用してUARTに出力します。Dlogには保存しません。 +
+エラーの場合、UART出力されません。 +
+formatの表示は最大512Byte(終端文字を含めません)です。それ以上は破棄され表示されません。 +
+表示形式は``UtilityLogWriteDLog()``と異なり、入力したフォーマットがそのまま出力されます。 +
+本APIは、多重呼び出し可能です。
+
+[#_UtilityLogWriteBulkDLog]
+==== UtilityLogWriteBulkDLog
+* *機能* 
++
+多量のログをUARTに出力またはクラウドへ送信します。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogWriteBulkDLog(uint32_t module_id, UtilityLogDlogLevel level, size_t size, const char *bulk_log, const UtilityLogNotificationCallback callback, void *user_data) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+**``[IN] UtilityLogDlogLevel level``**:: 
+Dlog出力のログレベルを<<#_UtilityLogDlogLevel>>より設定ください。 +
+
+**``[IN] size_t size``**:: 
+ログのサイズです。最大値は``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``です。 +
+サイズが0の場合、データが出力されないのみでエラーにはなりません。
+
+**``[IN] const char *bulk_log``**:: 
+ログのポインタです。
+空文字が指定された場合、データが出力されないのみでエラーにはなりません。
+
+**``[IN] const UtilityLogNotificationCallback callback``**:: 
+ログの送信が完了したことを通知するためのコールバックです。
+
+**``[IN] void* user_data``**::
+ユーザデータです。使用しない場合はNULLを設定してください。
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+levelが``kUtilityLogDlogLevelNum``の場合 +
+sizeが``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``を超えた場合 +
+bulk_logがNULLの場合 +
+callbackがNULLの場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+UtilityLogがLogManagerから受け取ったDlog出力先情報により、多量のログをUARTに出力またはクラウドへ送信を行います。 +
+本APIの処理中に``bulk_log``を保持する処理は行いません。 +
+詳細は以下の表になります。 +
+[#_UtilityLogWriteBulkDLogの説明表]
+.UtilityLogWriteBulkDLogの説明表
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Dlog出力先情報  |説明
+|UART
+|UART出力します。出力後、``callback``に引数で受け取った``size``と``user_data``を渡して完了通知を実行します。ログの表示は最大512Byte(終端文字を含めません)でそれ以上は破棄され表示されません。
+|Store
+|LogManagerのAPIを使用して、LogManager内でログ蓄積を行わずに即座にクラウドへ送信を開始します。クラウドに送信が完了したとき、``callback``に送信したログのサイズと引数で受け取った``user_data``を渡して完了通知を実行します。クラウドへの送信に失敗した場合はサイズに0を渡します。
+|Both
+|UART出力とクラウド送信の両方を実行します。``callback``が実行されるタイミングはクラウドに送信が完了したときだけです。
+|===
+
+ログレベルはCriticalが最上位、Traceが最下位となり、引数のlevelが現在のログレベルより低い場合、データは読み捨てられます。 +
+表示形式は``UtilityLogWriteDLog()``と異なり、ログはそのまま送信・出力されます。
+
+[#_UtilityLogWriteBulkDLogNonNotify]
+==== UtilityLogWriteBulkDLogNonNotify
+* *機能* 
++
+UtilityLogWriteBulkDLogの通知なしバージョンです。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogWriteBulkDLogNonNotify(uint32_t module_id, UtilityLogDlogLevel level, size_t size, const char *bulk_log) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+**``[IN] UtilityLogDlogLevel level``**:: 
+Dlog出力のログレベルを<<#_UtilityLogDlogLevel>>より設定ください。 +
+
+**``[IN] size_t size``**:: 
+ログのサイズです。最大値は``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``です。
+サイズが0の場合、データが出力されないのみでエラーにはなりません。
+
+**``[IN] const char *bulk_log``**:: 
+ログのポインタです。
+空文字が指定された場合、データが出力されないのみでエラーにはなりません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+levelが``kUtilityLogDlogLevelNum``の場合 +
+sizeが``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``を超えた場合 +
+bulk_logがNULLの場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+UtilityLogがLogManagerから受け取ったDlog出力先情報により、多量のログをUARTに出力またはクラウドへ送信を行います。
+本APIの処理中に``bulk_log``を保持する処理を行います。詳細は以下の表になります。 +
+[#_UtilityLogWriteBulkDLogNonNotifyの説明表]
+.UtilityLogWriteBulkDLogNonNotifyの説明表
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Dlog出力先情報  |説明
+|UART
+|UART出力します。ログの表示は最大512Byte(終端文字を含めません)でそれ以上は破棄され表示されません。
+|Store
+|LogManagerのAPIを使用して、LogManager内でログ蓄積を行わずに即座にクラウドへ送信を開始します。 +
+``bulk_dlog``は内部処理でコピーするため動的確保領域を与えている場合、本API処理完了後すぐに開放していただいて構いません。 +
+``bulk_dlog``を内部で保持する期間は本APIが正常終了してからクラウドへ送信完了するまでです。 +
+ただし、本API実行時にエラーが発生した場合``bulk_dlog``は保持されません。 +
+|Both
+|UART出力とクラウド送信の両方を実行します。
+|===
+
+ログレベルはCriticalが最上位、Traceが最下位となり、引数のlevelが現在のログレベルより低い場合、データは読み捨てられます。 +
+表示形式は``UtilityLogWriteDLog()``と異なり、ログはそのまま送信・出力されます。 +
+
+[#_UtilityLogRegisterSetDLogLevelCallback]
+==== UtilityLogRegisterSetDLogLevelCallback
+* *機能* 
++
+任意のモジュールが持つログレベルを最新のログレベルに同期するためのログレベル設定コールバック関数を登録します。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogRegisterSetDLogLevelCallback(uint32_t module_id, UtilityLogSetDlogLevelCallback callback)**``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+**``[IN] UtilityLogSetDlogLevelCallback callback``**:: 
+ログレベルを設定するためのコールバックです。
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+callbackがNULLの場合 +
+すでにcallbackが登録されている場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+UtilityLogはLogManagerがログレベルの変更を受けたとき最新のログレベルをLogManagerから取得して、指定したログレベル設定コールバック関数の引数に最新のログレベルを渡して実行します。 +
+すでにログレベル設定コールバック関数が登録されている場合はエラーを返します。再度設定を行いたい場合は一度``UtilityLogUnregisterSetDLogLevelCallback``を実行してから設定してください。 +
+登録が正常に完了した場合、指定したログレベル設定コールバック関数を本API内で実行してログレベルをすぐに更新します。
+
+[#_UtilityLogUnregisterSetDLogLevelCallback]
+==== UtilityLogUnregisterSetDLogLevelCallback
+* *機能* 
++
+UtilityLogRegisterSetLogLevelCallbackで登録したログレベル設定コールバック関数を解除します。
+
+* *書式* +
++
+``** UtilityLogStatus UtilityLogUnregisterSetDLogLevelCallback(uint32_t module_id)**``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+モジュールIDです。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
+[#_UtilityLogStatusの戻り値の説明]
+.UtilityLogStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kUtilityLogStatusOk
+|正常終了
+|kUtilityLogStatusParamError
+|module_idが不正の場合 +
+ログレベル設定コールバックが設定されていない場合
+|kUtilityLogStatusFailed
+|何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+UtilityLogRegisterSetLogLevelCallbackで登録したログレベル設定コールバック関数を解除します。 +
+ログレベル設定コールバック関数が登録されていない場合はエラーを返します。 +
+この関数が呼ばれる前にUtilityLogDeinitが呼ばれた場合でも、登録したログレベル設定コールバック関数は解除されます。
+
+<<<
+
+== API使用時の呼び出し例
+
+各APIを使用する場合の呼び出し例を以下に示します。
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant Module as Module
+    participant UtilityLog as UtilityLog
+    participant LogManager as LogManager
+
+    note over Module,LogManager : UtilityLog の初期化
+    Module ->> +UtilityLog : UtilityInit()
+    UtilityLog ->> LogManager : ログレベル変更通知CB登録
+    LogManager -->> UtilityLog : 結果
+    note over UtilityLog : もしCBが登録できなかったらデフォルトパラメータで動作させる
+    UtilityLog ->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+
+    note over Module,LogManager : レベル変更があったとき
+      LogManager ->> UtilityLog : ログレベル変更通知CB実行
+      UtilityLog ->> UtilityLog : ModuleIdに対応するパラメータのキャッシュを更新
+      opt ログレベル設定コールバックが登録されている時
+        UtilityLog ->> Module : ログレベル設定CB実行
+     end
+
+    note over Module,LogManager : Dlog出力要求
+
+    Module ->> UtilityLog : UtilityLogWriteDLog()<br>※DLOG_CRITICAL()等マクロ実行時も同様
+    UtilityLog ->> UtilityLog : ModuleIdに対応するパラメータをキャッシュから取得
+
+    activate UtilityLog
+    opt ログ出力レベルが指定レベル未満
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt ログフィルタ指定以外のモジュール
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt DLog出力先がUART/Bothの場合
+      note over UtilityLog : printf or syslogで出力
+    end
+    opt DLog出力先がStore/Bothの場合
+      UtilityLog ->> +LogManager : EsfLogManagerStoreDlog()
+      note over LogManager : ログ蓄積処理<br>※ログ蓄積量が最大量に到達した際の処理は、LogManagerのシーケンス図を参照
+      LogManager -->> UtilityLog : EsfLogManagerStats : kEsfLogManagerStatusOk
+    end
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate  UtilityLog
+
+    note over Module,LogManager : 多量Dlog出力要求[通知あり]
+
+    Module ->> UtilityLog : UtilityLogWriteBulkDLog()
+    UtilityLog ->> UtilityLog : ModuleIdに対応するパラメータをキャッシュから取得
+
+    activate UtilityLog
+    opt ログ出力レベルが指定レベル未満
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt ログフィルタ指定以外のモジュール
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt DLog出力先がUART/Bothの場合
+      note over UtilityLog : printf or syslog出力
+      opt Bothではない場合
+        UtilityLog ->> +Module : 多量ログの出力・送信完了通知コールバックを実行する。
+        Module -->> -UtilityLog : -
+      end
+    end
+    opt DLog出力先がStore/Bothの場合
+      UtilityLog ->> +LogManager : LogManagerのAPIを実行
+      note over LogManager : ログ蓄積量を行わずに送信スレッドに多量ログの送信を依頼する
+      LogManager -->> -UtilityLog : EsfLogManagerStats : kEsfLogManagerStatusOk
+    end
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate  UtilityLog
+    opt クラウドに送信が完了したとき
+      LogManager ->> Module : 送信スレッドから多量ログの出力・送信完了通知コールバックを実行する。
+    end
+
+    note over Module,LogManager : 多量Dlog出力要求[通知なし]
+
+    Module ->> UtilityLog : UtilityLogWriteBulkDLogNonNotify()
+    UtilityLog ->> UtilityLog : ModuleIdに対応するパラメータをキャッシュから取得
+
+    activate UtilityLog
+    opt ログ出力レベルが指定レベル未満
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt ログフィルタ指定以外のモジュール
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt DLog出力先がUART/Bothの場合
+      note over UtilityLog : printf or syslog出力
+    end
+    opt DLog出力先がStore/Bothの場合
+      UtilityLog ->> +LogManager : LogManagerのAPIを実行
+      note over LogManager : ログ蓄積量を行わずに送信スレッドに多量ログの送信を依頼する
+      LogManager -->> -UtilityLog : EsfLogManagerStats : kEsfLogManagerStatusOk
+    end
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate  UtilityLog
+
+    note over Module, LogManager : Elog出力要求
+    Module ->> UtilityLog : UtilityLogWriteELog()<br>※ELOG_CRITICAL()等マクロ実行時も同様
+    activate UtilityLog
+    UtilityLog ->> +LogManager : EsfLogManagerSendElog()
+    note over LogManager : Elog送信処理<br>※詳細はLogManagerの機能仕様書を参照
+    LogManager -->> UtilityLog : EsfLogManagerStatus:kEsfLogManagerStatusOK 
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate UtilityLog
+
+    note over Module,LogManager : ログレベル設定要求
+    Module ->> +UtilityLog : UtilityLogRegisterSetDLogLevelCallback() 
+    UtilityLog ->> UtilityLog : ログレベル設定CB登録
+    UtilityLog ->> +Module : Dlogレベルを渡してログレベル設定CB実行
+    Module -->> -UtilityLog : -
+
+    UtilityLog -->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+  
+    
+    note over Module,LogManager : ログレベル設定解除要求
+    Module ->> +UtilityLog : UtilityLogUnregisterSetDLogLevelCallback()
+    UtilityLog ->> UtilityLog : ログレベル設定CB解除
+    UtilityLog -->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+
+    note over Module,LogManager :UtilityLog の終了
+    Module ->> +UtilityLog : UtilityLogDeinit()
+    UtilityLog ->> LogManager : ログレベル変更通知CB解除
+    LogManager -->> UtilityLog : 結果
+    UtilityLog --> -Module : UtilityLogStatus:kUtilityLogStatusOK
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+* ログレベル設定コールバック関数内で以下のAPIは使用できますが、それ以外は呼び出さないでください。 +
+・UtilityLogWriteDLog +
+・UtilityLogWriteVDLog +
+・UtilityLogWriteELog +
+・UtilityLogForcedOutputToUart +
+・UtilityLogWriteBulkDLog +
+・UtilityLogWriteBulkDLogNonNotify
+
+=== 本モジュールで使用するCONFIG一覧
+<<#_TableConfigType>>を参照してください。
+
+=== エイリアス関数一覧
+** Dlog保存で使用するエイリアス関数を以下に示します。
+
+.本モジュールで使用するエイリアス関数一覧
+[width="100%",cols="40%,40%,20%",options="header"]
+|===
+|エイリアス関数書式 |オリジナル関数書式 |説明
+
+|WRITE_DLOG_CRITICAL(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelCritical, format, ##__VA_ARGS__)
+|Dlogクリティカルエラー出力
+
+|WRITE_DLOG_ERROR(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelError, format, ##__VA_ARGS__)
+|Dlogエラー出力
+
+|WRITE_DLOG_WARN(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelWarn, format, ##__VA_ARGS__)
+|Dlogワーニング出力
+
+|WRITE_DLOG_INFO(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelInfo, format, ##__VA_ARGS__)
+|Dlog情報出力
+
+|WRITE_DLOG_DEBUG(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelDebug, format, ##__VA_ARGS__)
+|Dlogデバッグ出力
+
+|WRITE_DLOG_TRACE(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelTrace, format, ##__VA_ARGS__)
+|Dlogトレース出力
+
+|===
+
+** Elog出力で使用するエイリアス関数を以下に示します。
+
+|===
+|エイリアス関数書式 |オリジナル関数書式 |説明
+
+|WRITE_ELOG_CRITICAL(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelCritical, event_id)
+|Elogクリティカルエラー出力
+
+|WRITE_ELOG_ERROR(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelError, event_id)
+|Elogエラー出力
+
+|WRITE_ELOG_WARN(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelWarn, event_id)
+|Elogワーニング出力
+
+|WRITE_ELOG_INFO(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelInfo, event_id)
+|Elog情報出力
+
+|WRITE_ELOG_DEBUG(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelDebug, event_id)
+|Elogデバッグ出力
+
+|WRITE_ELOG_TRACE(module_id, event_id)
+|UtilityLogWriteDLog(module_id, kUtilityLogElogLevelTrace, event_id)
+|Elogトレース出力
+
+|===
+
+<<<
+
+== 使用しているOSSの一覧
+
+特になし
+
+<<<
+
+== 参考文献
+
+特になし
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|初版リリース
+|v0.0.2
+|UtilityLog/LogManager構成変更による記載内容の修正
+|v0.0.3
+|UtilityLogWriteBulkDlog追加
+|v0.0.4
+|Elog出力の情報を追加
+|v0.0.5
+|UtilityLogRegisterSetDlogLevelCallback追加 +
+UtilityLogUnregisterSetDlogLevelCallback追加
+|v0.0.6
+|UtilityLogWriteVDlog追加  
+|v0.0.7
+|UtilityLogWriteDlog/UtilityLogWriteBulkDlogの説明修正
+|v0.0.8
+|config CONFIG_UTILITY_LOG_ENABLE_SYSLOG追加
+|v0.0.9
+|DLOGのタイムスタンプ表示形式をDTDL指定のフォーマットに変更 +
+UtilityLogOpen,UtilityLogClose削除 +
+各APIの名前変更 +
+・UtilityLogWriteDlog -> UtilityLogWriteDLog +
+・UtilityLogWriteVDlog -> UtilityLogWriteVDLog +
+・UtilityLogWriteElog -> UtilityLogWriteELog +
+・UtilityLogUartForcedOutput -> UtilityLogForcedOutputToUart +
+・UtilityLogWriteBulkDlog -> UtilityLogWriteBulkDLog +
+・UtilityLogRegisterSetDlogLevelCallback -> UtilityLogRegisterSetDLogLevelCallback +
+・UtilityLogUnregisterSetDlogLevelCallback -> UtilityLogUnregisterSetDLogLevelCallback +
+各エイリアス関数の名前変更 +
+・DLOG_CRITICAL -> WRITE_DLOG_CRITICAL +
+・DLOG_ERROR -> WRITE_DLOG_ERROR +
+・DLOG_WARN -> WRITE_DLOG_WARN +
+・DLOG_INFO -> WRITE_DLOG_INFO +
+・DLOG_DEBUG -> WRITE_DLOG_DEBUG +
+・DLOG_TRACE -> WRITE_DLOG_TRACE +
+・ELOG_CRITICAL -> WRITE_ELOG_CRITICAL +
+・ELOG_ERROR -> WRITE_ELOG_ERROR +
+・ELOG_WARN -> WRITE_ELOG_WARN +
+・ELOG_INFO -> WRITE_ELOG_INFO +
+・ELOG_DEBUG -> WRITE_ELOG_DEBUG +
+・ELOG_TRACE -> WRITE_ELOG_TRACE +
+特記事項:制約等の項目記載 +
+API使用時の呼び出し例 シーケンス図変更
+|v0.0.10
+|UtilityLogWriteBulkDLogNonNotify追加
+|v0.0.11
+|UtilityLogWriteDLog, UtilityLogForcedOutputToUart, UtilityLogWriteBulkDLog, UtilityLogWriteBulkDLogNonNotifyの説明文修正 +
+最大サイズは512Byte -> 表示は最大512Byte(終端文字を含めません) +
+UtilityLogWriteBulkDLog/UtilityLogWriteBulkDLogNonNotifyの文章追加 +
+サイズが0の場合、データが出力されないのみでエラーにはならないことを記載
+|===

@@ -1,0 +1,921 @@
+= PL Main Functional Specifications (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document describes the specifications of **PL Main**, one of the implementation layers of AITRIOS PL. +
+The purpose of PL Main is to allow upper layers to operate using a common interface without being aware of device-specific details such as the presence or absence of eMMC, flash partitioning, or which features are supported per device.  
+It is also intended to allow the same upper-layer implementation to work across different devices.
+
+== Terminology
+
+[#_words]
+.Term List
+[cols="1,5a",options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. A layer that abstracts differences between cameras and operating systems.
+|===
+
+== Component Description
+
+The **PL Main layer** is the core implementation of the PL interface, designed to absorb device-specific differences related to initialization, finalization, and main loop processing, allowing the PL I/F to be used regardless of the device.
+
+=== Component Overview
+
+[#_FigureOverview]
+.Overview Diagram
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    main[ESF Main]
+    style pl fill:#f9f
+    pl[PL Main]
+  end
+  flash[Flash]
+  eMMC[eMMC]
+
+os --> |Startup/Shutdown| main
+main --> |"Device-specific Init/Exit{mermaid_br}Feature Support Detection"| pl
+pl --> |"mount (littlefs format) / umount /{mermaid_br}Data Erase"| flash
+pl --> |mount / umount /{mermaid_br}FAT Filesystem Processing| eMMC
+pl --> |Feature Support Result| main
+....
+
+=== Component Details
+
+An example usage sequence of PL Main is shown below.  
+The upper layer can use various features through the PL Main API.
+
+=== State Transitions
+
+PL Main does not perform state transitions.
+
+=== List of Component Functions
+
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section
+
+|eMMC Control
+|Formats, mounts, and unmounts the eMMC.
+|<<#_Function1>>
+
+|Flash Control
+|Formats, mounts, and unmounts the flash.
+|<<#_Function2>>
+
+|Feature Support Check
+|Determines whether the specified feature is available.
+|<<#_Function3>>
+|===
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== eMMC Control
+
+Function Overview::  
+Formats, mounts, and unmounts the eMMC.
+
+Preconditions::  
+None
+
+Function Details::  
+See <<#_PlMainEmmcFormat, PlMainEmmcFormat>>, <<#_PlMainEmmcMount, PlMainEmmcMount>>, and <<#_PlMainEmmcUnmount, PlMainEmmcUnmount>> for details.
+
+Detailed Behavior::  
+Formats the eMMC in FAT32 format and mounts it. +  
+If the device does not have an eMMC, no operation is performed.
+
+Behavior on Error / Recovery::  
+If an error occurs, internal processing is aborted. +  
+Retry is not possible.
+
+Considerations::  
+None
+
+[#_Function2]
+==== Flash Control
+
+Function Overview::  
+Initializes, mounts, and unmounts the flash.
+
+Preconditions::  
+None
+
+Function Details::  
+See <<#_PlMainFlashFormat, PlMainFlashFormat>>, <<#_PlMainFlashMount, PlMainFlashMount>>, and <<#_PlMainFlashUnmount, PlMainFlashUnmount>> for details.
+
+Detailed Behavior::  
+Erases the data in the target partition and formats it as LittleFS. +  
+Mounts and unmounts the target partition. +  
+Note that the partition to be erased and the one to be mounted/unmounted may differ.
+
+Behavior on Error / Recovery::  
+If an error occurs, internal processing is aborted. +  
+Retry is not possible.
+
+Considerations::  
+None
+
+[#_Function3]
+==== Feature Support Check
+
+Function Overview::  
+Determines whether the specified feature is supported.
+
+Preconditions::  
+None
+
+Function Details::  
+See <<#_PlMainIsFeatureSupported, PlMainIsFeatureSupported>> for details.
+
+Detailed Behavior::  
+Checks if one of the following is supported: reboot, shutdown, factory reset, or downgrade. +
+
+Behavior on Error / Recovery::  
+If an error occurs, check the input parameters and retry.
+
+Considerations::  
+None
+
+=== Non-Functional Requirements of the Component
+
+The non-functional requirements are listed in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement |Overview |Section
+
+|Maximum Stack Usage
+|256 bytes
+|<<#_MaxUsedStack>>
+
+|Maximum Heap Usage
+|0 KB
+|<<#_MaxUsedHeap>>
+
+|Maximum Static Data Usage
+|64 bytes
+|<<#_MaxUsedStaticHeap>>
+
+|Performance
+|Less than or equal to 1 ms
+|<<#_Performance>>
+|===
+
+=== Description of Non-Functional Requirements
+
+Values are based only on PL Main, excluding external libraries.
+
+[#_MaxUsedStack]
+==== Maximum Stack Usage
+
+256 bytes
+
+[#_MaxUsedHeap]
+==== Maximum Heap Usage
+
+0 KB
+
+[#_MaxUsedStaticHeap]
+==== Maximum Static Data Usage
+
+64 bytes
+
+[#_Performance]
+==== Performance
+
+Less than or equal to 1 ms
+
+== API Specifications
+
+=== Configurations
+
+[#_TableConfig]
+.Configuration Settings
+[width="100%", cols="30%,20%,50%",options="header"]
+|===
+|Configuration Name |Default Value |Description
+
+|EXTERNAL_PL_MAIN
+|y
+|Defines whether PL Main is enabled. +  
+If set to `y`, PL Main will be built.
+
+|EXTERNAL_PL_MAIN_LOG
+|y
+|Enables or disables the logging control API. +  
+If set to `n`, logs will be output to standard output.
+|===
+
+=== Definition List
+
+==== Data Type List
+
+The data type list is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+
+|enum PlErrCode
+|An enumeration type that defines the return codes for API execution.
+|<<#_PlErrCode>>
+
+|enum PlMainFeatureType
+|An enumeration type representing the features of PL Main.
+|<<#_PlMainFeatureType>>
+
+|PlMainKeepAliveCallback
+|Callback function type used for invoking keep-alive during formatting.
+|<<#_PlMainKeepAliveCallback>>
+|===
+
+==== API List
+
+The list of public APIs is shown in <<#_TablePublicAPI>>.
+
+[#_TablePublicAPI]
+.Public API List
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Description |Section
+
+|PlMainEmmcFormat
+|Formats the eMMC.
+|<<#_PlMainEmmcFormat>>
+
+|PlMainEmmcMount
+|Mounts the eMMC.
+|<<#_PlMainEmmcMount>>
+
+|PlMainEmmcUnmount
+|Unmounts the eMMC.
+|<<#_PlMainEmmcUnmount>>
+
+|PlMainFlashFormat
+|Formats the flash.
+|<<#_PlMainFlashFormat>>
+
+|PlMainFlashMount
+|Mounts the flash.
+|<<#_PlMainFlashMount>>
+
+|PlMainFlashUnmount
+|Unmounts the flash.
+|<<#_PlMainFlashUnmount>>
+
+|PlMainIsFeatureSupported
+|Determines whether the specified feature is supported.
+|<<#_PlMainIsFeatureSupported>>
+|===
+
+=== Data Type Definitions
+
+[#_PlErrCode]
+==== PlErrCode
+
+An enumeration type that defines the result of API execution.
+
+[#_PlMainFeatureType]
+==== enum PlMainFeatureType
+
+An enumeration type representing the list of PL Main features.
+
+* *Definition*
+[source, C]
+....
+typedef enum PlMainFeatureType {
+  PlMainFeatureReboot,
+  PlMainFeatureShutdown,
+  PlMainFeatureFactoryReset,
+  PlMainFeatureDowngrade,
+  PlMainFeatureMax,
+} PlMainFeatureType;
+....
+
+* *Values*
+
+[#_PlMainFeatureTypeValue]
+.Description of PlMainFeatureType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|PlMainFeatureReboot
+|Reboot
+|PlMainFeatureShutdown
+|Shutdown
+|PlMainFeatureFactoryReset
+|Factory reset
+|PlMainFeatureDowngrade
+|Downgrade
+|PlMainFeatureMax
+|Total number of features
+|===
+
+[#_PlMainKeepAliveCallback]
+==== PlMainKeepAliveCallback
+
+Callback function type used to invoke keep-alive during formatting.
+
+* *Definition*
+[source, C]
+....
+typedef void (*PlMainKeepAliveCallback)(void* user_data);
+....
+
+* *Parameter Description* +
+**``[IN] void* user_data``**::  
+User data passed when the format function is called.
+
+* *Return Value* +
+-
+
+* *Description* +
+The callback function is called before formatting.  
+If formatting multiple regions, the callback is invoked before formatting each region.
+
+=== API Descriptions
+
+[#_PlMainEmmcFormat]
+==== PlMainEmmcFormat
+
+* *Function* +
+Formats the eMMC.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainEmmcFormat(PlMainKeepAliveCallback cb, void* user_data);
+....
+
+* *Parameter Descriptions* +
+**``[IN] PlMainKeepAliveCallback cb``**::  
+Callback function to be invoked during formatting.  
+If `NULL` is specified, the callback is not called.  
+See <<#_PlMainKeepAliveCallback>> for details.
+
+**``[IN] void* user_data``**::  
+User data passed to the callback function.  
+See <<#_PlMainKeepAliveCallback>> for details.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Initializes the eMMC. +
+
+** For T5:  
+Formats the eMMC as FAT32.
+
+  *** Target for formatting:  
+    `/dev/mmcsd1`
+
+** For T3:  
+No operation is performed. Returns `kPlErrCodeOk`.
+
+** When processing multiple regions, all target regions are processed even if an error occurs midway.  
+The return value will be the error code from the last occurred error.
+
+[#_PlMainEmmcFormat_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Not allowed
+|Multithreaded Calls
+|Not allowed
+|Multitask Calls
+|Not allowed
+|Blocking Behavior
+|Does not block
+|===
+
+[#_PlMainEmmcFormat_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrWrite
+|eMMC processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainEmmcMount]
+==== PlMainEmmcMount
+
+* *Function* +
+Mounts the eMMC.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainEmmcMount(void);
+....
+
+* *Parameter Descriptions* +
+None
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Performs the mount process for eMMC.
+
+** For T5:  
+Performs mounting.  
+  *** Source:  
+    `/dev/mmcsd1`  
+  *** Target:  
+    `/emmc/`
+
+** For T3:  
+No operation is performed. Returns `kPlErrCodeOk`.
+
+** When processing multiple regions, all target regions are processed even if an error occurs midway.  
+The return value will be the error code from the last occurred error.
+
+[#_PlMainEmmcMount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Not allowed
+|Multithreaded Calls
+|Not allowed
+|Multitask Calls
+|Not allowed
+|Blocking Behavior
+|Does not block
+|===
+
+[#_PlMainEmmcMount_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrWrite
+|eMMC processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+
+[#_PlMainEmmcUnmount]
+==== PlMainEmmcUnmount
+
+* *Function* +
+Unmounts the eMMC.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainEmmcUnmount(void);
+....
+
+* *Parameter Descriptions* +
+None
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Performs unmounting of the eMMC.
+
+** For T5:  
+Unmounts the following target:  
+  *** Target to unmount:  
+    `/emmc/`
+
+** For T3:  
+Performs no operation and returns `kPlErrCodeOk`.
+
+** When processing multiple regions, all target regions are processed even if an error occurs midway.  
+The return value will be the error code from the last occurred error.
+
+[#_PlMainEmmcUnmount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Not allowed
+|Multithreaded Calls
+|Not allowed
+|Multitask Calls
+|Not allowed
+|Blocking Behavior
+|Does not block
+|===
+
+[#_PlMainEmmcUnmount_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrWrite
+|eMMC processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainFlashFormat]
+==== PlMainFlashFormat
+
+* *Function* +
+Formats the flash.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainFlashFormat(PlMainKeepAliveCallback cb, void* user_data);
+....
+
+* *Parameter Descriptions* +
+**``[IN] PlMainKeepAliveCallback cb``**::  
+Callback function to be called during formatting.  
+If `NULL` is specified, the callback will not be called.  
+See <<#_PlMainKeepAliveCallback>> for details.
+
+**``[IN] void* user_data``**::  
+User data passed to the callback function.  
+See <<#_PlMainKeepAliveCallback>> for details.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Performs initialization processing for the flash.
+
+** For T5:  
+Erases the `evp_data`, `log`, `deploy_region`, and `reserved` partitions and formats them in LittleFS format.  
+  *** Target paths for initialization:  
+    Combine `CONFIG_ESP32S3_PARTITION_MOUNTPT` with the partition name.
+
+** For T3:  
+Erases the `evp_data` and `app_data` partitions and formats `evp_data` in LittleFS format.  
+  *** Target paths for initialization:  
+    Combine `CONFIG_ESP32_PARTITION_MOUNTPT` with the partition name.
+
+** When processing multiple regions, all target regions are processed even if an error occurs midway.  
+The return value will be the error code from the last occurred error.
+
+[#_PlMainFlashFormat_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Not allowed
+|Multithreaded Calls
+|Not allowed
+|Multitask Calls
+|Not allowed
+|Blocking Behavior
+|Does not block
+|===
+
+[#_PlMainFlashFormat_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrWrite
+|Flash processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainFlashMount]
+==== PlMainFlashMount
+
+* *Function* +
+Mounts the flash.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainFlashMount(void);
+....
+
+* *Parameter Descriptions* +
+None
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Performs the mount process for the flash.
+
+** For T5:  
+Mounts the `fa_data3` partition to `/fa_data3`.  
+The full path is constructed as:  
+`CONFIG_ESP32S3_PARTITION_MOUNTPT` + `/fa_data3`
+
+** For T3:  
+Performs no operation and returns `kPlErrCodeOk`.
+
+** When processing multiple regions, all target regions are processed even if an error occurs midway.  
+The return value will be the error code from the last occurred error.
+
+[#_PlMainFlashMount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Not allowed
+|Multithreaded Calls
+|Not allowed
+|Multitask Calls
+|Not allowed
+|Blocking Behavior
+|Does not block
+|===
+
+
+[#_PlMainFlashMount_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrWrite
+|Flash processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainFlashUnmount]
+==== PlMainFlashUnmount
+
+* *Function* +
+Unmounts the flash.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainFlashUnmount(void);
+....
+
+* *Parameter Descriptions* +
+None
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Performs unmounting of the flash.
+
+** For T5:  
+Unmounts `/fa_data3`
+
+** For T3:  
+Performs no operation and returns `kPlErrCodeOk`.
+
+** When processing multiple regions, all target regions are processed even if an error occurs midway.  
+The return value will be the error code from the last occurred error.
+
+[#_PlMainFlashUnmount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Not allowed
+|Multithreaded Calls
+|Not allowed
+|Multitask Calls
+|Not allowed
+|Blocking Behavior
+|Does not block
+|===
+
+[#_PlMainFlashUnmount_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrWrite
+|Flash processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainIsFeatureSupported]
+==== PlMainIsFeatureSupported
+
+* *Function* +
+Determines whether the specified feature is supported.
+
+* *Definition* +
+[source, C]
+....
+PlErrCode PlMainIsFeatureSupported(PlMainFeatureType type);
+....
+
+* *Parameter Descriptions* +
+**``[IN] PlMainFeatureType type``**::  
+An enum representing the list of PL Main features.  
+See <<#_PlMainFeatureType>> for details.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result.
+
+* *Description* +
+Determines whether the specified feature is supported.  
+If supported, returns `kPlErrCodeOk`.  
+If not supported, returns `kPlErrNoSupported`.
+
+** For T5:  
+The downgrade function (`PlMainFeatureDowngrade`) is not supported.
+
+** For T3:  
+All features are supported.
+
+[#_PlMainIsFeatureSupported_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Allowed
+|Multithreaded Calls
+|Allowed
+|Multitask Calls
+|Allowed
+|Blocking Behavior
+|Does not block
+|===
+
+[#_PlMainIsFeatureSupported_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrInvalidParam
+|Parameter error
+|-
+|No impact
+|None required
+
+|kPlErrNoSupported
+|Feature not supported
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+== Example Usage of API
+
+There are no initialization or termination APIs. +
+
+[#_main_seq]
+.Sequence Overview
+[{mermaid_block}]
+----
+sequenceDiagram
+participant main as Upper Layer
+participant pl as PL Main
+main ->> +pl: PlMain***
+pl -->> -main: return
+----
+
+== Special Notes or Component-Specific Remarks
+
+None
+
+== List of Open Source Software Used
+
+None
+
+== References
+
+None
+
+== Revision History
+
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes
+|0.0.1
+|Initial version
+|===

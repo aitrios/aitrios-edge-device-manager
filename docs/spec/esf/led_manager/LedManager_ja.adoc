@@ -1,0 +1,1660 @@
+= Led Manager 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.18
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はLed Manager moduleについて記載します。
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+=== ESF
+ESF(AITRIOS edge software framework) +
+
+* 各種アプリから実行可能なAITRIOS基準のAPIを持つレイヤです。
+* 基本的にはOS、チップ等の変更影響を受けません。
+* アプリの機能の根幹となるため、SSSが管理します。
+* ブロック単位で分離することで、センサ等を変更する際の影響を極力小さくします。
+
+=== 点灯保持設定
+
+* 各LEDの点灯状態の保持を有効/無効にする設定を指します。 
+* 有効になった場合、指定されたLEDのその時点の点灯状態を保持します。 +
+有効後も状態の更新は可能ですが、点灯内容に変化はありません。
+* 無効になった場合、有効時に設定された状態も踏まえて最も優先度の高い状態で点灯させます。
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+<<#_Software,構成図>>通りの構成になっており、設定された状態に対応した点灯内容でLEDを光らせるmoduleです。
+
+[#_Software]
+.概要図
+
+[{mermaid_block}]
+----
+graph TB;
+app[App]
+subgraph ssf[ESF]
+    subgraph module[各モジュール]
+    end
+    subgraph led_manager[Led Manager]
+    end
+    hal[PL Led]
+end
+app --> |状態設定{mermaid_br}LED点灯保持設定更新| led_manager
+module --> |状態設定{mermaid_br}LED点灯保持設定更新| led_manager
+led_manager --> |LED操作|hal
+----
+
+
+<<<
+
+=== コンポーネントの詳細説明
+本moduleでは、ESF mainにて初期化/終了処理を実施されます。 +
+また、各々のmoduleよりAPIを使用して、LEDの状態を設定し、有効となっている状態の中から優先度の高いものをPL Led APIを使用してLEDへ反映させます。 +
+状態毎のLEDへの反映内容・優先順位は製品・プロジェクト毎に切替可能とします。 +
+点灯内容・優先順位は<<#_StatePriority,「6.1. LED状態一覧と優先度」>>を参照してください。 +
+ただし、LED毎の点灯保持設定が有効な場合、有効になった際の点灯状態がLED点灯状態保持フラグ無効になるまで保持されます。
+
+[#_FigureDetail_DataFlow]
+.処理フロー図
+[{mermaid_block}]
+----
+graph LR;
+app[App]
+subgraph ESF
+  main[Main]
+  module[各Module]
+  led[Led Manager]
+  table[状態優先度テーブル]
+  pl[PL Led]
+end
+
+main --> |"初期化/終了処理"| led
+module --> |"状態設定{mermaid_br}LED点灯保持設定更新"| led
+led --> |"状態取得"| module
+app --> |"状態設定{mermaid_br}LED点灯保持設定更新"| led
+led --> |"LED点灯内容取得"| table
+led --> |"状態取得"| app
+led --> |"Led操作"| pl
+----
+
+
+<<<
+
+=== 状態遷移
+Led Managerの取り得る状態を<<#_TableStates>>に示します。 +
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|UNINIT
+|初期状態。
+
+|IDLE
+|処理待機中。
+
+|===
+
+Led Managerでは各APIを呼び出すことで<<#_FigureLedManagerStateTransition,状態遷移図>>に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureLedManagerStateTransition]
+.状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+    direction LR
+    [*] --> UNINIT
+        UNINIT --> IDLE:EsfLedManagerInit
+        UNINIT --> UNINIT:EsfLedManagerDeinit
+        IDLE --> UNINIT:EsfLedManagerDeinit
+        IDLE --> IDLE:EsfLedManagerInit{mermaid_br}EsfLedManagerSetStatus{mermaid_br}EsfLedManagerGetStatus{mermaid_br}EsfLedManagerSetLightingPersistence 
+----
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。 +
+表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+×はAPI受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,15%,15%"]
+|===
+2.2+| 2+|状態 
+^|UNINIT ^|IDLE
+.5+|API名
+
+|EsfLedManagerInit           
+^|IDLE               
+^|IDLE
+
+|EsfLedManagerDeinit 
+^|UNINIT                      
+^|UNINIT                
+
+|EsfLedManagerSetStatus   
+^|×                    
+^|IDLE                 
+
+|EsfLedManagerGetStatus   
+^|×                      
+^|IDLE  
+
+|EsfLedManagerSetLightingPersistence 
+^|×
+^|IDLE
+
+|===
+
+<<<
+
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Led Manager初期化機能
+|Led Managerの初期化をします。
+|<<#_Function1>>
+
+|Led Manager終了機能
+|Led Managerの終了処理をします。
+|<<#_Function2>>
+
+|状態設定取得機能
+|LED状態の設定、取得の機能を有します。
+|<<#_Function3>>
+
+|点灯保持設定機能
+|各LED点灯保持設定の有効/無効を切り替える機能を有します。
+|<<#_Function4>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== Led Manager初期化機能
+* 機能概要 +
+Led Managerの初期化処理をする機能です。
+* 前提条件 +
+前提条件はありません。
+* 機能詳細 +
+    内部リソース、PL Ledの初期化を行います。  +
+    詳細に関してはAPI詳細を確認してください。 +
+    <<#_EsfLedManagerInit,[ EsfLedManagerInit ]>>
+
+[#_Function2]
+==== Led Manager終了機能
+* 機能概要 +
+Led Managerの終了処理をする機能です。
+* 前提条件 +
+前提条件はありません。
+* 機能詳細 +
+    LEDの消灯、LedManager終了処理を行います。 +
+    PL Ledの終了処理も行います。 +
+    詳細に関してはAPI詳細を確認してください。 +
+    <<#_EsfLedManagerDeinit,[ EsfLedManagerDeinit ]>>
+
+[#_Function3]
+==== 状態設定取得機能
+* 機能概要 +
+LEDの状態設定、取得の機能を有する機能部です。
+* 前提条件 +
+Led Manager初期化が行われていることです。
+* 機能詳細 +
+** 状態設定 +
+設定後、各LEDで有効となっている状態の中から最も優先度の高い状態のLED点灯設定でLEDを光らせます。 +
+詳細に関してはAPI詳細を確認してください。 +
+<<#_EsfLedManagerSetStatus,[ EsfLedManagerSetStatus ]>>
+
+** 状態取得 +
+指定されたLEDの状態を取得します。 +
+詳細に関してはAPI詳細を確認してください。 +
+<<#_EsfLedManagerGetStatus,[ EsfLedManagerGetStatus ]>>
+
+[#_Function4]
+==== 点灯保持設定機能
+* 機能概要 +
+各LEDの点灯状態を保持するかを管理する機能部です。
+* 前提条件 +
+Led Manager初期化が行われていることです。
+* 機能詳細 +
+** LED点灯保持設定 +
+各LED毎に有効/無効にすることができ、有効な場合、現在の点灯状態が保持され、無効になるまで点灯状態は変わりません。 +
+詳細に関してはAPI詳細を確認してください。 +
+<<#_EsfLedManagerSetLightingPersistence ,[ EsfLedManagerSetLightingPersistence ]>>
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="20%,15%,55%,10%",options="header"]
+|===
+|機能名 |数値 |概要 |節番号
+|最大処理時間
+|外部要因を除いて1msec
+|最大でかかる処理時間を示します。
+|<<#_NonFunction1>>
+
+|Stackメモリ使用量
+|1KB
+|最大で使用するStackメモリサイズを示します。
+|<<#_NonFunction2>>
+
+|ヒープメモリ使用量
+|0.26KB
+|最大で使用するヒープメモリサイズを示します。
+|<<#_NonFunction3>>
+
+|スレッド使用数
+|スレッドは使用しません。
+|使用するスレッド数を示します。
+|<<#_NonFunction4>>
+
+|staticメモリ使用
+|0.54KB
+|最大で使用するstaticメモリサイズを示します。
+|<<#_NonFunction5>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_NonFunction1]
+==== 最大処理時間
+状態設定からLED操作まで最大1msecかかります。 +
+ただし、外部要因（PL Ledへのアクセス時間等）を除きます。
+[#_NonFunction2]
+==== Stackメモリ使用量
+1KB
+[#_NonFunction3]
+==== ヒープメモリ使用量
+0.26KB
+[#_NonFunction4]
+==== スレッド使用数
+スレッドは使用しません。
+[#_NonFunction5]
+==== staticメモリ使用量
+0.54KB
+
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfLedManagerResult
+|Led Managerで使用する戻り値を表す列挙型です。
+|<<#_EsfLedManagerResult>>
+
+|EsfLedManagerTargetLed
+|Ledを指定する際に使用する列挙型です。
+|<<#_EsfLedManagerTargetLed>>
+
+|EsfLedManagerLedStatus
+|Ledの状態を定義する列挙型です。
+|<<#_EsfLedManagerLedStatus>>
+
+|EsfLedManagerLedStatusInfo
+|各moduleで使用するLEDの状態設定/取得用構造体です
+|<<#_EsfLedManagerLedStatusInfo>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfLedManagerInit
+|初期化処理を行います。
+|<<#_EsfLedManagerInit>>
+
+|EsfLedManagerDeinit
+|終了処理を行います。
+|<<#_EsfLedManagerDeinit>>
+
+|EsfLedManagerSetStatus
+|指定したLEDの状態を設定します。
+|<<#_EsfLedManagerSetStatus>>
+
+|EsfLedManagerGetStatus
+|指定したLEDの状態取得を行います。
+|<<#_EsfLedManagerGetStatus>>
+
+|EsfLedManagerSetLightingPersistence 
+|指定したLEDの点灯保持設定を更新します。
+|<<#_EsfLedManagerSetLightingPersistence>>
+|===
+
+<<<
+
+=== データ型定義
+[#_EsfLedManagerResult]
+==== EsfLedManagerResult
+Led Managerで使用する戻り値の列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum EsfLedManagerResult{
+    kEsfLedManagerSuccess,
+    kEsfLedManagerInternalError,
+    kEsfLedManagerInvalidArgument,
+    kEsfLedManagerTimeOut,
+    kEsfLedManagerStatusNotFound,
+    kEsfLedManagerStateTransitionError,
+    kEsfLedManagerOutOfMemory,
+    kEsfLedManagerLedOperateError,
+} EsfLedManagerResult;
+....
+
+
+* *値* 
++
+[#_TableEsfLedManagerResult]
+.EsfLedManagerResultの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerSuccess
+|成功時の戻り値です。
+
+|kEsfLedManagerInternalError
+|内部処理エラー時の戻り値です。
+
+|kEsfLedManagerInvalidArgument
+|引数エラー時の戻り値です。
+
+|kEsfLedManagerTimeOut
+|タイムアウト時の戻り値です。
+
+|kEsfLedManagerStatusNotFound
+|状態が存在しなかった場合の戻り値です。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移判定エラーの戻り値です。
+
+|kEsfLedManagerOutOfMemory
+|メモリ確保に失敗した際の戻り値です。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連でエラーとなった際の戻り値です。
+|===
+
+[#_EsfLedManagerTargetLed]
+==== EsfLedManagerTargetLed
+Ledを指定する際に使用する列挙型です。
+
+* *書式* +
++
+[source, C]
+....
+typedef enum EsfLedManagerTargetLed {
+  kEsfLedManagerTargetLedPower,
+  kEsfLedManagerTargetLedWifi,
+  kEsfLedManagerTargetLedService,
+  kEsfLedManagerTargetLedNum
+} EsfLedManagerTargetLed;
+....
+
+* *値* 
++
+[#_EsfLedManagerTargetLedValue]
+.EsfLedManagerTargetLedの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerTargetLedPower
+|Power Ledを指定する際に使用する値です。
+
+|kEsfLedManagerTargetLedWifi
+|Wifi Ledを指定する際に使用する値です。
+
+|kEsfLedManagerTargetLedService
+|Service Ledを指定する際に使用する値です。
+
+|kEsfLedManagerTargetLedNum
+|Ledの数を示します。
+|===
+
+[#_EsfLedManagerLedStatus]
+==== EsfLedManagerLedStatus
+Ledの状態を定義する列挙型です。 +
+<<#_StatePriority,状態一覧>>にて記載した設定値に対応しています。
+
+* *書式*
++
+[source, C]
+....
+typedef enum EsfLedManagerLedStatus {
+  kEsfLedManagerLedStatusForcedOff,
+  kEsfLedManagerLedStatusResetting,
+  kEsfLedManagerLedStatusAbleToAcceptInputs,
+  kEsfLedManagerLedStatusUnableToAcceptInputs,
+  kEsfLedManagerLedStatusConnectedWithTLS,
+  kEsfLedManagerLedStatusConnectedWithoutTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP,
+  kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer,
+  kEsfLedManagerLedStatusDisconnectedNoInternetConnection,
+  kEsfLedManagerLedStatusDisconnectedConnectingWithTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingProxy,
+  kEsfLedManagerLedStatusWaitingForInputsToConnectConsole,
+  kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner,
+  kEsfLedManagerLedStatusSearchingAP,
+  kEsfLedManagerLedStatusAPFoundAndDoingAuthentication,
+  kEsfLedManagerLedStatusLinkEstablished,
+  kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed,
+  kEsfLedManagerLedStatusErrorNetworkInitializationFailed,
+  kEsfLedManagerLedStatusErrorLegacyUSB,
+  kEsfLedManagerLedStatusErrorInvalidQRCode,
+  kEsfLedManagerLedStatusErrorUploadFailed,
+  kEsfLedManagerLedStatusErrorDownloadFailed,
+  kEsfLedManagerLedStatusErrorAuthProxyFailed,
+  kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed,
+  kEsfLedManagerLedStatusErrorDataFlashFailed,
+  kEsfLedManagerLedStatusNum,
+} EsfLedManagerLedStatus;
+....
+
+
+* *値* 
++
+.EsfLedManagerLedStatusの値の説明
+[width="100%", cols="50%,50%",options="header"]
+|===
+|メンバ名 |説明
+|kEsfLedManagerLedStatusForcedOff
+|LED強制消灯状態を指定する際に使用する値です。
+
+|kEsfLedManagerLedStatusResetting
+|ファクトリーリセットの際に使用する値です。
+
+|kEsfLedManagerLedStatusAbleToAcceptInputs
+|入力可能の際に使用する値です。
+
+|kEsfLedManagerLedStatusUnableToAcceptInputs
+|入力不可の際に使用する値です。
+
+|kEsfLedManagerLedStatusConnectedWithTLS
+|TLS接続した際に使用する値です。
+
+|kEsfLedManagerLedStatusConnectedWithoutTLS
+|非TLS接続した際に使用する値です。
+
+|kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP
+|接続試行中（DNS,NTP接続）の際に使用する値です。
+
+|kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer
+|未接続（物理リンク確立中）の際に使用する値です。
+
+|kEsfLedManagerLedStatusDisconnectedNoInternetConnection
+|未接続（インターネット接続なし）の際に使用する値です。
+
+|kEsfLedManagerLedStatusDisconnectedConnectingWithTLS
+|接続試行中（TLS接続）の際に使用する値です。
+
+|kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS
+|接続試行中（非TLS接続）の際に使用する値です。
+
+|kEsfLedManagerLedStatusDisconnectedConnectingProxy
+|接続試行中（Proxy）の際に使用する値です。
+
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsole
+|コンソールに接続するための入力待ちの際に使用する値です。（QR code mode）
+
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner
+|コンソールに接続するための入力待ちの際に使用する値です。（Global Provisioner）
+
+|kEsfLedManagerLedStatusSearchingAP
+|AP検索の際に使用する値です。
+
+|kEsfLedManagerLedStatusAPFoundAndDoingAuthentication 
+|AP認証中の際に使用する値です。
+
+|kEsfLedManagerLedStatusLinkEstablished
+|リンク確立時に使用する値です。
+
+|kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed
+|周辺機器ドライバの初期化に失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorNetworkInitializationFailed
+|ネットワークの初期化に失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorLegacyUSB
+|レガシーUSBからの給電を検知した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorInvalidQRCode
+|無効なQRコードを検知した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorUploadFailed
+|アップロードに失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorDownloadFailed
+|ダウンロードに失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorAuthProxyFailed
+|Proxy認証に失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed
+|ダウンロード用メモリ領域の確保に失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusErrorDataFlashFailed
+|フラッシュ書き込みに失敗した際に使用する値です。
+
+|kEsfLedManagerLedStatusNum
+|本enum値の数です。
+
+|===
+
+[#_EsfLedManagerLedStatusInfo]
+==== EsfLedManagerLedStatusInfo	
+各moduleで使用するLEDの状態設定/取得用構造体です。 +
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfLedManagerLedStatusInfo {
+    EsfLedManagerTargetLed led;
+    EsfLedManagerLedStatus status;
+    bool enabled;
+} EsfLedManagerLedStatusInfo;
+....
+
+
+* *値* 
++
+[#_EsfLedManagerStatusInfoValue]
+.EsfLedManagerStatusInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|led
+|LEDのIDです。
+
+|status
+|設定/取得するLEDの状態です。
+
+|enabled
+|状態の有効/無効フラグです。
+|===
+
+<<<
+
+=== API定義
+
+[#_EsfLedManagerInit]
+==== EsfLedManagerInit
+* *機能* 
++
+Led Managerの初期化処理を行います。
+
+
+* *書式* +
++
+``** enum EsfLedManagerResult EsfLedManagerInit(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+INはありません。
+
+**``[OUT] なし``**:: 
+OUTはありません。
+
+
+* *戻り値* +
++
+[#_EsfLedManagerInitReturnValue]
+.EsfLedManagerInitの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerSuccess
+|成功時の戻り値です。
+
+|kEsfLedManagerInternalError
+|内部処理エラー時の戻り値です。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連でエラーとなった際の戻り値です。
+
+|kEsfLedManagerOutOfMemory
+|メモリ確保に失敗した際の戻り値です。
+|===
+
+* *説明* +
+** 詳細挙動 +
+*** 内部リソースとPL Ledの初期化を行います。
+*** 本APIは複数回呼ばれた場合でも**``kEsfLedManagerSuccess``**を返します。
+*** 内部で排他制御を行います。
+
+* *エラー情報* +
++
+[#EsfLedManagerInit_Error]
+.EsfLedManagerInitエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfLedManagerSuccess
+|成功
+|成功
+|なし
+
+|kEsfLedManagerInternalError
+|内部処理エラー
+|mutex操作エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連エラー
+|PL Led初期化エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerOutOfMemory
+|メモリ確保失敗
+|メモリ確保失敗
+|メモリ確認後、リトライしてください。
+|===
+
+[#_EsfLedManagerDeinit]
+==== EsfLedManagerDeinit
+* *機能* 
++
+Led Managerの終了処理を行います。
+
+
+* *書式* +
++
+``** enum EsfLedManagerResult EsfLedManagerDeinit(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+INはありません。
+
+**``[OUT] なし``**:: 
+OUTはありません。
+
+
+* *戻り値* +
++
+[#_EsfLedManagerDeinitReturnValue]
+.EsfLedManagerDeinitの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerSuccess
+|成功時の戻り値です。
+
+|kEsfLedManagerInternalError
+|内部処理エラー時の戻り値です。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連でエラーとなった際の戻り値です。
+|===
+
+* *説明* +
+** 詳細挙動 +
+*** LEDの消灯、LedManager終了処理を行います。
+*** PL Ledの終了処理も行います。 +
+*** 本APIは複数回呼ばれた場合でも**``kEsfLedManagerSuccess``**を返します。
+*** 内部で排他制御を行います。
+
+* *エラー情報* +
++
+[#EsfLedManagerDeinit_Error]
+.EsfLedManagerDeinitエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfLedManagerSuccess
+|成功
+|成功
+|なし
+
+|kEsfLedManagerInternalError
+|内部処理エラー
+|mutex操作エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連エラー
+|PL Led終了処理エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+|===
+
++
+
+
+[#_EsfLedManagerSetStatus]
+==== EsfLedManagerSetStatus
+* *機能* 
++
+指定したLEDの状態を設定します。
+
+
+* *書式* +
++
+``** enum EsfLedManagerResult EsfLedManagerSetStatus(const EsfLedManagerLedStatusInfo* status)**``  
+
+* *引数の説明* +
++
+**``[IN] const EsfLedManagerLedStatusInfo* status``**:: 
+LEDの状態を設定する構造体です。 +
+
+**``[OUT] なし``**:: 
+OUTはありません。
+
+
+* *戻り値* +
++
+[#_EsfLedManagerSetStatusReturnValue]
+.EsfLedManagerSetStatusの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerSuccess
+|成功時の戻り値です。
+
+|kEsfLedManagerInternalError
+|内部処理エラー時の戻り値です。
+
+|kEsfLedManagerInvalidArgument
+|引数エラー時の戻り値です。
+
+|kEsfLedManagerTimeOut
+|タイムアウト時の戻り値です。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移エラー時の戻り値です。
+
+|kEsfLedManagerStatusNotFound
+|状態が存在しなかった場合の戻り値です。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連でエラーとなった際の戻り値です。
+
+|kEsfLedManagerOutOfMemory
+|メモリ確保に失敗した際の戻り値です。
+|===
+
+* *説明* +
+** 詳細挙動
+*** 指定したLEDの状態を有効/無効で設定します。 +
+状態を有効にしたい場合は``**status->enabled**``へ``**true**``を、無効にしたい場合は``**false**``を設定してください。 +
+具体的な使用例は<<_SetStatusExample,状態設定例>>を参照してください。
+*** 設定後、各LEDで有効となっている状態の中から最も優先度の高い状態のLED点灯設定でLEDを光らせます。
+優先度およびLED点灯設定については<<#_StatePriority,「6.1. LED状態一覧と優先度」>>を参照してください。 +
+LED点灯例については<<_LEDLightingExample,こちら>>を参照してください。 +
+※ただし、点灯保持設定が有効になっているLEDに関しては、状態の更新のみ行われ、点灯内容に変更はありません。
+*** LEDの点灯、消灯にはPL Led APIを使用します。
+*** LedManager内部でLED毎に設定された状態は保持します。
+*** 状態に変化がない場合、LED操作を行わずに**``kEsfLedManagerSuccess``**を返します。
+*** LedManagerが初期化されていない場合、**``kEsfLedManagerStateTransitionError``**を返します。
+*** 本APIでは同時にLED状態変更を行わせないために、内部で排他制御をします。
+*** 本APIがエラーを返した場合、内部で保持されたLED毎の状態は更新されません。 
+*** エラー時に戻り値が**``kEsfLedManagerLedOperateError``**以外の場合、LEDの点灯内容は変化しません。
+
+
+** *エラー情報* +
++
+[#EsfLedManagerSetStatus_Error]
+.EsfLedManagerSetStatusエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfLedManagerSuccess
+|成功
+|成功
+|なし
+
+|kEsfLedManagerInvalidArgument
+|引数エラー
+|status NULL status->ledが不正
+|引数をチェックして再実施してください。
+
+|kEsfLedManagerInternalError
+|内部処理エラー
+|内部関数エラー、mutex操作エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerTimeOut
+|タイムアウト
+|排他制御タイムアウト
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移エラー
+|状態遷移エラー
+|状態遷移表を確認してリトライしてください。
+
+|kEsfLedManagerStatusNotFound
+|指定された状態が存在しない
+|指定された状態が存在しない
+|引数内容を再確認してリトライしてください。
+
+|kEsfLedManagerLedOperateError
+|Led操作関連エラー
+|Led操作エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerOutOfMemory
+|メモリ確保エラー
+|メモリ確保失敗
+|メモリ確認後、リトライしてください。
+|===
+
+
+[#_EsfLedManagerGetStatus]
+==== EsfLedManagerGetStatus
+* *機能* 
++
+指定したLEDの状態取得を行います。
+
+* *書式* +
++
+``** enum EsfLedManagerResult EsfLedManagerGetStatus(EsfLedManagerLedStatusInfo* status)**``  
+
+* *引数の説明* +
++
+**``[IN/OUT] EsfLedManagerLedStatusInfo* status``**:: 
+取得したLED状態を格納する構造体です。
+
+
+* *戻り値* +
++
+[#_EsfLedManagerGetStatusReturnValue]
+.EsfLedManagerGetStatusの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerSuccess
+|成功時の戻り値です。
+
+|kEsfLedManagerInternalError
+|内部処理エラー時の戻り値です。
+
+|kEsfLedManagerInvalidArgument
+|引数エラー時の戻り値です。
+
+|kEsfLedManagerTimeOut
+|タイムアウト時の戻り値です。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移エラー時の戻り値です。
+
+|kEsfLedManagerStatusNotFound
+|状態が存在しなかった場合の戻り値です。
+|===
+
+* *説明* +
+** 詳細挙動 +
+*** 指定された状態の情報を取得し、**``status``**へ返します。 +
+``**status**``への設定値に関しては<<_GetStatusExample,状態取得例>>を参照してください。
+*** LedManagerが初期化されていない場合、**``kEsfLedManagerStateTransitionError``**を返します。
+*** 内部で排他制御を行います。 +
+** *エラー情報* +
++
+[#EsfLedManagerGetStatus_Error]
+.EsfLedManagerGetStatusエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfLedManagerSuccess
+|成功
+|成功
+|なし
+
+|kEsfLedManagerInvalidArgument
+|引数エラー
+|status NULL status->ledが不正
+|引数をチェックして再実施してください。
+
+|kEsfLedManagerTimeOut
+|タイムアウト
+|排他制御タイムアウト
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerInternalError
+|内部処理エラー
+|内部関数エラー、mutex操作エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移エラー
+|状態遷移エラー
+|状態遷移表を確認してリトライしてください。
+
+|kEsfLedManagerStatusNotFound
+|指定された状態が存在しない
+|指定された状態が存在しない
+|引数内容を再確認してリトライしてください。
+|===
+
+[#_EsfLedManagerSetLightingPersistence]
+==== EsfLedManagerSetLightingPersistence 
+* *機能* 
++
+指定したLEDの点灯保持設定を更新します。
+
+* *書式* +
++
+``** enum EsfLedManagerResult EsfLedManagerSetLightingPersistence(EsfLedManagerTargetLed led, bool is_enable)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfLedManagerTargetLed led``**:: 
+対象のLEDです。
+
+**``[IN] bool is_enable``**:: 
+点灯保持設定の有効/無効フラグです。 +
+trueは保持し、false保持しません。
+
+
+* *戻り値* +
++
+[#_EsfLedManagerSetLightingPersistenceReturnValue]
+.EsfLedManagerGetStatusの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLedManagerSuccess
+|成功時の戻り値です。
+
+|kEsfLedManagerInternalError
+|内部処理エラー時の戻り値です。
+
+|kEsfLedManagerInvalidArgument
+|引数エラー時の戻り値です。
+
+|kEsfLedManagerTimeOut
+|タイムアウト時の戻り値です。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移エラー時の戻り値です。
+|===
+
+* *説明* +
+** 詳細挙動 +
+*** 指定されたLEDの状態保持設定を更新します。 +
+``**true**``が設定された場合、現在の点灯状態を保持します。 +
+true設定されている間は対象のLEDに対して**``EsfLedManagerSetStatus``**を行ってもLED点灯状態は変化しません。  +
+ただし、設定されたLED毎の状態は更新されます。 +
+``**false**``が設定された場合、true状態の際に更新された状態も踏まえて優先度が最も高い状態でLED点灯を操作します。 +
+
+*** LedManagerが初期化されていない場合、**``kEsfLedManagerStateTransitionError``**を返します。
+*** 内部で排他制御を行います。 +
+** *エラー情報* +
++
+[#EsfLedManagerSetLightingPersistence _Error]
+.EsfLedManagerSetLightingPersistence エラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfLedManagerSuccess
+|成功
+|成功
+|なし
+
+|kEsfLedManagerInvalidArgument
+|引数エラー
+|ledが不正
+|引数をチェックして再実施してください。
+
+|kEsfLedManagerTimeOut
+|タイムアウト
+|排他制御タイムアウト
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerInternalError
+|内部処理エラー
+|内部関数エラー、mutex操作エラー
+|リトライ後もエラーとなる場合はシステムを再起動してください。
+
+|kEsfLedManagerStateTransitionError
+|状態遷移エラー
+|状態遷移エラー
+|状態遷移表を確認してリトライしてください。
+|===
+
+<<<
+
+== API使用時の呼び出し例
+=== Led Managerシーケンス図 
+[{mermaid_block}]
+----
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+  autonumber
+  participant main as ESF main
+  participant module as App/各module
+  participant led_manager as Led Manager
+  participant hal as PL Led
+
+  main ->>+ led_manager:EsfLedManagerInit()
+  led_manager ->> led_manager:内部リソース初期化
+  led_manager ->>+ hal:PlLedInitialize()
+  hal -->>- led_manager:応答
+  led_manager -->>- main:応答
+
+  module ->>+ led_manager:状態設定{mermaid_br}EsfLedManagerSetStatus(status)
+  note right of led_manager:状態更新/点灯内容設定{mermaid_br}LED操作開始
+
+  led_manager ->>+ hal: PlLedStopSeq(id)
+  hal -->>- led_manager:応答
+
+  led_manager ->>+ hal:PlLedStartSeq(id, seq, seq_len)
+  hal -->>- led_manager:応答
+
+  note right of led_manager:LED操作終了
+  led_manager -->>- module:応答
+
+  module ->>+ led_manager:状態取得{mermaid_br}EsfLedManagerGetStatus(status)
+  led_manager ->> led_manager:LED状態取得
+  led_manager -->>- module:応答
+
+  module ->>+ led_manager:状態取得{mermaid_br}EsfLedManagerSetLightingPersistence (led, is_enable)
+  led_manager ->> led_manager:LED状態保持設定更新
+  led_manager -->>- module:応答
+
+  main ->>+ led_manager: EsfLedManagerDeinit()
+  led_manager ->> led_manager:終了処理
+  led_manager ->>+ hal: LED停止処理{mermaid_br}PlLedStopSeq(id)
+  hal -->>- led_manager:応答
+  led_manager ->>+ hal:PlLedFinalize()
+  hal -->>- led_manager:応答
+  led_manager -->>- main:応答
+----
+
+[#_SetStatusExample]
+=== 状態設定
+状態設定の例を下記の記載します。
+
+* 例) LED強制消灯状態を有効したい場合 +
+以下のように``**status.led**``へ操作したいLED(Enum値)を指定し、 +
+``**status.status**``へ設定したい状態(Enum値)を指定し、 +
+``**status.enabled**``へtrue指定し、 +
+EsfLedManagerSetStatusへ渡します。
+
+[source, C]
+....
+EsfLedManagerLedStatusInfo status;
+status.led     = kEsfLedManagerTargetLedPower;         
+status.status  = kEsfLedManagerLedStatusForcedOff;  
+status.enabled = true;
+
+ret = EsfLedManagerSetStatus(&status);  
+....
+
+複数のLEDへ同じ状態設定をしたい場合は、対象のLEDを指定して``**EsfLedManagerSetStatus**``を複数回呼び出す必要があります。
+
+[#_GetStatusExample]
+=== 状態取得
+状態取得の例を下記の記載します。
+
+* 例) LED強制消灯状態の有効/無効を確認したい場合 +
+以下のように``**status.led**``へ取得したいLED(Enum値)を指定し、 +
+``**status.status**``へ取得したい状態(Enum値)を指定し、 +
+EsfLedManagerGetStatusへ渡します。 +
+``**status.enabled**``へ結果が格納されます。
+
+[#_KeepFlagUpdateExample]
+=== LED点灯保持設定更新
+LED点灯保持設定更新の例を下記の記載します。
+
+* 例) Service LEDの点灯保持設定を有効にしたい場合 +
+以下のように``**led**``を指定し、 +
+``**is_enable**``へ``**true**``を設定し +
+EsfLedManagerSetLightingPersistence を呼び出します。
+
+
+
+[source, C]
+....
+EsfLedManagerTargetLed led = kEsfLedManagerTargetLedService;
+bool is_enable = true;  
+
+ret = EsfLedManagerSetLightingPersistence (led, is_enable);  
+....
+
+
+<<<
+
+==  プロジェクト/HW依存の詳細情報
+本モジュールではプロジェクト/HW依存となる機能があります。 +
+以下に該当項目詳細を記載します。
+
+[#_StatePriority]
+=== LEDの状態一覧と優先度
+本モジュールでは<<#_LED1State,こちら>>のようなLED点灯情報と優先度を内部テーブルとして所持します。 +
+設定内容はプロジェクト/HWごとに設定可能です。 +
+
+==== HW/プロジェクト変更方法
+下記の変更を行うことでプロジェクト/HWごとに設定を変更することができます。 
+
+* LED点灯情報と優先度変更方法 +
+Kconfigにて指定可能です。 +
+
+==== T3P、T3Ws、T5用LED点灯表
+T3P、T3Ws、T5用のLED点灯表を記載します。 +
+[#_Annotation]
+※ 以下表にてLED点灯に影響を与えないものについては記載しません。 +
+記載されていない値でも、**``EsfLedManagerSetStatus``**にて設定することは可能ですが、LEDの点灯内容は変化しません。
+
+[#_LED1State]
+.Power LED状態一覧と優先度
+[width="100%",options="header"]
+|===
+|優先度 |LED状態 |設定値(Enum) |Power LED 
+.15+^|高 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+低
+
+|LED強制消灯
+|kEsfLedManagerLedStatusForcedOff
+|消灯
+
+|ファクトリーリセット実行中
+|kEsfLedManagerLedStatusResetting
+|緑点滅[1Hz]
+
+|周辺機器ドライバの初期化に失敗
+|kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed
+|赤点滅[4Hz]
+
+|ネットワークの初期化に失敗
+|kEsfLedManagerLedStatusErrorNetworkInitializationFailed
+|赤点滅[4Hz]
+
+|ダウンロード用メモリ領域の確保に失敗
+|kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed
+|赤点滅[4Hz]
+
+|フラッシュ書き込みに失敗
+|kEsfLedManagerLedStatusErrorDataFlashFailed
+|赤点滅[4Hz]
+
+|レガシーUSBからの給電を検知
+|kEsfLedManagerLedStatusErrorLegacyUSB
+|赤点滅[1Hz]
+
+|無効なQRコードを検知
+|kEsfLedManagerLedStatusErrorInvalidQRCode
+|赤点滅[1Hz]
+
+|アップロードに失敗
+|kEsfLedManagerLedStatusErrorUploadFailed
+|赤点滅[1Hz]
+
+|ダウンロードに失敗
+|kEsfLedManagerLedStatusErrorDownloadFailed
+|赤点滅[1Hz]
+
+|Proxy認証に失敗
+|kEsfLedManagerLedStatusErrorAuthProxyFailed
+|赤点滅[1Hz]
+
+|コンソールに接続するための入力待ち（Global Provisioner）
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner
+|緑点滅[4Hz]
+
+|コンソールに接続するための入力待ち（QR code mode）
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsole
+|緑パターン点滅
+
+|入力可能
+|kEsfLedManagerLedStatusAbleToAcceptInputs
+|緑点灯
+
+|入力不可
+|kEsfLedManagerLedStatusUnableToAcceptInputs
+|緑点滅[1Hz]
+|===
+
+[#_LED2State]
+.Wifi LED状態一覧と優先度
+[width="100%",options="header"]
+|===
+|優先度 |LED状態 |設定値(Enum) |Wifi Led
+.4+^|高 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+
+低
+
+|LED強制消灯
+|kEsfLedManagerLedStatusForcedOff
+|消灯
+
+|リンク確立
+|kEsfLedManagerLedStatusLinkEstablished
+|緑点灯
+
+|AP認証中
+|kEsfLedManagerLedStatusAPFoundAndDoingAuthentication
+|赤点滅[4Hz]
+
+|AP検索中
+|kEsfLedManagerLedStatusSearchingAP
+|赤点滅[1Hz]
+|===
+
+[#_LED3State]
+.Service LED状態一覧と優先度
+[width="100%",options="header"]
+|===
+|優先度 |LED状態 |設定値(Enum) |Service Led
+.9+^|高 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+低
+
+|LED強制消灯
+|kEsfLedManagerLedStatusForcedOff
+|消灯
+
+|TLS接続
+|kEsfLedManagerLedStatusConnectedWithTLS
+|緑点灯
+
+|非TLS接続
+|kEsfLedManagerLedStatusConnectedWithoutTLS
+|橙点灯
+
+|接続試行中（TLS接続）
+|kEsfLedManagerLedStatusDisconnectedConnectingWithTLS
+|緑点滅[1Hz]
+
+|接続試行中（非TLS接続）
+|kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS
+|橙点滅[1Hz]
+
+|接続試行中（Proxy接続）
+|kEsfLedManagerLedStatusDisconnectedConnectingProxy
+|赤点滅[4Hz]
+
+|接続試行中（DNS,NTP接続）
+|kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP
+|赤点滅[1Hz]
+
+|未接続（インターネット接続なし）
+|kEsfLedManagerLedStatusDisconnectedNoInternetConnection
+|赤点滅[4Hz]
+
+|未接続（物理リンク確立中）
+|kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer
+|赤点灯
+|===
+
+
+==== LED強制消灯
+LED強制消灯は一番優先度が高いもので、有効である場合LEDは消灯状態となります。
+
+.LED強制消灯処理内容
+[width="100%", cols="30%,70%",options="header"]
+|===
+|LED強制消灯状態 |処理内容 
+|Enable
+|どの状態よりも優先され、指定したLEDを消灯させます。 +
+使用者は、Power、Service、WifiそれぞれのLEDへ状態設定を行ってください。
+
+|Disable
+|他の状態の点灯内容で点灯します。
+
+|===
+
+==== 点滅周期
+LED点灯表記載の点灯周期を以下に示します。 +
+以下の内容を繰り返し点滅します。
+
+.LED点滅周期
+[width="100%", cols="30%,70%",options="header"]
+|===
+|周期 |内容 
+|1Hz
+|100ms ON - 900ms OFF
+
+|4Hz
+|(100ms ON - 100ms OFF) x 4 - 200ms OFF
+
+|パターン点滅
+|100ms ON - 900ms OFF - (100ms ON - 100ms OFF) x 4 - 200ms OFF
+|===
+
+[#_LEDLightingExample]
+==== LED点灯例
+各LEDで以下のような状態保持テーブルを持っており、一度状態が有効にされると、無効になるまで状態が有効になります。 +
+各LEDで有効となっている状態の中から最も優先度の高い状態のLED点灯設定でLEDを光らせます。 +
+※ただし、点灯保持設定が有効になっているLEDに関しては、有効になった時点の点灯内容で点灯します。
+以下に例を示します。 +
+例) Power Led +
+[width="100%", cols="15%,55%,30%",options="header"]
+|===
+|優先度 |状態 |有効/無効
+.6+^|高 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+低
+|状態A
+|無効
+
+|状態B
+|無効
+
+|状態C
+|無効
+
+|状態D
+|有効
+
+|状態E
+|無効
+
+|状態F
+|有効
+|===
+上記のような状態がPower LEDに設定されていた場合、状態Dの点灯内容でLEDが点灯されます。 +
+上記から状態Cが有効になった場合は、状態Cの点灯内容でLEDが点灯します。 +
+その後状態Aが有効になった場合には状態Aの点灯内容でLEDが点灯します。 +
+その後状態Aが無効になった場合には状態Cの点灯内容でLEDが点灯します。 +
+上記のようにユーザーは、一度状態を設定後に他点灯内容が優先された場合でも、再度状態を設定する必要はありません。
+
+
+== 特記事項
+=== 要求機能
+他moduleへ要求する機能を示します。 +
+
+.本moduleの要求機能
+[width="100%", cols="15%,30%,55%",options="header"]
+|===
+|module名 |要求機能 |説明
+|PL Led
+|LEDの点灯/消灯
+|LEDの点灯、及び消灯を行う機能です。
+|===
+
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|拡張名 |説明 |用途
+|**``##\\__VA_ARGS__``**
+|**``\\__VA_ARGS__``**のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|===
+
+<<<
+
+== 使用しているOSSの一覧
+OSSは使用していません。
+
+<<<
+
+== 参考文献
+* PL Led機能仕様書 +
+https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/porting_layer/led_manager/pl_led_ja.adoc
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|初版登録
+
+|v0.1.1
+|詳細設計書検討反映版登録
+
+* 全体
+  ** 誤記修正
+  ** コーディングルールに沿った名称へ変更
+* 関数型名変更
+  ** **``SsfIndicatorRegisterCallback``**、**``SsfIndicatorUnregisterCallback``**を +
+  **``SSF_Status``**から**``SsfIndicatorResult``**へ変更
+* LED毎の優先度テーブルを更新、これに伴い以下を更新
+ ** 個別の状態のenum値を変更
+ ** **``SsfIndicatorStatusInfo``**構造体メンバ変更
+* **``SsfIndicatorResult``**の値追加と各関数への反映
+* **``SsfIndicatorRegisterCallback``**APIへコールバック関数登録済み動作の記載を追加、特記事項にコールバック関数登録上限記載の追記
+* 非標準拡張記載追加
+* Final API名称をDeinitへ変更
+* 状態一覧更新
+* 状態遷移更新
+
+|v0.1.2
+|名称変更対応、実装に伴う修正
+
+ * module名変更
+  ** Device Indicator -> Led Managerへ
+ * enum値更新
+  ** EsfLedManagerAppStatus、EsfLedManagerNetworkStatus、EsfLedManagerLedOnStatus、更新
+  ** 内部テーブル更新
+ * HAL led、timer初期化/終了処理を実行する旨の記載追加
+
+|v0.1.3
+|結合工程による実装反映
+
+ * HAL タイマーがUtility タイマーに変更
+ * 初期化終了処理更新
+ * LED ID対応変更
+  ** Led1 : 変更なし
+  ** Led2 : Service -> Wifiへ変更
+  ** Led3 : Wifi -> Serviceへ変更
+
+|v0.1.4
+|LedManager仕様変更対応
+
+* LedManagerのLED点灯方式変更
+  ** app_state、network_state、led_on_stateのような、分類毎に状態を設定する方式から +
+  LED毎に状態を持ち、その状態毎に有効/無効を設定し、 +
+  有効になっている状態の中で最も優先度の高い状態でLEDを点灯させる方式に変更
+* 状態通知コールバック、タイマー使用による前状態への遷移機能削除
+  ** **``EsfLedManagerStatusInfoMask``**、**``EsfLedManagerStatusNotifyCallback``**、**``EsfLedManagerRegisterCallback``**、**``EsfLedManagerUnregisterCallback``**削除
+* 状態取得API変更
+  ** 指定したLEDの指定した状態が有効か無効かを取得するAPIに変更
+* API仕様変更に伴い、Enum、構造体変更
+  ** **``EsfLedManagerAppStatus``**、**``EsfLedManagerNetworkStatus``**、**``EsfLedManagerLedOnStatus``**、**``EsfLedManagerStatusInfo``**削除 +
+  **``EsfLedManagerTargetLed``**、**``EsfLedManagerLedStatus``**、**``EsfLedManagerLedStatusInfo``**追加
+* 状態遷移表更新
+  ** **``EsfLedManagerInit``**をIDLE状態でも呼び出せるように、**``EsfLedManagerDeinit``**をUNINITでも呼び出せるように変更
+
+|v0.1.5
+|LedManagerパターン点滅対応
+
+* 点滅周期毎の内容記載追加
+* シーケンス内のPL Led APIをパターン点滅に対応
+
+|v0.1.6
+|LedManager エラー修正
+
+* **``EsfLedManagerLedStatus``**記載のエラー系の見直し +
+エラーを統括し、ユーザーに再起動してほしいものと、設定パラメータ/データを確認してほしいものの二つに変更(**``kEsfLedManagerLedStatusErrorRebootDevice``**,**``kEsfLedManagerLedStatusErrorConfirmSettingParameterData``**,)
+
+|v0.1.7
+|LedManager 状態追加
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+**``kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner``**を追加
+
+|v0.1.8
+|LedManager 状態の対象LED変更
+
+* **``kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner``**、 +
+**``kEsfLedManagerLedStatusWaitingForInputsToConnectConsole``** +
+状態をService LedからPower Ledの状態変更し、点灯内容も変更
+
+|v0.1.9
+|LedManager 状態追加 +
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+* **``kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer``** +
+**``kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP``**を追加
+
+|v0.1.10
+|LedManager エラー状態変更
+
+エラーをLED仕様に合わせ、管理する機能がわかりやすいように分割
+
+* **``EsfLedManagerLedStatus``**から状態削除 +
+** **``kEsfLedManagerLedStatusErrorRebootDevice``**
+** **``kEsfLedManagerLedStatusErrorConfirmSettingParameterData``**
+* **``EsfLedManagerLedStatus``**に状態追加 +
+  ** **``kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed``**
+  ** **``kEsfLedManagerLedStatusErrorNetworkInitializationFailed``**
+  ** **``kEsfLedManagerLedStatusErrorInvalidQRCode``**
+  ** **``kEsfLedManagerLedStatusErrorUploadFailed``**
+  ** **``kEsfLedManagerLedStatusErrorDownloadFailed``**
+
+|v0.1.11
+|LedManager 点灯保持設定機能追加 +
+
+* 新規API**``EsfLedManagerSetLightingPersistence ``**追加
+* 点灯保持設定機能追加に伴う機能説明更新
+
+|v0.1.12
+|LedManager エラー状態追加 +
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+  ** **``kEsfLedManagerLedStatusErrorLegacyUSB``**
+
+|v0.1.13
+|ソースと仕様書の内容一致化
+
+|v0.1.14
+|LedManager Proxy接続中・Proxy認証失敗状態追加 +
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+  ** **``kEsfLedManagerLedStatusDisconnectedConnectingProxy``**
+  ** **``kEsfLedManagerLedStatusErrorAuthProxyFailed``**
+
+|v0.1.15
+|LedManager エラー状態追加 +
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+  ** **``kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed``**
+
+|v0.1.16
+|LedManager エラー状態追加 +
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+  ** **``kEsfLedManagerLedStatusErrorDataFlashFailed``**
+
+|v0.1.17
+|LedManager 状態追加 +
+
+* **``EsfLedManagerLedStatus``**に状態追加 +
+  ** **``kEsfLedManagerLedStatusResetting``**
+
+|v0.1.18
+|LedManager 状態削除 +
+
+* **``EsfLedManagerLedStatus``**から状態削除 +
+  ** **``kEsfLedManagerLedStatusLoadingSSIDPassword``**
+|===

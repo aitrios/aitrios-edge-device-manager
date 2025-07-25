@@ -1,0 +1,2463 @@
+= SystemManager Function Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.9
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document defines the SystemManager for AITRIOS. +
+It applies to version XX of XX.
+
+<<<
+
+== Terminology
+None in particular.
+
+<<<
+
+== Component Description
+=== Overview of the Component
+Provides APIs to access specific data for the App.
+
+<<<
+
+=== Detailed Description of the Component
+Receives API calls from the App and performs data retrieval and settings through the ParameterStorageManager.
+
+.Component Diagram
+[source,mermaid]
+....
+graph TB;
+direction LR
+
+App --> |Get/Set API| SystemManager
+SystemManager --> |Data Retrieve/Store| ParameterStorageManager
+....
+
+<<<
+
+=== State Transition
+SystemManager does not maintain any internal state.
+
+<<<
+
+=== List of Component Functions
+A list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section Number
+
+|Data Retrieval Function
+|Retrieves the specified data from the ParameterStorageManager.
+|<<#_DataRetrievalFunction>>
+
+|Data Setting Function
+|Sets the specified data in the ParameterStorageManager.
+|<<#_DataSettingFunction>>
+|===
+
+<<<
+
+=== Description of Component Functions
+[#_DataRetrievalFunction]
+==== Data Retrieval Function
+* Function Overview
+    ** Retrieves the specified data from the ParameterStorageManager.
+* Preconditions
+    ** The ParameterStorageManager must be initialized.
+* Function Details
+    ** Detailed Behavior
+        *** Opens the ParameterStorageManager, retrieves the data, closes the ParameterStorageManager, and returns the data.
+    ** Behavior in Case of Error and Recovery Method
+        *** Returns an error if the API call to the ParameterStorageManager fails.
+        *** If the data retrieved from the ParameterStorageManager is empty, a default value defined by the configuration (<<#_ConfigList>>) is returned. +
+        If the data must not be empty, no default value configuration is provided, and an error is returned.
+
+[#_DataSettingFunction]
+==== Data Setting Function
+* Function Overview
+    ** Sets the specified data in the ParameterStorageManager.
+* Preconditions
+    ** The ParameterStorageManager must be initialized.
+* Function Details
+    ** Detailed Behavior
+        *** Opens the ParameterStorageManager, sets the data, and closes the ParameterStorageManager.
+    ** Behavior in Case of Error and Recovery Method
+        *** Returns an error if the API call to the ParameterStorageManager fails.
+
+<<<
+
+=== List of Non-Functional Requirements of the Component
+
+A list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.List of Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Description |Section Number
+
+|Continuous Processing Time
+|Maximum processing time required.
+|<<#_ContinuousProcessingTime>>
+
+|Stack Memory Usage
+|Maximum amount of stack memory used.
+|<<#_StackMemoryUsage>>
+
+|Heap Memory Usage
+|Maximum amount of heap memory used.
+|<<#_HeapMemoryUsage>>
+
+|Static Memory Usage
+|Amount of static memory used.
+|<<#_StaticMemoryUsage>>
+
+|Number of Threads Used
+|Number of threads used.
+|<<#_NumberofThreadsUsed>>
+|===
+
+<<<
+
+[#_DescriptionofNonFunctionalRequirementsoftheComponent]
+=== Description of Non-Functional Requirements of the Component
+
+[#_ContinuousProcessingTime]
+==== Continuous Processing Time
+The maximum processing time for this component is 10 ms. +
+The time required for data access and service configuration that depends on other modules is excluded from this processing time.
+
+[#_StackMemoryUsage]
+==== Stack Memory Usage
+Uses up to 1024 bytes.
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+Does not use heap memory.
+
+[#_StaticMemoryUsage]
+==== Static Memory Usage
+Does not use static memory.
+
+[#_NumberofThreadsUsed]
+==== Number of Threads Used
+Does not use threads.
+
+<<<
+
+== API Specification
+=== Definition List
+
+==== Config List
+[#_ConfigList]
+.Config List
+[width="100%", options="header"]
+|===
+|Config Name |Description |Default Value
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_URL
+|Default value returned when the DPS URL cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_COMMON_NAME
+|Default value returned when the Common Name cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_SCOPE_ID
+|Default value returned when the DPS Scope ID cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_PROJECT_ID
+|Default value returned when the Project ID cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_REGISTER_TOKEN
+|Default value returned when the Register Token cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_URL
+|Default value returned when the EVP Hub URL cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_PORT
+|Default value returned when the EVP Hub Port cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_IOT_PLATFORM
+|Default value returned when the IoT Platform cannot be read from the ParameterStorageManager.
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS
+a|
+Default value returned when the EVP TLS cannot be read from the ParameterStorageManager.
+
+* ``"0"``: TLS enabled
+* ``"1"``: TLS disabled
+
+|``"0"``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_QR_MODE_TIMEOUT_VALUE
+|Default value returned when the QR mode timeout value cannot be read from the ParameterStorageManager.
+|``0``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG
+a|
+Default value returned when the InitialSettingFlag cannot be read from the ParameterStorageManager.
+
+* ``0``: Initial setting not completed
+* ``1``: Initial setting completed
+
+|``0``
+
+|===
+
+==== Data Type List
+A list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section Number
+
+|EsfSystemManagerResult
+|Enumeration defining the result of API execution.
+|<<#_EsfSystemManagerResult>>
+
+|ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE
+|Macro defining the data size of the Device Manifest.
+|<<#_ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE
+|Macro defining the data size of the DPS URL.
+|<<#_ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE
+|Macro defining the data size of the Common Name.
+|<<#_ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE
+|Macro defining the data size of the DPS Scope ID.
+|<<#_ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE
+|Macro defining the data size of the Project ID.
+|<<#_ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE
+|Macro defining the data size of the Register Token.
+|<<#_ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE
+|Macro defining the data size of the EVP Hub URL.
+|<<#_ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE
+|Macro defining the data size of the EVP Hub Port.
+|<<#_ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE
+|Macro defining the data size of the EVP IoT Platform.
+|<<#_ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE>>
+
+|EsfSystemManagerEvpTlsValue
+|Enumeration defining the configuration values for EVP TLS.
+|<<#_EsfSystemManagerEvpTlsValue>>
+
+|ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE
+|Macro defining the data size of the Root Certificate.
+|<<#_ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE
+|Macro defining the data size of the Root Certificate hash value.
+|<<#_ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE>>
+
+|EsfSystemManagerHwInfo
+|Structure containing data related to HW information set on the device.
+|<<#_EsfSystemManagerHwInfo>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+|Macro defining the data size of the HW Info Model Name.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+|Macro defining the data size of the HW Info Manufacturer Name.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+|Macro defining the data size of the HW Info Product Serial Number.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+|Macro defining the data size of the HW Info Serial Number.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+|Macro defining the data size of the HW Info AIISP Chip ID.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+|Macro defining the data size of the HW Info Sensor ID.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE
+|Macro defining the data size of the HW Info Application Processor Type.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+|Macro defining the data size of the HW Info Sensor Model Name.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>
+
+|EsfSystemManagerInitialSettingFlag
+|Enumeration defining the configuration values for InitialSettingFlag.
+|<<#_EsfSystemManagerInitialSettingFlag>>
+
+|===
+
+[#_APIList]
+==== API List
+A list of APIs is shown below.
+
+[#_GetAPI]
+.List of Retrieval APIs
+[width="100%",options="header"]
+|===
+|API Name |Description |Return Value When Data is Empty |Section Number
+
+|EsfSystemManagerGetDeviceManifest
+|Retrieves the Device Manifest.
+|Error
+|<<#_EsfSystemManagerGetDeviceManifest>>
+
+|EsfSystemManagerGetProjectId
+|Retrieves the Project ID.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_PROJECT_ID
+|<<#_EsfSystemManagerGetProjectId>>
+
+|EsfSystemManagerGetDpsUrl
+|Retrieves the DPS URL.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_URL
+|<<#_EsfSystemManagerGetDpsUrl>>
+
+|EsfSystemManagerGetCommonName
+|Retrieves the Common Name.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_COMMON_NAME
+|<<#_EsfSystemManagerGetCommonName>>
+
+|EsfSystemManagerGetDpsScopeId
+|Retrieves the DPS Scope ID.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_SCOPE_ID
+|<<#_EsfSystemManagerGetDpsScopeId>>
+
+|EsfSystemManagerGetRegisterToken
+|Retrieves the Register Token.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_REGISTER_TOKEN
+|<<#_EsfSystemManagerGetRegisterToken>>
+
+|EsfSystemManagerGetEvpHubUrl
+|Retrieves the EVP Hub URL.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_URL
+|<<#_EsfSystemManagerGetEvpHubUrl>>
+
+|EsfSystemManagerGetEvpHubPort
+|Retrieves the EVP Hub Port.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_PORT
+|<<#_EsfSystemManagerGetEvpHubPort>>
+
+|EsfSystemManagerGetEvpIotPlatform
+|Retrieves the EVP IoT Platform.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_IOT_PLATFORM
+|<<#_EsfSystemManagerGetEvpIotPlatform>>
+
+|EsfSystemManagerGetEvpTls
+|Retrieves the EVP TLS setting.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS
+|<<#_EsfSystemManagerGetEvpTls>>
+
+|EsfSystemManagerGetRootCa
+|Retrieves the Root Certificate.
+|Error
+|<<#_EsfSystemManagerGetRootCa>>
+
+|EsfSystemManagerGetRootCaHash
+|Retrieves the Root Certificate hash value.
+|Error
+|<<#_EsfSystemManagerGetRootCaHash>>
+
+|EsfSystemManagerGetQrModeTimeoutValue
+|Retrieves the QR mode timeout value.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_QR_MODE_TIMEOUT_VALUE
+|<<#_EsfSystemManagerGetQrModeTimeoutValue>>
+
+|EsfSystemManagerGetInitialSettingFlag
+|Retrieves the InitialSettingFlag.
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG
+|<<#_EsfSystemManagerGetInitialSettingFlag>>
+
+|EsfSystemManagerGetHwInfo
+|Retrieves the HW information set on the device.
+|Returns empty data
+|<<#_EsfSystemManagerGetHwInfo>>
+
+|===
+
+
+[#_SetAPI]
+.List of Setting APIs
+[width="100%",options="header"]
+|===
+|API Name |Description |Section Number
+
+|EsfSystemManagerSetDpsUrl
+|Sets the DPS URL.
+|<<#_EsfSystemManagerSetDpsUrl>>
+
+|EsfSystemManagerSetCommonName
+|Sets the Common Name.
+|<<#_EsfSystemManagerSetCommonName>>
+
+|EsfSystemManagerSetDpsScopeId
+|Sets the DPS Scope ID.
+|<<#_EsfSystemManagerSetDpsScopeId>>
+
+|EsfSystemManagerSetProjectId
+|Sets the Project ID.
+|<<#_EsfSystemManagerSetProjectId>>
+
+|EsfSystemManagerSetRegisterToken
+|Sets the Register Token.
+|<<#_EsfSystemManagerSetRegisterToken>>
+
+|EsfSystemManagerSetEvpHubUrl
+|Sets the EVP Hub URL.
+|<<#_EsfSystemManagerSetEvpHubUrl>>
+
+|EsfSystemManagerSetEvpHubPort
+|Sets the EVP Hub Port.
+|<<#_EsfSystemManagerSetEvpHubPort>>
+
+|EsfSystemManagerSetEvpTls
+|Sets the EVP TLS setting.
+|<<#_EsfSystemManagerSetEvpTls>>
+
+|EsfSystemManagerSetEvpIotPlatform
+|Sets the EVP IoT Platform.
+|<<#_EsfSystemManagerSetEvpIotPlatform>>
+
+|EsfSystemManagerSetQrModeTimeoutValue
+|Saves the QR mode timeout value.
+|<<#_EsfSystemManagerSetQrModeTimeoutValue>>
+
+|EsfSystemManagerSetInitialSettingFlag
+|Sets the InitialSettingFlag.
+|<<#_EsfSystemManagerSetInitialSettingFlag>>
+
+|===
+
+<<<
+
+=== Data Type Definitions
+[#_EsfSystemManagerResult]
+==== EsfSystemManagerResult
+Enumeration defining the result of API execution.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerResultOk,
+  kEsfSystemManagerResultParamError,
+  kEsfSystemManagerResultInternalError,
+  kEsfSystemManagerResultOutOfRange,
+  kEsfSystemManagerResultEmptyData,
+} EsfSystemManagerResult;
+....
+
+* *Values*
+
+[#_TableReturnValue]
+.Description of EsfSystemManagerResult Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfSystemManagerResultOk
+|Processing succeeded.
+
+|kEsfSystemManagerResultParamError
+|An invalid argument was passed.
+
+|kEsfSystemManagerResultInternalError
+|An internal error occurred.
+
+|kEsfSystemManagerResultOutOfRange
+|The data size is out of the allowable range.
+
+|kEsfSystemManagerResultEmptyData
+|No data is stored for the requested item.
+
+|===
+
+[#_ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE
+Macro defining the maximum size of the Device Manifest.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE (32768)
+....
+
+[#_ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE
+Macro defining the maximum size of the DPS URL.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE (256)
+....
+
+[#_ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE
+Macro defining the maximum size of the Common Name.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE (256)
+....
+
+[#_ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE
+Macro defining the maximum size of the DPS Scope ID.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE (17)
+....
+
+[#_ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE
+Macro defining the maximum size of the Project ID.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE (33)
+....
+
+[#_ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE
+Macro defining the maximum size of the Register Token.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE (45)
+....
+
+[#_ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE
+Macro defining the maximum size of the EVP Hub URL.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE (65)
+....
+
+[#_ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE
+Macro defining the maximum size of the EVP Hub Port.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE (6)
+....
+
+[#_ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE
+Macro defining the maximum size of the EVP IoT Platform.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE (33)
+....
+
+[#_EsfSystemManagerEvpTlsValue]
+==== EsfSystemManagerEvpTlsValue
+Enumeration defining the configuration values for EVP TLS.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+    kEsfSystemManagerEvpTlsDisable,
+    kEsfSystemManagerEvpTlsEnable
+} EsfSystemManagerEvpTlsValue;
+....
+
+* *Values*
+
+.Description of EsfSystemManagerEvpTlsValue Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfSystemManagerEvpTlsDisable
+|EVP TLS disabled
+
+|kEsfSystemManagerEvpTlsEnable
+|EVP TLS enabled
+
+|===
+
+
+[#_ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE
+Macro defining the maximum size of the Root Certificate.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE (393216)
+....
+
+[#_ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE
+Macro defining the maximum size of the Root Certificate hash value.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE (512)
+....
+
+[#_EsfSystemManagerHwInfo]
+==== EsfSystemManagerHwInfo
+Structure that holds data related to HW information set on the device.
+
+* *Format*
+
+[source, C]
+....
+typedef struct EsfSystemManagerHwInfo{
+  char model_name[ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE];
+  char manufacturer_name[ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE];
+  char product_serial_number[ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE];
+  char serial_number[ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE];
+  char aiisp_chip_id[ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE];
+  char sensor_id[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE];
+  char application_processor_type[ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE];
+  char sensor_model_name[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];
+} EsfSystemManagerHwInfo;
+....
+
+* *Values*
+
+.Description of EsfSystemManagerHwInfo Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|model_name
+|Model Name
+
+|manufacturer_name
+|Manufacturer Name
+
+|product_serial_number
+|Product Serial Number
+
+|serial_number
+|Serial Number
+
+|aiisp_chip_id
+|AIISP Chip ID
+
+|sensor_id
+|Sensor ID
+
+|application_processor_type
+|Application Processor Type
+
+|sensor_model_name
+|Sensor Model Name
+|===
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+Macro defining the data size of the HW Info Model Name.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE (33)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+Macro defining the data size of the HW Info Manufacturer Name.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE (33)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+Macro defining the data size of the HW Info Product Serial Number.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE (33)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+Macro defining the data size of the HW Info Serial Number.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE (64)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+Macro defining the data size of the HW Info AIISP Chip ID.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE (37)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+Macro defining the data size of the HW Info Sensor ID.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE (37)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE
+Macro defining the data size of the HW Info Application Processor Type.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE (64)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+Macro defining the data size of the HW Info Sensor Model Name.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+....
+
+[#_EsfSystemManagerInitialSettingFlag]
+==== EsfSystemManagerInitialSettingFlag
+Enumeration defining the configuration values for InitialSettingFlag.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerInitialSettingNotCompleted,
+  kEsfSystemManagerInitialSettingCompleted
+} EsfSystemManagerInitialSettingFlag;
+....
+
+* *Values*
+
+.Description of EsfSystemManagerInitialSettingFlag Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfSystemManagerInitialSettingNotCompleted
+|Initial setting not completed
+
+|kEsfSystemManagerInitialSettingCompleted
+|Initial setting completed
+|===
+
+<<<
+
+=== API Definitions
+
+[#_EsfSystemManagerGetDeviceManifest]
+==== EsfSystemManagerGetDeviceManifest
+
+* *Function* +
+Retrieves the Device Manifest.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetDeviceManifest( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved Device Manifest (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the terminating null character (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the actual valid data size, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result of the execution.
+
+* *Description* +
+** Retrieves the Device Manifest and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetDeviceManifest]
+.Description of Return Values for EsfSystemManagerGetDeviceManifest
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the data retrieved.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|kEsfSystemManagerResultEmptyData
+|No Device Manifest is stored in the ParameterStorageManager.
+|Unchanged.
+|Store a valid Device Manifest before retrying.
+
+|===
+
+[#_EsfSystemManagerGetDpsUrl]
+==== EsfSystemManagerGetDpsUrl
+
+* *Function* +
+Retrieves the DPS URL.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetDpsUrl( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved DPS URL (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result of the execution.
+
+* *Description* +
+** Retrieves the DPS URL and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetDpsUrl]
+.Description of Return Values for EsfSystemManagerGetDpsUrl
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetDpsUrl]
+==== EsfSystemManagerSetDpsUrl
+
+* *Function* +
+Sets the DPS URL.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetDpsUrl( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the DPS URL to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result of the execution.
+
+* *Description* +
+** Sets the DPS URL string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetDpsUrl]
+.Description of Return Values for EsfSystemManagerSetDpsUrl
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetCommonName]
+==== EsfSystemManagerGetCommonName
+
+* *Function* +
+Retrieves the Common Name.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetCommonName( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved Common Name (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result of the execution.
+
+* *Description* +
+** Retrieves the Common Name and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetCommonName]
+.Description of Return Values for EsfSystemManagerGetCommonName
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetCommonName]
+==== EsfSystemManagerSetCommonName
+
+* *Function* +
+Sets the Common Name.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetCommonName( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the Common Name to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result of the execution.
+
+* *Description* +
+** Sets the Common Name string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetCommonName]
+.Description of Return Values for EsfSystemManagerSetCommonName
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetDpsScopeId]
+==== EsfSystemManagerGetDpsScopeId
+
+* *Function* +
+Retrieves the DPS Scope ID.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetDpsScopeId( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved DPS Scope ID (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Retrieves the DPS Scope ID and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetDpsScopeId]
+.Description of Return Values for EsfSystemManagerGetDpsScopeId
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetDpsScopeId]
+==== EsfSystemManagerSetDpsScopeId
+
+* *Function* +
+Sets the DPS Scope ID.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetDpsScopeId( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the DPS Scope ID to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Sets the DPS Scope ID string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetDpsScopeId]
+.Description of Return Values for EsfSystemManagerSetDpsScopeId
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetProjectId]
+==== EsfSystemManagerGetProjectId
+
+* *Function* +
+Retrieves the Project ID.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetProjectId( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved Project ID (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Retrieves the Project ID and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetProjectId]
+.Description of Return Values for EsfSystemManagerGetProjectId
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetProjectId]
+==== EsfSystemManagerSetProjectId
+
+* *Function* +
+Sets the Project ID.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetProjectId( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the Project ID to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Sets the Project ID string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetProjectId]
+.Description of Return Values for EsfSystemManagerSetProjectId
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetRegisterToken]
+==== EsfSystemManagerGetRegisterToken
+
+* *Function* +
+Retrieves the Register Token.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetRegisterToken( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved Register Token (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Retrieves the Register Token and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetRegisterToken]
+.Description of Return Values for EsfSystemManagerGetRegisterToken
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetRegisterToken]
+==== EsfSystemManagerSetRegisterToken
+
+* *Function* +
+Sets the Register Token.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetRegisterToken( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the Register Token to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Sets the Register Token string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetRegisterToken]
+.Description of Return Values for EsfSystemManagerSetRegisterToken
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetEvpHubUrl]
+==== EsfSystemManagerGetEvpHubUrl
+
+* *Function* +
+Retrieves the EVP Hub URL.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpHubUrl( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved EVP Hub URL (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Retrieves the EVP Hub URL and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpHubUrl]
+.Description of Return Values for EsfSystemManagerGetEvpHubUrl
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetEvpHubUrl]
+==== EsfSystemManagerSetEvpHubUrl
+
+* *Function* +
+Sets the EVP Hub URL.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpHubUrl( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the EVP Hub URL to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Sets the EVP Hub URL string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpHubUrl]
+.Description of Return Values for EsfSystemManagerSetEvpHubUrl
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetEvpHubPort]
+==== EsfSystemManagerGetEvpHubPort
+
+* *Function* +
+Retrieves the EVP Hub Port.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpHubPort( char *data, size_t *data_size )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+Pass the starting address of the memory area to store the retrieved EVP Hub Port (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**::  
+Specify the size of the `data` buffer. +  
+The value must be 1 or more, including the null terminator (`'\0'`). +  
+After the API call, the actual size of the valid data retrieved (including the null terminator) will be stored in `*data_size`. +  
+If `*data_size` is smaller than the size of the retrieved data, the function returns `kEsfSystemManagerResultOutOfRange`. To avoid this, specify a buffer size equal to or greater than `ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE`. +  
+If `0` or `NULL` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Retrieves the EVP Hub Port and stores it in `data`.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpHubPort]
+.Description of Return Values for EsfSystemManagerGetEvpHubPort
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data_size == NULL`
+* `*data_size == 0`
+|Unchanged.
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|May contain undefined values.
+|Cannot be recovered.
+
+|kEsfSystemManagerResultOutOfRange
+|`*data_size` is smaller than the size of the retrieved data.
+|May contain undefined values.
+|Specify a sufficient `*data_size` and retry.
+
+|===
+
+
+[#_EsfSystemManagerSetEvpHubPort]
+==== EsfSystemManagerSetEvpHubPort
+
+* *Function* +
+Sets the EVP Hub Port.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpHubPort( const char *data, size_t data_size )**``
+
+* *Parameter Description* +
++
+**``[IN] const char *data``**::  
+The string representing the EVP Hub Port to be set. +  
+Specify the starting address of a null-terminated string. +  
+A string up to `ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE` in size can be set.  
+**``[IN] size_t data_size``**::  
+Specify the size of the `data` string, including the null terminator. +  
+If `0` or a value larger than `ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE` is specified, the function returns `kEsfSystemManagerResultParamError`.
+
+* *Return Value* +
++
+One of the values listed in <<#_TableReturnValue>> will be returned depending on the result.
+
+* *Description* +
+** Sets the EVP Hub Port string.  
+** Execution Notes  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Internally performs blocking.  
+** Error Information +
+[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpHubPort]
+.Description of Return Values for EsfSystemManagerSetEvpHubPort
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* `data == NULL`
+* `data` is not null-terminated
+* `data_size == 0`
+* `data_size > ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE`
+|-
+|Set valid parameters and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.
+|-
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetEvpIotPlatform]
+==== EsfSystemManagerGetEvpIotPlatform
+* *Function* 
++
+Retrieves the EVP IoT Platform.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpIotPlatform( char *data, size_t *data_size )**``  
+
+* *Arguments* +
++
+**``[OUT] char *data``**:: 
+Specify the starting address of the area to store the retrieved EVP IoT Platform (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**:: 
+Specify the size of the ``data`` buffer. +
+The value must be at least ``1``, including the null-terminator. +
+After the API call, the actual size of the valid data retrieved (including the null-terminator) will be stored. +
+If ``*data_size`` is insufficient for the valid data, the function returns ``kEsfSystemManagerResultOutOfRange``. +
+If you specify a buffer size equal to or greater than ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``, the size will be sufficient. +
+If ``0`` or ``NULL`` is specified, the function returns ``kEsfSystemManagerResultParamError``.
+
+* *Return Value* +
++
+One of the values in <<#_TableReturnValue>> is returned depending on the execution result.
+
+* *Description* +
+** Retrieves the EVP IoT Platform and stores it in ``data``.  
+** Execution details  
+*** Can be called concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpIotPlatform]
+.Description of return values for EsfSystemManagerGetEvpIotPlatform
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``  
+* ``data_size == NULL``  
+* ``*data_size == 0``  
+|Unchanged  
+|Set the correct argument values and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|The output may contain undefined values.  
+|Not recoverable.
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size`` is smaller than the size of the actual retrieved data.  
+|The output may contain undefined values.  
+|Specify a sufficiently large ``*data_size`` and retry.  
+|===
+
+
+[#_EsfSystemManagerSetEvpIotPlatform]
+==== EsfSystemManagerSetEvpIotPlatform
+* *Function* 
++
+Sets the EVP IoT Platform.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpIotPlatform( const char *data, size_t data_size )**``  
+
+* *Arguments* +
++
+**``[IN] const char *data``**:: 
+The string representing the EVP IoT Platform to set. +
+Specify the starting address of a null-terminated string. +
+The maximum allowable size is ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``.
+**``[IN] size_t data_size``**:: 
+Specify the size of the ``data`` string including the null-terminator. +
+If ``0`` or a value greater than ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE`` is specified, the function returns ``kEsfSystemManagerResultParamError``.
+
+* *Return Value* +
++
+One of the values in <<#_TableReturnValue>> is returned depending on the execution result.
+
+* *Description* +
+** Sets the EVP IoT Platform string.  
+** Execution details  
+*** Can be called concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpIotPlatform]
+.Description of return values for EsfSystemManagerSetEvpIotPlatform
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``  
+* ``data`` is not null-terminated  
+* ``data_size == 0``  
+* ``data_size > ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``  
+|-  
+|Set the correct argument values and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|-  
+|Not recoverable.  
+|===
+
+
+[#_EsfSystemManagerGetEvpTls]
+==== EsfSystemManagerGetEvpTls
+* *Function* 
++
+Retrieves the EVP TLS setting.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpTls( EsfSystemManagerEvpTlsValue *data )**``  
+
+* *Arguments* +
++
+**``[OUT] EsfSystemManagerEvpTlsValue *data``**:: 
+The retrieved EVP TLS setting will be stored in this variable.
+
+* *Return Value* +
++
+One of the values in <<#_TableReturnValue>> is returned depending on the execution result.
+
+* *Description* +
+** Retrieves the EVP TLS setting and stores it in ``data``.  
+** Execution details  
+*** Can be called concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpTls]
+.Description of return values for EsfSystemManagerGetEvpTls
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+|``data == NULL``  
+|Unchanged  
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|The output may contain undefined values.  
+|Not recoverable.
+
+|kEsfSystemManagerResultOutOfRange
+|An invalid value was retrieved from the ParameterStorageManager.  
+|Unchanged  
+|Write the correct value beforehand.  
+|===
+
+
+[#_EsfSystemManagerSetEvpTls]
+==== EsfSystemManagerSetEvpTls
+* *Function* 
++
+Sets the EVP TLS.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpTls( EsfSystemManagerEvpTlsValue data )**``  
+
+* *Arguments* +
++
+**``[IN] EsfSystemManagerEvpTlsValue data``**:: 
+The value to set for the EVP TLS setting.
+
+* *Return Value* +
++
+One of the values in <<#_TableReturnValue>> is returned depending on the execution result.
+
+* *Description* +
+** Sets the EVP TLS as enabled or disabled.  
+** Execution details  
+*** Can be called concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpTls]
+.Description of return values for EsfSystemManagerSetEvpTls
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+|The ``data`` value contains an invalid enum value.  
+|-  
+|Set the correct value and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|-  
+|Not recoverable.  
+|===
+
+
+[#_EsfSystemManagerGetRootCa]
+==== EsfSystemManagerGetRootCa
+* *Function* 
++
+Retrieves the Root Certificate.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetRootCa( char *data, size_t *data_size )**``  
+
+* *Arguments* +
++
+**``[OUT] char *data``**:: 
+Specify the starting address of the area to store the retrieved Root Certificate (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**:: 
+Specify the size of ``data``. +
+The value must be ``1`` or greater, including the null-terminator. +
+After this API is executed, the actual size of the retrieved valid data (including the null-terminator) is stored. +
+If ``*data_size`` is smaller than the size of the valid data, ``kEsfSystemManagerResultOutOfRange`` is returned. +
+If a size equal to or greater than ``ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE`` is specified, there will be no shortage. +
+If ``0`` or ``NULL`` is specified, ``kEsfSystemManagerResultParamError`` is returned.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Retrieves the Root Certificate and stores it in ``data``.  
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetRootCa]
+.Description of return values for EsfSystemManagerGetRootCa
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``  
+* ``data_size == NULL``  
+* ``*data_size == 0``  
+|Unchanged  
+|Set the correct arguments and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|May contain undefined data.  
+|Not recoverable.
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size`` is smaller than the size of the retrieved valid data.  
+|May contain undefined data.  
+|Specify a sufficient ``*data_size`` and retry.
+
+|kEsfSystemManagerResultEmptyData
+|Root Certificate is not stored in the ParameterStorageManager.  
+|Unchanged  
+|Store the correct Root Certificate.  
+|===
+
+
+[#_EsfSystemManagerGetRootCaHash]
+==== EsfSystemManagerGetRootCaHash
+* *Function* 
++
+Retrieves the Root Certificate hash.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetRootCaHash( char *data, size_t *data_size )**``  
+
+* *Arguments* +
++
+**``[OUT] char *data``**:: 
+Specify the starting address of the area to store the retrieved Root Certificate hash (a null-terminated string).  
+**``[IN/OUT] size_t *data_size``**:: 
+Specify the size of ``data``. +
+The value must be ``1`` or greater, including the null-terminator. +
+After this API is executed, the actual size of the retrieved valid data (including the null-terminator) is stored. +
+If ``*data_size`` is smaller than the size of the valid data, ``kEsfSystemManagerResultOutOfRange`` is returned. +
+If a size equal to or greater than ``ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE`` is specified, there will be no shortage. +
+If ``0`` or ``NULL`` is specified, ``kEsfSystemManagerResultParamError`` is returned.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Retrieves the Root Certificate hash and stores it in ``data``.  
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetRootCaHash]
+.Description of return values for EsfSystemManagerGetRootCaHash
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``  
+* ``data_size == NULL``  
+* ``*data_size == 0``  
+|Unchanged  
+|Set the correct arguments and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|May contain undefined data.  
+|Not recoverable.
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size`` is smaller than the size of the retrieved valid data.  
+|May contain undefined data.  
+|Specify a sufficient ``*data_size`` and retry.
+
+|kEsfSystemManagerResultEmptyData
+|Root Certificate hash is not stored in the ParameterStorageManager.  
+|Unchanged  
+|Store the correct Root Certificate hash.  
+|===
+
+
+[#_EsfSystemManagerGetQrModeTimeoutValue]
+==== EsfSystemManagerGetQrModeTimeoutValue
+* *Function* 
++
+Retrieves the QR mode timeout value.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetQrModeTimeoutValue( int32_t *data )**``  
+
+* *Arguments* +
++
+**``[OUT] int32_t *data``**:: 
+The retrieved QR mode timeout value will be stored. The meaning of the value is not defined by the SystemManager and is left to the API user.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Retrieves the QR mode timeout value and stores it in ``data``.  
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetQrModeTimeoutValue]
+.Description of return values for EsfSystemManagerGetQrModeTimeoutValue
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+|Occurs when ``data == NULL``.  
+|Unchanged  
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|May contain undefined data.  
+|Not recoverable.  
+|===
+
+
+[#_EsfSystemManagerSetQrModeTimeoutValue]
+==== EsfSystemManagerSetQrModeTimeoutValue
+* *Function* 
++
+Saves the QR mode timeout value.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetQrModeTimeoutValue( int32_t data )**``  
+
+* *Arguments* +
++
+**``[IN] int32_t data``**:: 
+QR mode timeout value. Can be specified within the range of int32_t. The meaning of the value is not defined by the SystemManager and is left to the API user.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Saves the QR mode timeout value. This API only stores the value. To perform QR mode timeout operations, retrieve the value using ``EsfSystemManagerGetQrModeTimeoutValue``.  
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerSetQrModeTimeoutValue]
+.Description of return values for EsfSystemManagerSetQrModeTimeoutValue
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|-  
+|Not recoverable.  
+|===
+
+
+[#_EsfSystemManagerGetInitialSettingFlag]
+==== EsfSystemManagerGetInitialSettingFlag
+* *Function* 
++
+Retrieves the InitialSettingFlag.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetInitialSettingFlag( EsfSystemManagerInitialSettingFlag *data )**``  
+
+* *Arguments* +
++
+**``[OUT] EsfSystemManagerInitialSettingFlag *data``**:: 
+The retrieved InitialSettingFlag will be stored here.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Retrieves the InitialSettingFlag and stores it in ``data``.  
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetInitialSettingFlag]
+.Description of return values for EsfSystemManagerGetInitialSettingFlag
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+|Occurs when ``data == NULL``.  
+|Unchanged  
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|May contain undefined data.  
+|Not recoverable.
+
+|kEsfSystemManagerResultOutOfRange
+|An invalid value was retrieved from the ParameterStorageManager.  
+|Unchanged  
+|Write a valid value beforehand.  
+|===
+
+
+[#_EsfSystemManagerSetInitialSettingFlag]
+==== EsfSystemManagerSetInitialSettingFlag
+* *Function* 
++
+Sets the InitialSettingFlag.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetInitialSettingFlag( EsfSystemManagerInitialSettingFlag data )**``  
+
+* *Arguments* +
++
+**``[IN] EsfSystemManagerInitialSettingFlag data``**:: 
+The value to set for the InitialSettingFlag.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Sets the InitialSettingFlag.  
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerSetInitialSettingFlag]
+.Description of return values for EsfSystemManagerSetInitialSettingFlag
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+|The ``data`` value contains an invalid enum.  
+|-  
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|-  
+|Not recoverable.  
+|===
+
+
+[#_EsfSystemManagerGetHwInfo]
+==== EsfSystemManagerGetHwInfo
+* *Function*
++
+Retrieves the HW information configured on the device.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetHwInfo( EsfSystemManagerHwInfo *data )**``
+
+* *Arguments* +
++
+**``[OUT] EsfSystemManagerHwInfo *data``**::  
+Specify the starting address of the area where the retrieved HW information will be stored.  
+If ``NULL`` is specified, ``kEsfSystemManagerResultParamError`` is returned.
+
+* *Return Value* +
++
+One of the values from <<#_TableReturnValue>> is returned depending on the result.
+
+* *Description* +
+** Retrieves the HW information configured on the device.  
+** If any member of the retrieved ``EsfSystemManagerHwInfo`` is empty, an empty string (``\0``) is returned.
+
+** Execution Details  
+*** Callable concurrently.  
+*** Callable from multiple threads.  
+*** Callable from multiple tasks.  
+*** Performs internal blocking.  
+** Error Information  
++
+[#_DescriptionofReturnValuesforEsfSystemManagerGetHwInfo]
+.Description of return values for EsfSystemManagerGetHwInfo
+[width="100%",options="header"]
+|===
+|Return Value |Condition | OUT Argument Status | Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+``data == NULL``  
+|Unchanged  
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the ParameterStorageManager.  
+|May contain undefined data.  
+|Not recoverable.
+
+|kEsfSystemManagerResultEmptyData
+|HW information is not stored on the device.  
+|Unchanged  
+|Properly configure HW information on the device.  
+|===
+
+
+<<<
+
+
+== Example Usage of API Calls
+
+Examples of how to invoke each API are shown below.
+
+[source, mermaid]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+autonumber
+participant App
+participant SystemManager
+participant ParameterStorageManager
+
+
+App ->> +SystemManager: EsfSystemManagerSet〇〇〇(data)
+
+SystemManager ->> +ParameterStorageManager: Acquire handle
+ParameterStorageManager -->> -SystemManager: Handle
+
+SystemManager ->> +ParameterStorageManager: Save data
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager ->> +ParameterStorageManager: Release handle
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager -->> -App: -
+
+
+App ->> +SystemManager: EsfSystemManagerGet〇〇〇()
+
+SystemManager ->> +ParameterStorageManager: Acquire handle
+ParameterStorageManager -->> -SystemManager: Handle
+
+SystemManager ->> +ParameterStorageManager: Retrieve data
+ParameterStorageManager -->> -SystemManager: Data
+
+SystemManager ->> +ParameterStorageManager: Release handle
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager -->> -App: Data
+....
+
+<<<
+
+== Special Notes and Component-Specific Information
+
+=== ParameterStorageManager Interface Specifications
+
+<<<
+
+== List of OSS Used
+No OSS is used.
+
+<<<
+
+== References
+
+* ParameterStorageManager Functional Specification  
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/esf/parameter_storage_manager/ParameterStorageManager.adoc
+
+<<<
+
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+
+|v0.1.0
+|Initial release
+
+|v0.1.1
+a|
+* Added <<#_ConfigList>>  
+* Added ``kEsfSystemManagerResultOutOfRange`` and ``kEsfSystemManagerResultEmptyData``  
+* Changed parameter names from ``value`` to ``data`` in <<#_EsfSystemManagerGetEvpTls>> and <<EsfSystemManagerSetEvpTls>> for consistency with other APIs  
+* Added <<#_EsfSystemManagerGetEvpHubUrl>>  
+* Added <<#_EsfSystemManagerGetEvpHubPort>>  
+* Added <<#_EsfSystemManagerGetQrModeTimeoutValue>>  
+* Added <<#_EsfSystemManagerSetQrModeTimeoutValue>>  
+* Added ``size_t *data_size`` argument to <<#_EsfSystemManagerGetDeviceManifest>>, <<#_EsfSystemManagerGetProjectId>>, <<#_EsfSystemManagerGetRegisterToken>>, <<#_EsfSystemManagerGetRootCa>>, <<#_EsfSystemManagerGetTlsClientCert>>, and <<#_EsfSystemManagerGetTlsClientKey>>  
+* Added ``size_t data_size`` argument to <<#_EsfSystemManagerSetProjectId>>, <<#_EsfSystemManagerSetRegisterToken>>, <<#_EsfSystemManagerSetEvpHubUrl>>, and <<#_EsfSystemManagerSetEvpHubPort>>  
+* Moved "ParameterStorageManager Interface Specifications" to the SystemManager detailed design document  
+
+|v0.1.2
+a|
+* Added ``kEsfSystemManagerResultOutOfRange`` as a return value for <<#_EsfSystemManagerGetEvpTls>>  
+* Fixed description of ``data_size`` (was incorrectly described as a pointer) in <<#_EsfSystemManagerSetProjectId>>, <<#_EsfSystemManagerSetRegisterToken>>, <<#_EsfSystemManagerSetEvpHubUrl>>, and <<#_EsfSystemManagerSetEvpHubPort>>  
+
+|v0.1.3
+a|
+* Removed EsfSystemManagerGetTlsClientCert  
+* Removed EsfSystemManagerGetTlsClientKey  
+
+|v0.1.4
+a|
+* Updated descriptions for EsfSystemManagerGetQrModeTimeoutValue and EsfSystemManagerSetQrModeTimeoutValue  
+* Added ``kEsfSystemManagerResultMutexError``  
+* Removed the note "(based on ParameterStorageManager specifications)" from the blocking behavior descriptions of each API  
+
+|v0.1.5
+a|
+* Added the following to <<#_TableDataType>>:  
+``ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE``  
+``ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE``  
+* Added ``EsfSystemManagerGetHwInfo`` to <<#_APIList>>  
+* Added anchors:  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE>>  
+<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>  
+* Added <<#_EsfSystemManagerGetHwInfo>>  
+
+|v0.1.6
+a|
+* Configuration Additions  
+** Added ``CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG``  
+* Data Type Additions  
+** Added ``ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE``  
+** Added ``ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE``  
+** Added ``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``  
+** Added ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``  
+** Added ``ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE``  
+** Added ``EsfSystemManagerInitialSettingFlag``  
+* API Additions  
+** Added ``EsfSystemManagerGetRootCaHash``  
+** Added ``EsfSystemManagerGetDpsUrl``  
+** Added ``EsfSystemManagerSetDpsUrl``  
+** Added ``EsfSystemManagerGetCommonName``  
+** Added ``EsfSystemManagerSetCommonName``  
+** Added ``EsfSystemManagerGetDpsScopeId``  
+** Added ``EsfSystemManagerSetDpsScopeId``  
+** Added ``EsfSystemManagerGetInitialSettingFlag``  
+** Added ``EsfSystemManagerSetInitialSettingFlag``  
+** Added ``EsfSystemManagerGetEvpIotPlatform``  
+** Added ``EsfSystemManagerSetEvpIotPlatform``  
+
+|v0.1.7
+a|
+* Updated to treat ``CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS`` as a string  
+* Modified the meaning of EVP TLS: "0" for enabled, "1" for disabled  
+
+|v0.1.8
+a|
+* Removed ``kEsfSystemManagerResultMutexError``  
+* Changed sizes of the following:
+** ``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``  
+** ``ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE``  
+** ``ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE``  
+** ``ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE``  
+** ``ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE``  
+** ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``  
+
+|v0.1.9
+a|
+* Updated ``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE`` to 64  
+
+|===
+

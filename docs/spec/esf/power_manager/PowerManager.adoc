@@ -1,0 +1,2779 @@
+= AITRIOS Edge Device Power Manager Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.11
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This specification describes the Power Manager module, which provides functionality for controlling the device's power operation and intermittent drive operation. +
+
+<<<
+
+== Terminology
+This section will be replaced once a shared terminology list is available. +
+
+=== ESF
+ESF (AITRIOS Edge Software Framework) +
+
+* A layer that provides AITRIOS-standard APIs executable from various applications.
+* It is basically unaffected by changes to the OS or chip.
+* As it forms the core functionality of the application, it is managed by SSS.
+* By isolating it into blocks, the impact of sensor changes is minimized.
+
+=== Intermittent Drive
+
+* An operation in which the power turns ON at specified intervals to perform processing.
+
+<<<
+
+== Component Description
+=== Component Overview
+
+As shown in <<#_FigureOverview>>, this component is structured to provide functions related to power control (such as reboot and shutdown), intermittent drive control (such as retrieving operation mode and performing intermittent drive shutdown), hours meter, device liveness monitoring (WDT), and USB current limiting. +
+In version XX, intermittent drive control functions are not yet supported.
+
+[#_FigureOverview]
+.Block Diagram
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    power_manager[Power Manager]
+    style power_manager fill:#f9f
+    main[ESF main]
+    param[Parameter Storage Manager]
+    hal[HAL]
+	end
+  subgraph App
+    vns[VnSApp]
+    system[SystemApp]
+  end
+  os[OS]
+
+system -->|Power Control| power_manager
+power_manager --> |Event Notification| main
+main --> |Execute Reboot/\nShutdown| power_manager
+power_manager --> |Power Control| hal
+
+system -->|Intermittent Drive Control| power_manager
+power_manager -->|RTC Control| hal
+
+system -->|Get Hours Meter| power_manager
+
+vns -->|Intermittent Drive Control| power_manager
+
+power_manager -->|WDT Control| hal
+os -->|WDT Interrupt| power_manager
+
+power_manager -->|Get/Save\nHours Meter| param
+hal -->|Update Hours Meter| power_manager
+....
+
+<<<
+
+=== Component Details
+==== Power Control Processing
+In response to requests from the App, the trigger for reboot/shutdown is notified to peripheral functions. +  
+Actual reboot/shutdown operations are performed using HAL. +
+The detailed diagram of the power control processing is shown in <<#_FigureDetailPower>>.
+[#_FigureDetailPower]
+.Detailed Diagram of Power Control Processing
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph power_manager[Power Manager]
+      power[Power Control]
+      info[Information Retrieval]
+    end
+    style power_manager fill:#f9f
+    subgraph main
+      event[Event]
+    end
+    subgraph hal
+      systemcontrol[System Control]
+      volt[Power Voltage]
+    end
+	end
+  subgraph App
+    system[SystemApp]
+  end
+
+system -->|Reboot/Shutdown Request| power
+power --> |Event Notification| event
+event --> |Execute Reboot/\nShutdown| power
+power --> |Execute Reboot/\nShutdown| systemcontrol
+
+system -->|Get Voltage| info
+info  --> |Get Voltage| volt
+info -->|Voltage Result| system
+....
+
+==== Intermittent Drive Control Processing
+In response to requests from the App, the trigger for shutdown is notified to peripheral functions. +  
+Next boot configuration and actual shutdown are performed using HAL. +
+Detailed diagrams of the intermittent drive control processing are shown in <<#_FigureDetailPeriodic>> and <<#_FigureDetailPeriodicEnd>>.
+
+[#_FigureDetailPeriodic]
+.Detailed Diagram of Intermittent Drive Operation Processing
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph main
+      boot[Boot]
+    end
+    subgraph hal
+      rtc[RTC]
+    end
+    subgraph power_manager[Power Manager]
+      periodic[Intermittent Drive]
+    end
+    style power_manager fill:#f9f
+    subgraph parameter_storage_manager[Parameter Storage Manager]
+      flash[Configuration Management]
+    end
+	end
+  subgraph App
+    vns[VnSApp]
+    system[SystemApp]
+  end
+
+boot --> |Get Intermittent Drive Mode| periodic
+periodic  --> |Get Intermittent Drive Info| flash
+periodic  --> |Response: Intermittent Drive Mode| boot
+boot --> |Get Boot Cause| periodic
+periodic  --> |Get Boot Cause| flash
+periodic  --> |Get RTC State| rtc
+periodic  --> |Response: Boot Cause| boot
+system --> |Get Intermittent Operation State| periodic
+system --> |Wait for Intermittent Upload Completion| periodic
+periodic --> |Response: Intermittent Upload Completion| system
+vns --> |Notify VnSApp Processing Complete| periodic
+....
+
+[#_FigureDetailPeriodicEnd]
+.Detailed Diagram of Intermittent Drive Shutdown Processing
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph hal
+      rtc[RTC]
+      systemcontrol[System Control]
+    end
+    subgraph power_manager[Power Manager]
+      power[Power Control]
+      periodic[Intermittent Drive]
+    end
+    style power_manager fill:#f9f
+    subgraph main
+      event[Event]
+    end
+	end
+  subgraph App
+    system[SystemApp]
+  end
+
+system -->|Intermittent Shutdown Request| periodic
+periodic  --> |Set Next Boot Time| rtc
+periodic  --> |Event Notification| event
+event --> |Execute Shutdown| power
+power --> |Execute Shutdown| systemcontrol
+....
+
+==== Hours Meter Processing
+The Hours Meter is periodically incremented to record the elapsed time since the device was shipped. +
+The periodic trigger uses the Utility Timer. +
+Using the Parameter Storage Manager, the value is saved to non-volatile storage at the time of increment. +
+A function is provided to retrieve the current Hours Meter value in response to requests from the App. +
+The detailed diagram of the Hours Meter processing is shown in <<#_FigureDetailHoursMeter>>.
+[#_FigureDetailHoursMeter]
+.Detailed Diagram of Hours Meter Processing
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph parameter_storage_manager[Parameter Storage Manager]
+      data[Data Storage Area]
+    end
+    subgraph hal
+      timer
+    end
+    subgraph power_manager[Power Manager]
+      periodic[Hours Meter]
+    end
+    style power_manager fill:#f9f
+	end
+  subgraph App
+    system[SystemApp]
+  end
+
+system -->|Get Request| periodic
+periodic  --> |Retrieve/Update| data
+timer  --> |Timeout| periodic
+....
+
+==== Device Liveness Monitoring Processing
+Provides a device liveness monitoring function. +
+When a liveness check failure occurs, the interrupt from the PL WDT is handled, and a reboot request is made to the power control. +
+The behavior after the reboot request follows the same reboot process as in the power control processing. +
+The detailed diagram of the device liveness monitoring processing is shown in <<#_FigureDetailWDT>>.
+[#_FigureDetailWDT]
+.Detailed Diagram of Device Liveness Monitoring Processing
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph hal
+      hal_wdt[WDT]
+    end
+    subgraph power_manager[Power Manager]
+      wdt[WDT]
+      power[Power Control]
+    end
+    style power_manager fill:#f9f
+	end
+  os[OS]
+
+wdt --> |Register WDT Handler| hal_wdt
+
+os -->|WDT Interrupt| wdt
+wdt -->|Reboot Request| power
+
+....
+
+==== USB Current Limiting Processing
+Provides a USB current limiting function for the device. +
+Using HAL I2C, the device's USB compliance information is retrieved and used to determine whether current limiting is required. +
+If the result indicates compliance with the standard, HAL I2C is used to control the device's USB_SW. +
+The detailed diagram of the USB current limiting processing is shown in <<#_FigureDetailUSBPower>>.
+[#_FigureDetailUSBPower]
+.Detailed Diagram of USB Current Limiting Processing
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph power_manager[Power Manager]
+      start[Startup Management]
+    end
+    style power_manager fill:#f9f
+    subgraph main
+      event[Startup Management]
+    end
+    subgraph hal
+      i2c[I2C]
+    end
+	end
+  subgraph Hardware
+    usb[USB Compliance Info]
+    usbsw[USB_SW]
+  end
+  style Hardware fill:#d4e8c5
+
+event --> |Startup| start
+
+start --> |Retrieve Info| i2c
+start --> |Control SW| i2c
+
+i2c --> |Retrieve Info| usb
+i2c --> |Control SW| usbsw
+....
+
+<<<
+
+=== State Transitions
+The possible states of the Power Manager are listed in <<#_TableStates>>. +
+In addition, no state transition occurs if an error occurs in any of the APIs. +
+
+==== Initial States
+The initial states managed by the Power Manager are listed in <<#_TableStates>>. +
+In addition, no state transition occurs if an error occurs in any of the APIs. +
+
+[#_TableStates]
+.List of Initial States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|STOP
+|The system is in a stopped state. Do not call any API other than ``**EsfPwrMgrStart**``, ``**EsfPwrMgrExecuteRebootEx**``, ``**EsfPwrMgrExecuteShutdown**``, ``**EsfPwrMgrWdtKeepAlive**``, or ``**EsfPwrMgrGetResetCause**``.
+
+|WAIT_REBOOT
+|The system is in a state waiting for reboot by WDT. Do not call any API other than ``**EsfPwrMgrExecuteRebootEx**``, ``**EsfPwrMgrExecuteShutdown**``, ``**EsfPwrMgrWdtKeepAlive**``, or ``**EsfPwrMgrGetResetCause**``.
+
+|READY
+|The system is in a ready state. All APIs are available.
+
+|===
+
+
+[#_FigureStateTransition]
+.State Transition Diagram
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> STOP
+    STOP --> STOP : EsfPwrMgrExecuteRebootEx<br>EsfPwrMgrExecuteShutdown<br>EsfPwrMgrWdtKeepAlive<br>EsfPwrMgrGetResetCause
+    STOP --> READY : EsfPwrMgrStart
+    READY --> STOP : EsfPwrMgrStop
+    READY --> READY : EsfPwrMgrStart<br>Other APIs
+    READY --> WAIT_REBOOT : EsfPwrMgrStopForReboot
+    WAIT_REBOOT --> WAIT_REBOOT : EsfPwrMgrExecuteRebootEx<br>EsfPwrMgrExecuteShutdown<br>EsfPwrMgrWdtKeepAlive<br>EsfPwrMgrGetResetCause
+----
+
+The availability of APIs in each state and the resulting transition destinations are shown in <<#_TableStateTransition, State Transition Table>>. +
+The state names in the table indicate the post-execution destination states, which means that the API can be called in that state. +
+An "×" indicates that the API cannot be accepted. In such cases, the API returns a ``**kEsfPwrMgrErrorInternal**`` error and no state transition occurs. +
+For details on errors, refer to <<#_DataType_EsfPwrMgrError>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.2+| 3+|State
+|STOP |WAIT_REBOOT |READY
+.8+|API Name
+
+|``**EsfPwrMgrStart**``
+|READY
+|×
+|READY
+
+|``**EsfPwrMgrStop**``
+|×
+|×
+|STOP
+
+|``**EsfPwrMgrStopForReboot**``
+|×
+|×
+|WAIT_REBOOT
+
+|``**EsfPwrMgrExecuteRebootEx**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|``**EsfPwrMgrExecuteShutdown**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|``**EsfPwrMgrWdtKeepAlive**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|``**EsfPwrMgrGetResetCause**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|Other APIs
+|×
+|×
+|READY
+
+|===
+
+==== Power Operation Execution States
+The Power Manager manages the execution states of power control processes such as "reboot" and "shutdown". +
+A list of power operation execution states is shown in <<#_PowerTableStates>>. +
+In addition, no state transition occurs if an error occurs in any of the APIs. +
+
+[#_PowerTableStates]
+.List of Power Operation Execution States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|READY
+|Execution is possible. +
+Reboot and shutdown operations can be performed.
+
+|RUNNING
+|Currently executing. +
+Reboot and shutdown operations cannot be performed.
+
+|===
+
+
+[#_FigurePowerStateTransition]
+.Power Operation Execution State Transition Diagram
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> READY
+    READY --> RUNNING : EsfPwrMgrPrepareReboot<br>EsfPwrMgrPrepareShutdown
+    RUNNING --> RUNNING : Other APIs
+----
+
+The availability of APIs in each state and the resulting transition destinations are shown in <<#_TablePowerStateTransition, State Transition Table>>. +
+The state names in the table indicate the post-execution destination states, meaning that the API can be called in that state. +
+An "×" indicates that the API cannot be accepted. In such cases, the API returns a ``**kEsfPwrMgrErrorInternal**`` error and no state transition occurs. +
+For details on errors, refer to <<#_DataType_EsfPwrMgrError>>.
+
+[#_TablePowerStateTransition]
+.Power Operation Execution State Transition Table
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|State
+|READY |RUNNING
+.5+|API Name
+
+|``**EsfPwrMgrPrepareReboot**``  
+``**EsfPwrMgrPrepareShutdown**``
+|RUNNING
+|×
+
+|``**EsfPwrMgrExecuteRebootEx**``  
+``**EsfPwrMgrExecuteShutdown**``
+|READY
+|－<<#_NoteExecuteShutdown, (*)>>
+
+|Other APIs
+|READY
+|RUNNING
+
+|===
+
+[#_NoteExecuteShutdown]
+(*) No state transition occurs after executing EsfPwrMgrExecuteRebootEx or EsfPwrMgrExecuteShutdown, as the device proceeds to reboot or shutdown operations.
+
+<<<
+
+
+=== List of Component Functions
+A list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.List of Functions
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+
+|Startup and Shutdown Function
+|Provides startup and shutdown functions for the Power Manager.
+|<<#_Function1>>
+
+|Reboot Function
+|Provides device reboot functionality.
+|<<#_Function2>>
+
+|Shutdown Function
+|Provides device shutdown functionality.
+|<<#_Function3>>
+
+|USB Current Limiting Function
+|Provides USB current limiting functionality for the device.
+|<<#_Function4>>
+
+|Information Retrieval Function
+|Provides power information retrieval functionality for the device.
+|<<#_Function5>>
+
+|Hours Meter Function
+|Provides the Hours Meter function for the device.
+|<<#_Function7>>
+
+|Device Liveness Monitoring Function
+|Provides device liveness monitoring functionality.
+|<<#_Function8>>
+
+|Intermittent Drive Function
+|Provides intermittent drive functionality for the device. (Not supported)
+|<<#_Function6>>
+
+|Exception Information Function
+|Provides functionality for retrieving, converting, and deleting exception information.
+|<<#_Function9>>
+
+|Reset Cause Retrieval Function
+|Provides functionality for retrieving the reset cause.
+|<<#_Function10>>
+
+|===
+
+<<<
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== Startup and Shutdown Function
+* Function Overview +
+    Starts and stops the Power Manager. +
+    Be sure to start it before calling any APIs other than ``**EsfPwrMgrExecuteRebootEx**`` and ``**EsfPwrMgrExecuteShutdown**``.
+
+* Prerequisites +
+    None.
+
+* Function Details
+    ** Calling ``**EsfPwrMgrStart**`` initializes internal state and allocates required resources. +
+    Acquires handles for external modules and creates a Utility Timer thread. +
+    Initializes PL WDT, registers the PL WDT handle, and starts liveness monitoring. +
+    Liveness monitoring is the first step in starting the Power Manager. +
+    For T5 devices, USB current limiting is determined. See <<#_Function4, USB Current Limiting Processing>>. +
+    After startup, all Power Manager APIs can be called. +
+    ``**EsfPwrMgrExecuteRebootEx**`` and ``**EsfPwrMgrExecuteShutdown**`` can also be called while in the stopped state. +
+
+    ** Calling ``**EsfPwrMgrStop**`` releases resources and transitions the internal state to STOP. +
+    Releases handles for external modules and destroys the timer thread. +
+    Stops liveness monitoring, releases the PL WDT handle, and finalizes the WDT. +
+
+    ** Calling ``**EsfPwrMgrStopForReboot**`` releases resources and transitions to the STOP state. +
+    Stops KeepAlive transmissions for liveness monitoring, releases handles, and destroys the timer thread. +
+    After this API is executed, no Power Manager API can be called except for ``**EsfPwrMgrExecuteRebootEx**``, ``**EsfPwrMgrExecuteShutdown**``, and ``**EsfPwrMgrWdtKeepAlive**``. +
+
+    ** Do not call these APIs simultaneously.
+
+* For error behavior and recovery, refer to <<#initapi, API Details>>.
+
+[#_Function2]
+==== Reboot Function
+* Function Overview +
+Provides the device reboot function. +
+
+* Prerequisites +
+    Power Manager must be started. +
+    However, ``**EsfPwrMgrExecuteRebootEx**`` can be called without this prerequisite.
+
+* Function Details
+    ** Calling ``**EsfPwrMgrPrepareReboot**`` notifies the ESF (main) of the reboot event and serves as a trigger for executing necessary processes.
+    ** Calling ``**EsfPwrMgrExecuteRebootEx**`` uses the PL to reboot the device.
+    ** Cannot be executed during reboot or shutdown.
+
+* For error behavior and recovery, refer to <<#rebootapi, API Details>>.
+
+[#_Function3]
+==== Shutdown Function
+* Function Overview +
+Provides the device shutdown function. +
+
+* Prerequisites +
+    Power Manager must be started. +
+    However, ``**EsfPwrMgrExecuteShutdown**`` can be called without this prerequisite.
+
+* Function Details
+    ** Calling ``**EsfPwrMgrPrepareShutdown**`` notifies the ESF (main) of the shutdown event and serves as a trigger for executing necessary processes.
+    ** Calling ``**EsfPwrMgrExecuteShutdown**`` uses the PL to shut down the device.
+    ** Cannot be executed during reboot or shutdown.
+
+* For error behavior and recovery, refer to <<#shutdownapi, API Details>>.
+
+[#_Function4]
+==== USB Current Limiting Function
+* Function Overview +
+Provides USB current limiting functionality for the device.
+
+* Prerequisites +
+    None.
+
+* Function Details
+  ** USB current limiting is determined during Power Manager startup. +
+      Determination is done using HAL I2C to check if the device complies with USB standards. +
+      For T5 devices, the following information is retrieved. See <<#_TableT5I2C, here>> for the I2C data sources.
+    *** USB power supply status
+    *** CC1.5A support
+    *** BC1.2 support
+
+  ** To disable USB current limiting, set the config ``**EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE**`` to disabled.
+
+  ** To disable USB data communication, set the config ``**EXTERNAL_POWER_MANAGER_USB_DEVICE_ENABLE**`` to disabled. +
+     If enabled, USB_SW is configured via HAL I2C. +
+     See <<#_TableT5I2C, here>> for the destination of HAL I2C configuration of USB_SW.
+
+  ** The USB current limiting decision process is shown in the following flowchart.
+
+[#_FlowchartJudgeUSBCurrent]
+.USB Current Limiting Decision Flowchart
+[{mermaid_block}]
+....
+flowchart TD
+    START(Start)
+    USB{USB Power Supply?}
+    CC1_5{Supports CC1.5A?}
+    BC1_2{Supports BC1.2?}
+    USBCOM{Is USB Data Comm Enabled?}
+    USBSWOFF[USB_SW OFF]
+    USBSWON[USB_SW ON]
+    END(Normal Boot)
+    ERR(Halt with Error)
+
+    START --> USB
+    USB -->|"No (PoE)"| USBCOM
+    USB -->|"Yes (USB)"| CC1_5
+
+    CC1_5 -->|Yes| USBCOM
+    USBCOM -->|Yes| USBSWON
+    USBCOM -->|No| USBSWOFF
+
+    USBSWOFF --> END
+    USBSWON --> END
+    
+    CC1_5 -->|No| BC1_2
+    BC1_2 -->|Yes| USBCOM
+    BC1_2 -->|No = Legacy USB| ERR
+....
+
+[#_Function5]
+==== Information Retrieval Function
+* Function Overview +
+Provides functionality for retrieving power-related information.
+
+* Prerequisites +
+    Power Manager must be started.
+
+* Function Details
+    ** This function includes the following APIs: +
+    *** Retrieve operating voltage +
+        ``**EsfPwrMgrGetVoltage**`` retrieves operating voltage info from HAL (unknown source) and responds.
+    *** Retrieve power supply type +
+        ``**EsfPwrMgrGetSupplyType**`` retrieves the supply type from the PL (power_manager) and responds.
+
+** For error behavior and recovery, refer to <<#infoapi, API Details>>.
+
+NOTE: The HAL used for retrieving voltage is unspecified.
+
+[#_Function7]
+==== Hours Meter Function
+* Function Overview +
+Provides functionality for incrementing the Hours Meter, saving the value to non-volatile storage, and retrieving the current value via API.
+
+* Prerequisites +
+    Power Manager must be started.
+
+* Function Details
+    ** At Power Manager startup, retrieves the current value from the data storage area. +
+       Then, it periodically increments the value using the Utility Timer as a trigger. +
+       The updated value is saved to non-volatile memory using the Parameter Storage Manager. +
+       The Hours Meter is stored as ``int32_t`` and loops back to 0 when reaching the maximum value.
+
+    ** The increment interval is defined by ``ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL``.
+
+    ** Calling ``**EsfPwrMgrHoursMeterGetValue**`` retrieves the current Hours Meter value.
+
+    ** For error behavior and recovery, refer to <<#hoursmeterapi, API Details>>.
+
+[#_Function8]
+==== Device Liveness Monitoring Function
+* Function Overview +
+Provides functionality for monitoring device liveness.
+
+* Prerequisites +
+    Power Manager must be started.
+
+* Function Details
+    ** At Power Manager startup, liveness monitoring begins using PL WDT. This is the first step of the startup sequence.
+    ** The interrupt handler ``**WdtCallBack**`` is registered with PL WDT. +
+       Upon WDT trigger, the device is rebooted.
+
+    ** For error behavior and recovery, refer to <<#wdtapi, API Details>>.
+
+[#_Function6]
+==== Intermittent Drive Function (Not Supported)
+T.B.D.
+
+[#_Function9]
+==== Exception Information Function
+* Function Overview +
+Provides functionality to retrieve exception information and convert it to text format.
+
+* Prerequisites +
+    Power Manager must be started.
+
+* Function Details
+    ** Retrieves exception information stored in RTC memory.
+    ** Converts exception information into text format.
+    ** Deletes exception information from RTC memory.
+    ** For error behavior and recovery, refer to <<#exceptioninfoapi, API Details>>.
+
+[#_Function10]
+==== Reset Cause Retrieval Function
+* Function Overview +
+Provides functionality to retrieve the reset cause.
+
+* Prerequisites +
+    None.
+
+* Function Details
+    ** Retrieves the reset cause.
+    ** For error behavior and recovery, refer to <<#resetcauseapi, API Details>>.
+
+<<<
+
+=== List of Non-Functional Requirements
+
+A list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+Target values for performance and memory usage are provided as a guideline.
+
+[#_TableNonFunction]
+.List of Non-Functional Requirements
+[width="100%", cols="20%,10%,50%,10%",options="header"]
+|===
+|Requirement |Value |Description |Section
+
+|Continuous Execution Time
+|10ms
+|Maximum processing time required.
+|<<#_NonFunction1>>
+
+|Stack Memory Usage
+|2048 bytes
+|Maximum amount of stack memory used.
+|<<#_NonFunction2>>
+
+|Heap Memory Usage
+|128 bytes
+|Maximum amount of heap memory used.
+|<<#_NonFunction3>>
+
+|Thread Usage
+|Not used
+|Number of threads used.
+|<<#_NonFunction4>>
+
+|Static Memory Usage
+|128 bytes
+|Maximum amount of static memory used.
+|<<#_NonFunction5>>
+|===
+
+<<<
+
+=== Description of Non-Functional Requirements
+
+[#_NonFunction1]
+==== Continuous Execution Time
+Typically 10 ms. Due to mutual exclusion control, the default maximum wait time is 1000 ms. +
+Processing time in external modules and mutual exclusion wait time are not included.
+
+[#_NonFunction2]
+==== Stack Memory Usage
+2048 bytes
+
+[#_NonFunction3]
+==== Heap Memory Usage
+128 bytes
+
+[#_NonFunction4]
+==== Thread Usage
+Threads are not used.
+
+[#_NonFunction5]
+==== Static Memory Usage
+128 bytes
+
+<<<
+
+== API Specifications
+
+=== List of Data Types
+A list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.List of Data Types
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type |Description |Section
+
+|EsfPwrMgrError
+|Enumeration that defines the result of API execution.
+|<<#_DataType_EsfPwrMgrError>>
+
+|ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL
+|Interval (in hours) for periodic addition to the Hours Meter.
+|<<#_DataType_ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL>>
+
+|ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE
+|Maximum size of exception information in text format.
+|<<#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE>>
+
+|struct EsfPwrMgrExceptionInfo
+|Structure for exception information.
+|<<#_DataType_EsfPwrMgrExceptionInfo>>
+
+|EsfPwrMgrResetCause
+|Enumeration that defines reset causes.
+|<<#_DataType_EsfPwrMgrResetCause>>
+
+|EsfPwrMgrRebootType
+|Enumeration that defines reboot methods.
+|<<#_DataType_EsfPwrMgrRebootType>>
+
+|===
+
+
+=== List of Definitions
+==== List of APIs
+A list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.List of APIs
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description |Section
+
+// Startup and Shutdown Function
+3+|<<#initapi, Startup and Shutdown Function>>
+
+|EsfPwrMgrStart
+|Starts the Power Manager.
+|<<#EsfPwrMgrStart>>
+
+|EsfPwrMgrStop
+|Stops the Power Manager.
+|<<#EsfPwrMgrStop>>
+
+|EsfPwrMgrStopForReboot
+|Stops the Power Manager and waits for reboot.
+|<<#EsfPwrMgrStopForReboot>>
+
+// Reboot Function
+3+|<<#rebootapi, Reboot Function>>
+
+|EsfPwrMgrPrepareReboot
+|Initiates a system reboot.
+|<<EsfPwrMgrPrepareReboot>>
+
+|EsfPwrMgrExecuteRebootEx
+|Performs a system reboot. +
+Can be executed from the STOP state.
+|<<#EsfPwrMgrExecuteRebootEx>>
+
+// Shutdown Function
+3+|<<#shutdownapi, Shutdown Function>>
+
+|EsfPwrMgrPrepareShutdown
+|Initiates a system shutdown.
+|<<EsfPwrMgrPrepareShutdown>>
+
+|EsfPwrMgrExecuteShutdown
+|Performs a system shutdown. +
+Can be executed from the STOP state.
+|<<#EsfPwrMgrExecuteShutdown>>
+
+// Information Retrieval Function
+3+|<<#infoapi, Information Retrieval Function>>
+
+|EsfPwrMgrGetVoltage
+|Retrieves operating voltage information.
+|<<EsfPwrMgrGetVoltage>>
+
+|EsfPwrMgrGetSupplyType
+|Retrieves power supply type.
+|<<EsfPwrMgrGetSupplyType>>
+
+// Hours Meter
+3+|<<#hoursmeterapi, Hours Meter Function>>
+
+|EsfPwrMgrHoursMeterGetValue
+|Retrieves the current Hours Meter value.
+|<<EsfPwrMgrHoursMeterGetValue>>
+
+// Device Liveness Monitoring Function
+3+|<<#wdtapi, Device Liveness Monitoring Function>>
+
+|WdtCallBack
+|Executes processing when liveness monitoring failure is detected.
+|<<WdtCallBack>>
+
+|EsfPwrMgrWdtTerminate
+|Stops KeepAlive transmission for device liveness monitoring.
+|<<EsfPwrMgrWdtTerminate>>
+
+|EsfPwrMgrWdtKeepAlive
+|Sends KeepAlive for device liveness monitoring.
+|<<EsfPwrMgrWdtKeepAlive>>
+
+// Exception Information Function
+3+|<<#wdtapi, Exception Information Function>>
+
+|EsfPwrMgrGetExceptionInfo
+|Retrieves exception information.
+|<<EsfPwrMgrGetExceptionInfo>>
+
+|EsfPwrMgrConvExceptionInfo
+|Converts exception information to text format.
+|<<EsfPwrMgrConvExceptionInfo>>
+
+|EsfPwrMgrClearExceptionInfo
+|Clears exception information.
+|<<EsfPwrMgrClearExceptionInfo>>
+
+// Reset Cause Retrieval Function
+3+|<<#wdtapi, Reset Cause Retrieval Function>>
+
+|EsfPwrMgrGetResetCause
+|Retrieves the reset cause.
+|<<EsfPwrMgrGetResetCause>>
+
+|===
+
+<<<
+
+=== Data Type Definitions
+
+[#_DataType_EsfPwrMgrError]
+==== EsfPwrMgrError
+Enumeration that defines the result of API execution.
+
+* *Format* +
++
+[source, C]
+....
+typedef enum {
+    kEsfPwrMgrOk,
+    kEsfPwrMgrErrorInvalidArgument,
+    kEsfPwrMgrErrorResourceExhausted,
+    kEsfPwrMgrErrorInternal,
+    kEsfPwrMgrErrorAlreadyRunning,
+    kEsfPwrMgrErrorStatus,
+    kEsfPwrMgrErrorExternal,
+    kEsfPwrMgrErrorTimeout,
+    kEsfPwrMgrErrorUnsupportedApi,
+    kEsfPwrMgrErrorWaitReboot
+} EsfPwrMgrError;
+....
+
+* *Values* +
++
+[#_Table_EsfPwrMgrError]
+.Description of EsfPwrMgrError Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfPwrMgrOk
+|Success.
+
+|kEsfPwrMgrErrorInvalidArgument
+|Invalid argument.
+
+|kEsfPwrMgrErrorResourceExhausted
+|Insufficient memory.
+
+|kEsfPwrMgrErrorInternal
+|Internal processing failed.
+
+|kEsfPwrMgrErrorAlreadyRunning
+|Already running.
+
+|kEsfPwrMgrErrorStatus
+|Invalid state.
+
+|kEsfPwrMgrErrorExternal
+|Error in external API execution.
+
+|kEsfPwrMgrErrorTimeout
+|Timeout occurred.
+
+|kEsfPwrMgrErrorUnsupportedApi
+|Unsupported API.
+
+|kEsfPwrMgrErrorWaitReboot
+|Waiting for reboot due to WDT.
+
+|===
+
+[#_DataType_EsfPwrMgrSupplyType]
+==== EsfPwrMgrSupplyType
+Enumeration that defines power supply types.
+
+* *Format* +
++
+[source, C]
+....
+typedef enum {
+  kEsfPwrMgrSupplyTypeUnknown = -1,
+  kEsfPwrMgrSupplyTypePoE,
+  kEsfPwrMgrSupplyTypeUsb,
+  kEsfPwrMgrSupplyTypeDcPlug,
+  kEsfPwrMgrSupplyTypePrimaryBattery,
+  kEsfPwrMgrSupplyTypeSecondaryBattery,
+  kEsfPwrMgrSupplyTypeMax
+} EsfPwrMgrSupplyType;
+....
+
+* *Values* +
++
+[#_Table_EsfPwrMgrSupplyType]
+.Description of EsfPwrMgrSupplyType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfPwrMgrSupplyTypeUnknown
+|Not supported.
+
+|kEsfPwrMgrSupplyTypePoE
+|Power over Ethernet (PoE) supply.
+
+|kEsfPwrMgrSupplyTypeUsb
+|USB power supply.
+
+|kEsfPwrMgrSupplyTypeDcPlug
+|DC plug power supply.
+
+|kEsfPwrMgrSupplyTypePrimaryBattery
+|Primary battery supply.
+
+|kEsfPwrMgrSupplyTypeSecondaryBattery
+|Secondary battery supply.
+
+|kEsfPwrMgrSupplyTypeMax
+|Maximum number of elements.
+
+|===
+
+[#_DataType_ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL]
+==== ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL
+
+Interval for periodic addition to the Hours Meter (unit: hours).
+
+* *Format* +
++
+[source, C]
+....
+#define ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL (1)
+....
+
+[#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE]
+==== ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE
+
+Maximum size of exception information in text format.
+
+* *Format* +
++
+[source, C]
+....
+#ifdef CONFIG_STACK_COLORATION
+#define ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE   (18158)
+#else
+#define ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE   (18141)
+#endif
+....
+
+[#_DataType_EsfPwrMgrExceptionInfo]
+==== struct EsfPwrMgrExceptionInfo
+
+Structure for exception information.
+
+* *Format* +
++
+[source, C]
+....
+struct EsfPwrMgrExceptionInfo;
+....
+
+* *Values* +
+[#_Table_EsfPwrMgrExceptionInfo]
+Member variables are private. +
+Therefore, variables of type `struct EsfPwrMgrExceptionInfo` or use with `sizeof` cannot be used by the caller. +
+It can only be used as a pointer to a variable of type `struct EsfPwrMgrExceptionInfo`. +
+
+Examples (not allowed): +
+  ``**struct EsfPwrMgrExceptionInfo info;``** +
+  ``**sizeof(struct EsfPwrMgrExceptionInfo);``** +
+
+Examples (allowed): +
+  ``**struct EsfPwrMgrExceptionInfo *info;``** +
+
+[#_DataType_EsfPwrMgrResetCause]
+==== EsfPwrMgrResetCause
+
+Enumeration that defines reset causes.
+
+* *Format* +
++
+[source, C]
+....
+typedef enum EsfPwrMgrResetCause {
+  kEsfPwrMgrResetCauseUnknown = -1,
+  kEsfPwrMgrResetCauseSysChipPowerOnReset = 0,
+  kEsfPwrMgrResetCauseSysBrownOut,
+  kEsfPwrMgrResetCauseCoreSoft,
+  kEsfPwrMgrResetCauseCoreDeepSleep,
+  kEsfPwrMgrResetCauseWDT,
+  kEsfPwrMgrResetCauseMax
+} EsfPwrMgrResetCause;
+....
+
+* *Values* +
++
+[#_Table_EsfPwrMgrResetCause]
+.Description of EsfPwrMgrResetCause Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfPwrMgrResetCauseUnknown
+|Unsupported reset cause.
+
+|kEsfPwrMgrResetCauseSysChipPowerOnReset
+|Chip power-on system reset.
+
+|kEsfPwrMgrResetCauseSysBrownOut
+|Brown-out system reset.
+
+|kEsfPwrMgrResetCauseCoreSoft
+|Software core reset.
+
+|kEsfPwrMgrResetCauseCoreDeepSleep
+|Deep-sleep core reset.
+
+|kEsfPwrMgrResetCauseWDT
+|Watchdog reset.
+
+|kEsfPwrMgrResetCauseMax
+|Maximum number of elements.
+
+|===
+
+[#_DataType_EsfPwrMgrRebootType]
+==== EsfPwrMgrRebootType
+Enumeration that defines reboot methods.
+
+* *Format* +
++
+[source, C]
+....
+typedef enum EsfPwrMgrRebootType {
+  EsfPwrMgrRebootTypeSW,
+  EsfPwrMgrRebootTypeHW
+} EsfPwrMgrRebootType;
+....
+
+* *Values* +
++
+[#_Table__EsfPwrMgrRebootType]
+.Description of EsfPwrMgrRebootType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|EsfPwrMgrRebootTypeSW
+|Software reboot.
+
+|EsfPwrMgrRebootTypeHW
+|Hardware reboot.
+
+|===
+
+<<<
+
+=== API Definitions
+
+[#initapi]
+{blank}
+
+[#EsfPwrMgrStart]
+==== EsfPwrMgrStart
+* *Function* +
+Starts the Power Manager.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrStart(void)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
++
+** Initializes internal state and allocates necessary resources. +
+
+** Initializes PL WDT, registers the PL WDT handle, and starts liveness monitoring. +
+   Liveness monitoring is the first step in the Power Manager startup process. +
+
+** Acquires the handle for ParameterStorageManager. +
+Retrieves the current value of the Hours Meter using ParameterStorageManager. +
+Sets the timer interval to `ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL`, configures the timer to repeat, registers the Hours Meter increment process as a callback for timer expiration, and starts the Utility Timer. +
+
+** Uses HAL I2C to retrieve the device’s USB compliance information and determine whether to enable USB current limiting. +
+Based on the result, continues processing with USB_SW control or halts processing. +
+
+** If this API is called again while already in the STARTED state, it does nothing and returns ``**kEsfPwrMgrOk**``. +
+
+** Execution Notes
+*** This API must not be called simultaneously.
+*** This API must not be called from multiple threads.
+*** This API must not be called from multiple tasks.
+*** This API performs internal mutual exclusion control to access state.
+
+* *Error Information* +
++
+[#_TableEsfPwrMgrStartError]
+.EsfPwrMgrStart Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Startup succeeded
+|None
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal errors occurred
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in ParameterStorageManager operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in HAL operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorWaitReboot
+|Waiting for reboot
+|EsfPwrMgrStopForReboot was already executed
+|Wait for reboot via WDT
+
+|===
+
++
+If an error occurs during USB current limiting determination within this API, the following actions are taken:
+
+** The system runs infinite sleep, outputs a message prompting a device reboot, and does not return from the function.
+
+[#EsfPwrMgrStop]
+==== EsfPwrMgrStop
+* *Function* +
+Stops the Power Manager.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrStop(void)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Releases resources and changes the internal state to STOP. +
+Releases handles for the Utility Timer and ParameterStorageManager. +
+Stops liveness monitoring, releases the PL WDT handle, and finalizes the PL WDT. +
+
+** This API must not be called simultaneously.
+** This API must not be called from multiple threads.
+** This API must not be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information* +
+
+[#_TableEsfPwrMgrStopError]
+.EsfPwrMgrStop Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Stop succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|Called while already in STOP state
+|No action required
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in ParameterStorageManager operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in HAL operation
+|Retry; if it does not recover, reboot the system
+
+|===
+
+
+[#EsfPwrMgrStopForReboot]
+==== EsfPwrMgrStopForReboot
+* *Function* +
+Stops the Power Manager and waits for reboot by WDT.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrStopForReboot(void)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Releases all resources except PL WDT and changes the internal state to STOP. +
+Releases handles for the Utility Timer and ParameterStorageManager. +
+Stops transmission of KeepAlive for device liveness monitoring. +
+If KeepAlive has already been stopped via ``**EsfPwrMgrWdtTerminate**``, the stopped state is maintained. +
+Up to 60 seconds after execution of this API, `WdtCallBack` will be triggered.
+
+** This API must not be called simultaneously.
+** This API must not be called from multiple threads.
+** This API must not be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+** After executing this API, no Power Manager APIs except ``**EsfPwrMgrExecuteShutdown**``, ``**EsfPwrMgrExecuteRebootEx**``, and ``**EsfPwrMgrWdtKeepAlive**`` may be called.
+
+* *Error Information* +
+
+[#_TableEsfPwrMgrStopForReboot]
+.EsfPwrMgrStopForReboot Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|No action required
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in ParameterStorageManager operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in HAL operation
+|Retry; if it does not recover, reboot the system
+
+|===
+
+[#rebootapi]
+{blank}
+
+[#EsfPwrMgrPrepareReboot]
+==== EsfPwrMgrPrepareReboot
+* *Function* +
+Initiates a system reboot.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrPrepareReboot(void)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Notifies ESF (main) of the reboot event and triggers necessary processing. +
+If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrErrorAlreadyRunning**``.
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information* +
+
+[#_TableEsfPwrMgrPrepareRebootError]
+.EsfPwrMgrPrepareReboot Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorAlreadyRunning
+|Already running
+|Reboot or shutdown in progress
+|Wait for the running operation to complete
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in ESF (main) operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+|===
+
+[#EsfPwrMgrExecuteRebootEx]
+==== EsfPwrMgrExecuteRebootEx
+* *Function* +
+Executes a system reboot.
+
+* *Format* +
++
+``** void EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootType reboot_type)**``  
+
+* *Arguments* +
++
+**``[IN] EsfPwrMgrRebootType reboot_type``**::  
+Reboot method.
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+None.
+
+* *Description* +
+Performs a system reboot using PL (SystemControl). +
+If `EsfPwrMgrRebootTypeSW` is specified, a software reboot is executed. +
+If `EsfPwrMgrRebootTypeHW` is specified, a hardware reboot is executed. +
+This API can be called even when Power Manager is in the STOP state. +
+If this API succeeds, the device is rebooted and no return occurs. +
+
+** This API must not be called simultaneously.
+** This API must not be called from multiple threads.
+** This API must not be called from multiple tasks.
+
+* *Error Handling* +
+If an error occurs during execution, the following behavior occurs: +
+** The system enters infinite sleep, outputs a message prompting a reboot, and does not return from the function.
+
+[#shutdownapi]
+{blank}
+
+[#EsfPwrMgrPrepareShutdown]
+==== EsfPwrMgrPrepareShutdown
+* *Function* +
+Initiates a system shutdown.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrPrepareShutdown(void)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Notifies ESF (main) of the shutdown event and triggers necessary processing. +
+If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrErrorAlreadyRunning**``.
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information* +
+
+[#_TableEsfPwrMgrPrepareShutdownError]
+.EsfPwrMgrPrepareShutdown Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorAlreadyRunning
+|Already running
+|Reboot or shutdown in progress
+|Wait for the running operation to complete
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in ESF (main) operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+|===
+
+
+[#EsfPwrMgrExecuteShutdown]
+==== EsfPwrMgrExecuteShutdown
+* *Function* +
+Executes system shutdown.
+
+* *Format* +
++
+``** void EsfPwrMgrExecuteShutdown(void)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+None.
+
+* *Description* +
+Performs system shutdown using PL (SystemControl). +
+This API can be executed even when the Power Manager is in the STOP state. +
+If this API succeeds, the device is shut down and no return occurs. +
+
+** This API must not be called concurrently.
+** This API must not be called from multiple threads.
+** This API must not be called from multiple tasks.
+
+* *Error Handling* +
+If an error occurs within this API, the following behavior is taken: +
+** The system enters infinite sleep, outputs a message prompting a reboot, and does not return from the function.
+
+[#infoapi]
+{blank}
+
+[#EsfPwrMgrGetVoltage]
+==== EsfPwrMgrGetVoltage
+* *Function* +
+Retrieves operating voltage information. (T.B.D.)
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetVoltage(int32_t *voltage)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] int32_t *voltage``**::  
+Operating voltage information. +
+
+NOTE: The voltage is currently retrieved as raw ADC values.
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Retrieves the operating voltage information via HAL (T.B.D.) and returns it. +
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrGetVoltageError]
+.EsfPwrMgrGetVoltage Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorInvalidArgument
+|Invalid argument
+|NULL was specified for **``voltage``**
+|Specify a valid argument and retry
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in external API
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorUnsupportedApi
+|Unsupported API error
+|None
+|This API is currently not supported. Do not use it.
+
+|===
+
+
+[#EsfPwrMgrGetSupplyType]
+==== EsfPwrMgrGetSupplyType
+* *Function* +
+Retrieves the power supply type.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetSupplyType(EsfPwrMgrSupplyType *supply_type)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] EsfPwrMgrSupplyType *supply_type``**::  
+Power supply type information +
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Retrieves power supply type information from PL (power_manager) and returns <<#_Table_EsfPwrMgrSupplyType, EsfPwrMgrSupplyType>>. +
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrGetSupplyTypeError]
+.EsfPwrMgrGetSupplyType Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorInvalidArgument
+|Invalid argument
+|**``supply_type``** was NULL
+|Specify a valid argument and retry
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred in PL operation
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+
+|===
+
+[#hoursmeterapi]
+{blank}
+
+[#EsfPwrMgrHoursMeterGetValue]
+==== EsfPwrMgrHoursMeterGetValue
+* *Function* +
+Retrieves the current value of the HoursMeter.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrHoursMeterGetValue(int32_t *hours)**``  
+
+* *Arguments* +
++
+**``[IN] None``**:: 
+
+**``[OUT] int32_t *hours``**::  
+Current value of the HoursMeter +
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Retrieves the current value of the HoursMeter. +
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_Table_EsfPwrMgrHoursMeterGetValueError]
+.EsfPwrMgrHoursMeterGetValue Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred in mutual exclusion control
+|Retry; if it does not recover, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if it does not recover, reboot the system
+
+|kSsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|===
+
+[#wdtapi]
+{blank}
+
+[#WdtCallBack]
+==== WdtCallBack
+* *Function* +
+Executes the process upon detecting device liveness monitoring failure.
+
+* *Format* +
++
+``** static void WdtCallBack(void *private_data)**``
+
+* *Arguments* +
++
+**``[IN,OUT] void *private_data``**::  
+Callback function input/output argument. Not used.
+
+* *Return Value* +
++
+None.
+
+* *Description* +
+Callback function registered to PL WDT. Not callable from outside. +
+Stores the exception information of the last running task in RTC memory. +
+WDT Reboot will be executed. +
+If this API succeeds, the device is rebooted and no return occurs. +
+When EXTERNAL_POWER_MANAGER_WDT_DUMP_ENABLE is enabled, full stack information is output. +
+
+** This API must not be called concurrently.
+** This API must not be called from multiple threads.
+** This API must not be called from multiple tasks.
+
+* *Error Handling* +
++
+If an internal error occurs, logs will be output, and processing will continue.
+
+
+[#EsfPwrMgrWdtTerminate]
+==== EsfPwrMgrWdtTerminate
+* *Function* +
+Stops KeepAlive transmission for device liveness monitoring.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrWdtTerminate(void)**``
+
+* *Arguments* +
++
+**``[IN] None``**::
+
+**``[OUT] None``**::
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Stops KeepAlive transmission for device liveness monitoring. +
+After this API is executed, the WdtCallBack will be invoked in up to 60 seconds. +
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrWdtTerminate]
+.EsfPwrMgrWdtTerminate Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred during mutual exclusion control
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|PL operation caused an error
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if not recovered, reboot the system
+
+|===
+
+[#EsfPwrMgrWdtKeepAlive]
+==== EsfPwrMgrWdtKeepAlive
+* *Function* +
+Sends KeepAlive for device liveness monitoring.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrWdtKeepAlive(void)**``
+
+* *Arguments* +
++
+**``[IN] None``**::
+
+**``[OUT] None``**::
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Sends KeepAlive for device liveness monitoring. +
+After this API is executed, the WDT timeout period is reset. +
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+TIP: If ``**EsfPwrMgrWdtTerminate**`` or ``**EsfPwrMgrWdtStopForReboot**`` was previously executed, the WDT timeout will be as follows: +
+If the configured timeout is 60 seconds or less: configured timeout in seconds +
+If the configured timeout exceeds 60 seconds: 60 seconds
+
+* *Error Information*
+
+[#_TableEsfPwrMgrWdtKeepAlive]
+.EsfPwrMgrWdtKeepAlive Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred during mutual exclusion control
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|PL operation caused an error
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if not recovered, reboot the system
+
+|===
+
+[#exceptioninfoapi]
+{blank}
+
+
+[#EsfPwrMgrGetExceptionInfo]
+==== EsfPwrMgrGetExceptionInfo
+* *Function* +
+Retrieves exception information.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetExceptionInfo(struct EsfPwrMgrExceptionInfo **info, uint32_t *info_size)**``
+
+* *Arguments* +
++
+**``[IN] None``**::
+
+**``[OUT] <<#_DataType_EsfPwrMgrExceptionInfo, struct EsfPwrMgrExceptionInfo>> **info``**:: 
+Pointer to exception information +
+
+**``[OUT] uint32_t *info_size``**:: 
+Size of the exception information +
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Retrieves exception information from RTC memory and returns a pointer to the exception data and its size. +
+The memory for exception information is managed internally by Power Manager, so the caller must not attempt to free it. +
+The memory will be released when either <<#EsfPwrMgrStop, EsfPwrMgrStop>> or <<#EsfPwrMgrClearExceptionInfo, EsfPwrMgrClearExceptionInfo>> is executed.
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrGetExceptionInfoError]
+.EsfPwrMgrGetExceptionInfo Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorInvalidArgument
+|Invalid argument
+|Any of the following conditions occurred +
+**``info``** is NULL +
+**``info_size``** is NULL +
+|Specify valid arguments and retry
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred during mutual exclusion control
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if not recovered, reboot the system
+
+|===
+
+[#EsfPwrMgrConvExceptionInfo]
+==== EsfPwrMgrConvExceptionInfo
+* *Function* +
+Converts exception information into text format.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrConvExceptionInfo(
+  struct EsfPwrMgrExceptionInfo *info, char *dst, uint32_t dst_size)**``
+
+* *Arguments* +
++
+**``[IN] <<#_DataType_EsfPwrMgrExceptionInfo, struct EsfPwrMgrExceptionInfo>> *info``**:: 
+Pointer to exception information +
+
+**``[OUT] char *dst``**:: 
+Buffer to store the exception information in text format +
+
+**``[IN] uint32_t dst_size``**:: 
+Size of the buffer to store the text-formatted exception information +
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Converts the given exception information into text format and stores it in the specified buffer. +
+If `dst_size` is between 1 and <<#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE, ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE>>, it may not be large enough to retrieve all data. In such case, the return value is still `kEsfPwrMgrOk`.
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrConvExceptionInfoError]
+.EsfPwrMgrConvExceptionInfo Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorInvalidArgument
+|Invalid argument
+|Any of the following conditions occurred +
+**``info``** is NULL +
+**``dst``** is NULL +
+**``dst_size``** is 0 +
+|Specify valid arguments and retry
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred during mutual exclusion control
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if not recovered, reboot the system
+
+|===
+
+[#EsfPwrMgrClearExceptionInfo]
+==== EsfPwrMgrClearExceptionInfo
+* *Function* +
+Clears exception information.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrClearExceptionInfo(void)**``
+
+* *Arguments* +
++
+**``[IN] None``**::
+
+**``[OUT] None``**::
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Clears exception information stored in RTC memory. +
+Frees the memory used internally by Power Manager to store exception information.
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion control to access state.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrClearExceptionInfoError]
+.EsfPwrMgrClearExceptionInfo Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorStatus
+|Invalid state
+|API called in STOP state
+|Retry after starting
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Timeout occurred during mutual exclusion control
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if not recovered, reboot the system
+
+|===
+
+[#resetcauseapi]
+{blank}
+
+[#EsfPwrMgrGetResetCause]
+==== EsfPwrMgrGetResetCause
+* *Function* +
+Retrieves the reset cause.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetResetCause(EsfPwrMgrResetCause *reset_cause)**``
+
+* *Arguments* +
++
+**``[IN] None``**::
+
+**``[OUT] <<#_DataType_EsfPwrMgrResetCause, EsfPwrMgrResetCause>> *reset_cause``**:: 
+Reset cause +
+
+* *Return Value* +
++
+Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+
+* *Description* +
+Returns the cause of the last reset. +
+
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+
+* *Error Information*
+
+[#_TableEsfPwrMgrGetResetCause]
+.EsfPwrMgrGetResetCause Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfPwrMgrOk
+|Success
+|Execution succeeded
+|None
+
+|kEsfPwrMgrErrorInvalidArgument
+|Invalid argument
+|**``reset_cause``** is NULL
+|Specify a valid argument and retry
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if not recovered, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other internal error occurred
+|Retry; if not recovered, reboot the system
+
+|===
+
+<<<
+
+== Example API Usage
+The following shows examples of how to invoke each API.
+
+=== Example Power Management API Call Sequence (Reboot)
+[#_ExamplePowerManagementAPICallSequence(Reboot)]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant HAL
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: Perform startup processing
+  esf_powermanager -->> -App : _
+
+  App ->> +esf_powermanager : EsfPwrMgrGetVoltage
+  esf_powermanager ->> +HAL : Get voltage information
+  HAL -->> -esf_powermanager : Voltage info
+  esf_powermanager -->> -App : Voltage info
+
+  App ->> +esf_powermanager : EsfPwrMgrPrepareReboot
+  alt Reboot already in progress
+    esf_powermanager -->> App : Reboot in progress response
+  else
+    esf_powermanager -->> App : Notify reboot event
+    esf_powermanager -->> -App : _
+  end
+  
+  Note over App: Starts operation upon receiving reboot event
+  Note over App: Perform reboot process
+  Activate esf_powermanager
+  App ->> esf_powermanager : EsfPwrMgrExecuteRebootEx
+  esf_powermanager ->> +HAL : Execute system reboot
+  alt Reboot successful
+    Note over App, HAL: System reboot occurs if successful
+  else Reboot failed
+    HAL -->> -esf_powermanager : Failure
+    Note over esf_powermanager: Infinite sleep
+  end
+  Deactivate esf_powermanager
+....
+
+=== Example HoursMeter API Call Sequence
+[#_ExampleHoursMeterAPICallSequence]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant esf_ds as ParameterStorageManager
+    participant HAL
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+
+  esf_powermanager ->> +esf_ds : Acquire handle
+  esf_ds -->> -esf_powermanager : _
+  esf_powermanager ->> +esf_ds : Retrieve HoursMeter value
+  esf_ds ->> +HAL : Retrieve HoursMeter value
+  HAL -->> -esf_ds : HoursMeter value
+  esf_ds -->> -esf_powermanager : HoursMeter value
+  Note over esf_powermanager: Store HoursMeter value
+
+  esf_powermanager ->> +HAL : Create timer thread
+  HAL -->> -esf_powermanager : _
+  esf_powermanager ->> +HAL : Start timer
+  HAL -->> -esf_powermanager : _
+
+  esf_powermanager -->> -App : _
+
+  loop Timer thread expires
+    HAL ->> +esf_powermanager : Timer thread calls callback function
+    Note over esf_powermanager: Increment HoursMeter value
+    esf_powermanager ->> +esf_ds : Save HoursMeter value
+    esf_ds ->> +HAL : Save HoursMeter value
+    HAL -->> -esf_ds : _
+    esf_ds -->> -esf_powermanager : _
+    esf_powermanager -->> -HAL : _
+  end
+  
+  App ->> +esf_powermanager : EsfPwrMgrHoursMeterGetValue
+  Note over esf_powermanager: Returns HoursMeter value maintained internally in PowerManager
+  esf_powermanager -->> -App : HoursMeter value
+
+  App ->> +esf_powermanager : EsfPwrMgrFinish
+  esf_powermanager ->> +esf_ds : Release handle
+  esf_ds -->> -esf_powermanager : _
+
+  esf_powermanager ->> HAL : Stop timer
+  HAL -->> esf_powermanager : _
+  esf_powermanager ->> HAL : Destroy timer thread
+  HAL -->> esf_powermanager : _
+
+  esf_powermanager -->> -App : _
+....
+
+=== Example Device Liveness Monitoring API Call Sequence
+[#_ExampleDeviceLivenessMonitoringAPICallSequence]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant PL
+    participant Util_MSG as UtilityMsg
+    participant OS
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: Execute startup process
+  esf_powermanager ->> +Util_MSG : UtilityMsgInitialize
+  Util_MSG -->> -esf_powermanager : _
+  esf_powermanager ->> +PL : PlWdtInitialize
+  PL -->> -esf_powermanager : _
+  esf_powermanager ->> +PL : PlWdtRegisterIrqHandler
+  PL -->> -esf_powermanager : _
+  esf_powermanager ->> +PL : PlWdtStart
+  PL -->> -esf_powermanager : _
+  esf_powermanager -->> -App : _
+
+  Note over OS: Liveness check NG (WDT triggered) — start operation
+  Activate esf_powermanager
+  OS ->> esf_powermanager : WDT trigger interrupt
+  Note over esf_powermanager: Execute reboot process
+  esf_powermanager ->> esf_powermanager : EsfPwrMgrExecuteRebootEx
+  esf_powermanager ->> +PL : Execute system reboot
+  alt Reboot succeeds
+    Note over App, OS: System reboot is triggered if process succeeds
+  else Reboot fails
+    PL -->> -esf_powermanager : Failure
+    Note over esf_powermanager: Enter infinite sleep
+  end
+  Deactivate esf_powermanager
+....
+
+<<<
+
+=== Example Exception Information API Call Sequence
+[#_ExampleExceptionInformationAPICallSequence]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant PL
+
+  Note over App, PL: WDT reboot
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: Execute startup process
+  esf_powermanager -->> -App : _
+
+  App ->> +esf_powermanager : EsfPwrMgrGetExceptionInfo
+  opt Exception info memory not yet allocated
+    esf_powermanager ->> esf_powermanager : Allocate exception info memory
+  end
+  esf_powermanager ->> +PL : PlSystemCtlGetExceptionInfo
+  PL -->> -esf_powermanager : Exception information
+  esf_powermanager -->> -App : Exception information
+
+  App ->> App : Save exception information to Flash
+
+  App ->> +esf_powermanager : EsfPwrMgrStop
+  Note over esf_powermanager: Execute shutdown process
+  opt Exception info memory already allocated
+    esf_powermanager ->> esf_powermanager : Free exception info memory
+  end
+  esf_powermanager -->> -App : _
+
+  App ->> +esf_powermanager : EsfPwrMgrExecuteRebootEx
+  Activate esf_powermanager
+  esf_powermanager ->> +PL : PlSystemCtlExecOperation
+  Deactivate esf_powermanager
+
+  Note over App, PL: Reboot
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: Execute startup process
+  esf_powermanager -->> -App : _
+
+  App ->> App : Read exception info size from Flash
+  App ->> App : Allocate memory for exception info
+  App ->> App : Read exception info from Flash
+  App ->> App : Allocate memory for text-formatted exception info
+
+  App ->> +esf_powermanager : EsfPwrMgrConvExceptionInfo
+  esf_powermanager ->> +PL : PlSystemCtlConvExceptionInfo
+  PL -->> -esf_powermanager : Exception information (text)
+  esf_powermanager -->> -App : Exception information (text)
+
+  App ->> App : Upload exception information (text)
+  App ->> App : Free memory for exception information (text)
+  App ->> App : Free memory for exception information
+
+  App ->> +esf_powermanager : EsfPwrMgrClearExceptionInfo
+  opt Exception info memory already allocated
+    esf_powermanager ->> +PL : PlSystemCtlClearExceptionInfo
+    PL -->> -esf_powermanager : _
+    esf_powermanager ->> esf_powermanager : Free exception info memory
+  end
+  esf_powermanager -->> -App : _
+....
+
+<<<
+
+== Notes and Component-Specific Information
+
+=== Constraints
+* Intermittent drive functionality is not supported.
+* Ethernet reset via USB current limit functionality is not supported.
+
+=== Required Functions from HAL and Other Modules
+.Required Functions from HAL and Other Modules
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|Module Name |Required Function |Description
+
+|PL
+|Shutdown/Reboot Execution Function
+|Function to perform system shutdown or reboot.
+
+|HAL
+|Operating Voltage Retrieval Function
+|Function to retrieve the operating voltage.
+
+|HAL I2C
+|I2C Control Function
+|Function to control the I2C interface of the device.
+
+|Utility Timer
+|Timer Function
+|Function to execute a registered handler when the timer expires.
+
+|PL WDT
+|WDT Control Function
+|Function to execute a registered handler when the watchdog timer triggers.
+
+|ESF(Main)
+|Reboot/Shutdown Event Handling Function
+|Function to send reboot/shutdown events to ESF(Main) and perform corresponding processing upon reception.
+
+|ESF(Parameter Storage Manager)
+|Data Storage Function
+|Function to store, retrieve, and delete structured data in non-volatile memory.
+
+|===
+
+=== Items Under Consideration
+* Intermittent drive functionality is under consideration. +
+It will be reviewed again when support is added.
+
+=== Non-Standard Extensions
+The following non-standard extensions are used in this module. +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|Extension |Description |Usage
+
+|**``##\\__VA_ARGS__``**
+|A gcc-specific extension of **``\\__VA_ARGS__``**. +
+Allows handling of macros with no arguments.
+|Used in macros for switching log output destinations.
+
+|===
+
+=== I2C Communication Connection Info for USB Standard Detection/Configuration on T5
+
+[_TableT5I2C]
+|===
+
+|Item |Block Name |Part Number |Address |dst pin |src pin |Register |Bit |Value
+
+|USB Power Source Detection
+|IoExp0
+|PCAL6416AEV
+|21h
+|POE_USB_SEL_ST
+|P1_0
+|01h
+|0
+|H: PoE +
+L: USB
+
+.2+^|CC 1.5A Support
+.2+^|CC Ctrl
+.2+^|FUSB303B
+|31h
+|BC_LVL
+|-
+|11h
+|2:1
+|00: Sink or not connected +
+01: Default current +
+10: 1.5A supported +
+11: 3A supported
+
+|31h
+|ENABLE
+|-
+|05h
+|3
+|1: I2C mode +
+0: GPIO mode
+
+|BC1.2 Support
+|IoExp0
+|PCAL6416AEV
+|21h
+|CHG_DET
+|P1_1
+|01h
+|1
+|H: BC1.2 supported +
+L: Not supported
+
+|===
+
+<<<
+
+== List of Used OSS
+No open-source software is used.
+
+<<<
+
+== References
+
+* Parameter Storage Manager
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/esf/parameter_storage_manager/ParameterStorageManager.adoc
+
+* Utility Timer
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/utility/timer/utility_timer.adoc
+
+* PL WDT
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/porting_layer/power_manager/wdt/pl_wdt.adoc
+
+* HAL I2C
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/i2c/hal_i2c.adoc
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes
+
+|0.1.0
+|Initial release
+
+|0.1.1
+|Feedback from detailed design
+
+* Data type list and definitions
+    ** Renamed type +
+       EsfPwrMgrFactryResetCause → EsfPwrMgrFactoryResetCause
+
+* API Definition: EsfPwrMgrStartFactoryReset
+    ** Changed argument type +
+       EsfPwrMgrFactryResetCause → EsfPwrMgrFactoryResetCause
+
+|0.1.2
+|Review feedback addressed
+
+* General
+** Removed mentions of intermittent drive functionality
+
+* API Usage Examples
+** Added reboot sequence
+
+Design feedback
+
+* API Usage Examples
+** Removed Parameter Storage Manager API calls
+** Updated order of NotifyEvent and LED Manager execution
+
+|0.1.3
+|Support for ESF reconfiguration
+
+* Added HoursMeter feature
+* Added device watchdog monitoring feature
+* Removed factory reset feature
+* Start/stop feature
+  ** Added USB current limit detection to EsfPwrMgrStart API
+* Renamed SSF to ESF
+* Added init/terminate processing for HAL APIs (Timer, WDT, I2C, SystemControl)
+
+|0.1.4
+|Implementation feedback
+
+* General
+** Updated naming from HAL WDT to PL WDT
+
+* Feature Descriptions
+** Start/Stop
+*** Added init/terminate of OSAL
+
+** USB Current Limit Functionality
+*** Noted enabling/disabling via config `EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE`
+*** Changed macro `ESF_POWER_MANAGER_DEVICE_FOR_NE2` to config `EXTERNAL_POWER_MANAGER_NE2_DEVICE_ENABLE`
+
+** HoursMeter
+*** Added note on macro `ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL`
+
+** Device Watchdog
+*** Changed function name from `EsfPwrMgrWatchdogTimerFailureHandler` to `EsfPwrMgrOnWdtTimeout`
+
+* Data Types
+** Removed `ESF_POWER_MANAGER_DEVICE_FOR_NE2` due to migration to config
+
+* API Definitions
+** EsfPwrMgrStart
+*** Added OSAL initialization
+
+** EsfPwrMgrOnWdtTimeout
+*** Adjusted arguments to match callback function type
+*** Noted this is not an external API
+
+* API Usage Examples
+** HoursMeter sequence updated with latest Utility Timer API
+** Device watchdog sequence updated with OSAL/PL API changes
+
+* T5 USB I2C Info
+** Updated dst pin for CC1.5A support to BC_LVL
+
+|0.1.5
+|Feedback from PL integration
+
+* General
+** Renamed HAL WDT → PL WDT
+** Renamed HAL Timer → Utility Timer
+** Updated timing of HAL, PL, OSAL init/terminate
+
+* Section 6.5: T5 USB I2C Info
+** Added access details for CC Ctrl, ENABLE register
+
+|0.1.6
+|Followed HAL implementation +
+HAL voltage API removed from header, EsfPwrMgrGetVoltage returns unsupported error until interface is provided
+
+* Section 4.3: Data Types
+** Added `kEsfPwrMgrErrorUnsupportedApi` to EsfPwrMgrError
+
+* Section 4.4: API Details
+** EsfPwrMgrGetVoltage +
+    Added note for unsupported API error
+
+|0.1.7
+|Updated to reflect LEDManager spec changes +
+
+* General
+** Removed descriptions related to LEDManager
+
+|0.1.8
+|Added WDT Terminate API +
+
+* General
+** Added EsfPwrMgrWdtTerminate API
+
+|0.1.9
+|Added API to stop PowerManager and wait for WDT reboot +
+
+* General
+** Added EsfPwrMgrStopForReboot API
+** Revised description of EsfPwrMgrWdtTerminate
+
+|0.1.10
+|Added API to send WDT KeepAlive +
+
+* General
+** Added EsfPwrMgrWdtKeepAlive API
+
+|0.1.11
+|Added Exception Information Feature +
+Added Reset Cause Retrieval Feature +
+
+* General
+** Renamed `EsfPwrMgrOnWdtTimeout` to `WdtCallBack`
+** Added EsfPwrMgrGetResetCause API
+** Added EsfPwrMgrGetExceptionInfo API
+** Added EsfPwrMgrConvExceptionInfo API
+** Added EsfPwrMgrClearExceptionInfo API
+
+** Section 3.5.4 USB Current Limit Feature
+*** Changed config `EXTERNAL_POWER_MANAGER_NE2_DEVICE_ENABLE` to `EXTERNAL_POWER_MANAGER_USB_DEVICE_ENABLE`
+
+* Section 4.3: Data Types
+** Added `ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE`
+** Added `struct EsfPwrMgrExceptionInfo`
+** Added `EsfPwrMgrResetCause`
+
+* Section 4.4.11: WdtCallBack Description
+** Added description for `EXTERNAL_POWER_MANAGER_WDT_DUMP_ENABLE`
+
+* Section 5: API Usage Examples
+** Added Exception Information API call sequence
+
+|===

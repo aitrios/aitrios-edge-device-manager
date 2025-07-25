@@ -1,0 +1,2206 @@
+= Clock Manager 機能仕様書
+:sectnums:
+:sectnumlevels: 4
+:chapter-label:
+:revnumber: 0.0.6
+:toc:
+:toc-title: 目次
+:toclevels: 4
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書はAITRIOSのClock Managerを定義する。Clock Managerは時刻同期を行うNTP Clientの動作を管理する。 +
+NTP Clientに必要なパラメータ設定をOSSの外部へ出すことで上位モジュールからの時刻同期制御を行いやすくする。
+// XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+=== stepモード
+時刻を修正する方法の一種である。 +
+システム内の時刻とNTPサーバの時刻の差を即座に修正する方法である。
+
+=== slewモード
+時刻を修正する方法の一種である。 +
+システム内の時刻とNTPサーバの時刻の差を徐々に縮めることで、少しずつ時刻を修正する方法である。
+
+=== Sanity Limit
+1つのサンプルをNTP時刻同期計算に受け入れるか否かのしきい値である。1つのサンプルから ``Network Time Protocol Version 4: Protocol and Algorithms Specification'' [<<#_thebibliography1,1>>] で定義されている theta を計算した結果の絶対値を上から評価する上限非負整数である。 +
+thetaの絶対値が与えられた時間以上になった場合、時刻同期処理停止などの制御を行う。
+
+=== RTC補正値
+本システムRTC時刻とNTPサーバ時刻の差である。 +
+本システムRTC時刻を基準にしたオフセット値で表現する。
+
+=== NTPパケット通信時間
+本システムとNTPサーバ間のパケット往復にかかった時間。いわゆるラウンドトリップ (round-trip) である。
+
+=== NTP情報
+時刻同期に必要なパラメータである。 +
+NTPサーバのhost nameもしくはそのIPv4アドレスとNTP時刻同期アルゴリズムへの補助入力である。
+Parameter Storage Managerで保存している。但し、Parameter Storage Managerで保存する本筋は、動作確認が取れたものに限る。
+というのは、不揮発への保存は動作が確かに取れたものに限るという設計思想に因るためである。
+
+=== NTP時刻
+NTPサーバから取得した時刻情報である。
+
+=== 本機能仕様書で用いる記号と関数
+.本機能仕様書で用いる関数と記号の説明
+[width="100%", cols="50%,50%",options="header"]
+|===
+|記号と関数|説明
+|〔B〕|単位はバイトであることを表す。
+|〔ms〕|単位はミリ秒であることを表す。
+|[a, b]| 閉区間表す。実数aとbに対して、a ≦ x ≦ bなる実数xからなる集合を表す。
+|abs(x)|絶対値関数。実数xに対して、abs(x)はxの絶対値を返す関数。
+|floor(x)|床関数。実数xに対して、floor(x)はx以下の最大整数を返す関数。
+|sgn(x)|符号関数。実数xに対して、xが正ならばsgn(x)は1を返し、xが負ならばsgn(x)は-1を返し、xが0ならば0を返す関数。
+|⇔|論理同値。A⇔Bは、AとBは論理同値であることを表す。
+|===
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+Clock Managerは、NTP Clientに時刻同期を依頼するコンポーネントである。 +
+Clock Managerは、スレッド ―― “NTP Client Daemon監視用スレッド”と“登録されたコールバック関数コールスレッド”を有す。 +
+Clock Managerが提供する“動作開始用公開関数”が呼び出されるならば、Clock ManagerはそれらスレッドとNTP Client Daemonを起動する。 +
+
+.概要図
+[source,mermaid]
+....
+graph TB
+    ds["上位モジュール<br>(Appなど)"]
+    cm["Clock Manager"]
+  style cm fill:#3cb371,stroke:#333
+
+  subgraph PL["PL"]
+    nc["NTP Client"]
+  end
+
+  clock["CLOCK_REALTIME<br>(内部クロック)"]
+  server[("NTP Server")]
+
+ds --->|"Start指示(Clock Manager起床)<br>NTP情報/動作パラメータ"| cm
+cm -->|"NTP Client起床<br>NTP情報"| nc
+server -.->|"NTP時刻情報"| nc
+nc --->|"時刻同期"| clock
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+
+* Clock Managerは、 以下の機能を有する： +
+1. スレッドを有すること。
+2. NTP情報設定APIおよびNTP情報取得APIを提供すること。
+3. Parameter Storage Managerから読み取る、または、APIの引数にて上位モジュールから与えられるNTP情報を取得すること。
+4. そのNTP情報を以って、NTP Client Daemonへシステム内部Clock（時刻情報）とNTP時刻同期を依頼すること。
+5. 動作開始用公開関数と終了用公開関数を提供すること。
+6. その動作開始用公開関数が呼び出されるとスレッドを生成し、その後に、NTP Client Daemonを起動すること。
+7. その終了用公開関数が呼び出されるとそのNTP Client Daemonとそのスレッドを終了させること。
+8. NTP時刻同期完了通知の仕組みを有すること。
+
+† 注釈：アプリケーションはPOSIXのI/Fを使用して時刻情報を取得する。
+
+
+.データフロー図
+[source,mermaid]
+....
+graph TB
+
+refapp["APP"]
+ds["上位モジュール"]
+cm["Clock Manager"]
+style cm fill:#3cb371,stroke:#333
+clock["CLOCK_REALTIME"]
+server[("NTP Server")]
+nc["NTP Client"]
+
+ds --->|"Clock Manager起動要求"| cm
+ds --->|"NTP情報設定要求"| cm
+ds --->|"NTP情報取得要求"| cm
+cm -->|"NTP情報取得要求のリターンによってNTP情報"| ds
+ds --->|"Clock Manager停止要求"| cm
+cm --->|"NTP Client Daemon起動要求 & NTP情報"| nc
+cm --->|"NTP Client Daemon停止要求"| nc
+cm --->|"ステータス確認"| nc
+nc -->|"ステータス確認のリターンによってステータス"| cm
+nc -.->|"時刻同期"| clock
+nc -->|"時刻情報"| clock
+server -->|"NTP時刻情報"| nc
+clock --->|"時刻"| refapp
+....
+
+<<<
+
+=== 状態遷移
+Clock Managerの取り得る状態を<<#_TableStates>>に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明
+|IDLE|待機状態
+|READY|Clock Manager初期化済み状態
+|RUNNING|実行状態
+|===
+
+Clock Managerでは各APIを呼び出すことで<<#_FigureAbstractOfPPL>>に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureAbstractOfPPL]
+.状態遷移図
+[source,mermaid]
+....
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> READY: Clock Manager初期化完了
+  READY --> RUNNING : 起動完了
+  RUNNING --> READY : 停止完了
+  READY --> IDLE : Clock Managerリソース解放完了
+....
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。×はAPI受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_EsfClockManagerReturnValue>>を参照してください。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,42%,16%,16%,16%"]
+|===
+2.2+| 3+|状態
+|IDLE |READY|RUNNING
+.9+|API名
+
+|``**`EsfClockManagerInit`**``
+|READY
+|―
+|×
+
+|``**`EsfClockManagerDeinit`**``
+|―
+|IDLE
+|×
+
+|``**`EsfClockManagerSetParamsForcibly`**``
+|×
+|―
+|―
+
+|``**`EsfClockManagerSetParams`**``
+|×
+|―
+|―
+
+|``**`EsfClockManagerGetParams`**``
+|×
+|―
+|―
+
+|``**`EsfClockManagerStart`**``
+|×
+|RUNNING
+|×
+
+|``**`EsfClockManagerStop`**``
+|×
+|―
+|READY
+
+|``**`EsfClockManagerRegisterCbOnNtpSyncComplete`**``
+|×
+|―
+|―
+
+|``**`EsfClockManagerUnregisterCbOnNtpSyncComplete`**``
+|×
+|―
+|―
+
+|===
+
+×：エラー（ `kClockManagerStateTransitionError` ）を返す +
+―：状態は変化しない（OKを返す）
+
+* 補足 +
+  IDLE→READY (resp., IDLE→RUNNING、RUNNING→READY、READY→IDLE) の遷移は、初期化 (resp., スレッド起動、スレッド停止、リソース解放) が成功で完了した後のみに生じる遷移である。失敗した場合は、状態遷移をしない。 +
+  Clock Managerが有するスレッドについては <<#_NonFunction1>>を参照されたい。
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|NTP Client等のパラメータ設定
+|1. 上位モジュールからNTPサーバのhost nameもしくはそのIPv4アドレス、NTP時刻同期に必要なパラメータとClock ManagerのスレッドがNTP Client Daemonを監視する周期を取得する。 +
+2. 前項1のパラメータをNTP時刻同期完了を以ってParameter Storage Managerへ保存する。
+|<<#_Function1>>
+
+|NTP Client等のパラメータ不揮発からの読み出し
+|1. Parameter Storage ManagerからNTPサーバのhost nameもしくはそのIPv4アドレス、NTP時刻同期に必要なパラメータとClock ManagerのスレッドがNTP Client Daemonを監視する周期を取得する。
+|<<#_Function2>>
+
+|Clock Managerが有するスレッド制御
+|Clock Managerが公開する“動作開始用公開関数”が呼び出されるならば、Clock Managerが有するスレッドを生成する。 +
+Clock Managerが公開する“終了用公開関数”が呼び出されるならば、Clock Managerが有するスレッドを終了する。
+|<<#_Function3>>
+
+|NTP Client Daemonの制御
+|Clock Managerが公開する“動作開始用公開関数”が呼び出されるならば、<<#_Function1>>または<<#_Function2>>で取得したパラメータを用いて、NTP Client Daemon監視用スレッド起動とNTP Client Daemonを起動する。 +
+Clock Managerが提供する“終了用公開関数”が呼び出されるならば、そのNTP Client Daemonを終了する。
+|<<#_Function4>>
+
+|NTP Client Daemonの監視
+|NTP Client Daemonの状態を監視し、異常を検出するならばエラーログ出力を行う。
+|<<#_Function5>>
+
+|NTP時刻同期完了通知
+|NTP Client Daemonを監視してNTP時刻同期完了が発生したときに、それをコールバック関数で通知する。
+ただし、NTP時刻同期が失敗したときは、コールバック関数で通知をしない。つまり、そのコールバック関数による通知が生じるのは、NTP時刻同期が成功したときに限る。
+|<<#_Function6>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== NTP Client等のパラメータ設定
+* 機能概要 +
+    上位モジュールから与えられた仮引数よりNTP情報とNTP Client Daemon監視周期を抽出する。 +
+    その取り出した各種値を“NTP時刻同期完了を以って”Parameter Storage Managerへ保存する。 +
+    取得するNTP情報とNTP Client Daemon監視周期は<<#_EsfClockManagerParams,`EsfClockManagerParams`>>である。
+* 前提条件
+    ** Parameter Storage Managerモジュールが起動していること。
+* 機能詳細
+    ** 詳細挙動 +
+        Clock Managerが提供する“NTP Client等のパラメータ設定用公開関数”が上位モジュールから呼び出されると、以下を行う：
+        *** Clock Managerは、呼び出されたコンテキストで各種値のパラメータチェックを行い、
+        *** それが適切であったときに限り、Clock Managerは、呼び出されたコンテキストでParameter Storage Managerへ保存する。但し、それをParameter Storage Managerへ書き込み依頼をする本筋は、NTP時刻同期完了が生じた後である ―― それ迄は、揮発領域で保持する。
+    ** エラー時の挙動、復帰方法 +
+        Clock Managerが提供する“NTP Client等のパラメータ設定用公開関数”で与えられたパラメータに異常値がある場合は、
+        *** Clock Managerはそのときに与えられたどの値もParameter Storage Managerへ保存することはせず、
+        *** Clock Managerはそのとき与えられた値一式を保持することはせず、
+        *** エラーを返す。
+    ** 検討事項 +
+        なし +
+
+[#_Function2]
+==== NTP Client等のパラメータ不揮発からの読み出し
+* 機能概要 +
+    Parameter Storage ManagerよりNTP情報とNTP Client Daemon監視周期を取得する。 +
+    読み出すNTP情報とNTP Client Daemon監視周期は<<#_EsfClockManagerParams,`EsfClockManagerParams`>>である。
+* 前提条件
+    ** Parameter Storage Managerモジュールが起動していること。
+* 機能詳細
+    ** 詳細挙動 +
+        実行コンテキストは、Clock Managerが有するスレッドではない。この読み出しは、2つの場合がある。
+        1つ目は後述するClock Managerが公開する関数： `EsfClockManagerGetParams` が呼び出されたとき、2つ目は後述するClock Managerが公開する関数： `EsfClockManagerStart` が呼び出されたときである。 +
+        　 +
+        (1) `EsfClockManagerGetParams` が呼び出され、かつ、
+        端末が起動してから `EsfClockManagerGetParams` が呼び出される迄に
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` によって正しいパラメータが
+        設定されていないならば、
+        Aを実行する。 +
+        ここに、Aとは、次のことである： +
+        (a) Parameter Storage Managerから保存されているNTP Client等のパラメータを読み出し、
+        (b) 読み出した各種値のパラメータチェックを行い、
+        (i) それが適切であったときに限り、呼び出し元へその不揮発データを渡す；
+        (ii) さもなくば、予め定めておくデフォルト値を採用して、呼び出し元へそれを渡す。 +
+        　 +
+        (2) `EsfClockManagerStart` が呼び出され、かつ、
+        端末が起動してから `EsfClockManagerStart` が呼び出される迄に
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` によって正しいパラメータが
+        設定されていないならば、
+        Bを実行する。 +
+        ここに、Bとは、次のことである： +
+        (a) Parameter Storage Managerから保存されているNTP Client等のパラメータを読み出し、
+        (b) 読み出した各種値のパラメータチェックを行い、
+        (i) それが適切であったときに限り、その値を採用して、
+        “NTP Client Daemon監視用スレッド”生成とNTP Client公開関数へ渡す；
+        (ii) さもなくば、予め定めておくデフォルト値を採用して、
+        “NTP Client Daemon監視用スレッド”生成とNTP Client公開関数へ渡す。
+    ** エラー時の挙動、復帰方法 +
+        Parameter Storage Managerから読み取ったNTP Client等のパラメータが不正値であるときは、予め定めておくデフォルト値を採択して、`EsfClockManagerGetParams` のリターンで返す値とする、または、 “NTP Client Daemon監視用スレッド”およびNTP Client公開関数へ渡す。 +
+    ** 検討事項 +
+        *** なし +
+
+[#_Function3]
+==== Clock Managerが有するスレッド制御
+* 機能概要 +
+    ** Clock Managerが公開する“動作開始用公開関数”が呼び出されるならば、Clock Managerが有するスレッドを生成する。
+    ** Clock Managerが公開する“終了用公開関数”が呼び出されるならば、Clock Managerが有するスレッドを終了する。
+* 前提条件
+    ** Parameter Storage Managerモジュールが起動していること。
+* 機能詳細
+    ** 詳細挙動 +
+        実行コンテキストは、Clock Managerが有するスレッドではない。 +
+        Clock Managerが公開する“終了用公開関数”が呼び出されるならば、Clock Managerが有するスレッドを終了する。 +
+        Clock Managerが提供する“動作開始用公開関数”が上位モジュールから呼び出されると、 +
+        Clock Managerは、呼び出されたコンテキストで“NTP Client Daemon監視用スレッド”の生成を行う。 +
+        Clock Managerが公開する“動作開始用公開関数”が呼び出される場合は2つある；
+        1つ目は後述するClock Managerが公開する関数： `EsfClockManagerSetParamsForcibly`/`EsfClockManagerSetParams` が呼び出されて適切な数値が設定された後で `EsfClockManagerStart` が呼び出されたとき、2つ目は後述するClock Managerが公開する関数： `EsfClockManagerSetParamsForcibly`/`EsfClockManagerSetParams` が呼び出されずに `EsfClockManagerStart` が呼び出されたときである。 +
+        　 +
+        (1) 端末が起動してから `EsfClockManagerStart` が呼び出される迄に
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` が呼び出され、かつ、
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` によって正しいパラメータが
+        設定されているならば、
+        C' を実行する。 +
+        ここに、C' とは、“揮発領域に保持しているパラメータで`NTP Client Daemon監視用スレッド'を生成する”である。 +
+        　 +
+        (2) 端末が起動してから `EsfClockManagerStart` が呼び出される迄に
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` が呼び出され、かつ、
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` によって正しいパラメータが
+        設定されていないならば、
+        Cを実行する。 +
+        ここに、Cとは、次のことである： +
+        (a) Parameter Storage Managerから保存されているNTP Client等のパラメータを読み出し、
+        (b) 読み出した各種値のパラメータチェックを行い、
+        (i) それが適切であったときに限り、その値を採用して、“NTP Client Daemon監視用スレッド”を生成する；
+        (ii) さもなくば、予め定めておくデフォルト値を採用して、“NTP Client Daemon監視用スレッド”を生成する。
+    ** エラー時の挙動、復帰方法 +
+        Parameter Storage Managerから読み取ったNTP Client等のパラメータが不正値であるときは、予め定めておくデフォルト値を採択して、“NTP Client Daemon監視用スレッド”へ渡す。“NTP Client Daemon監視用スレッド”または“登録されたコールバック関数コールスレッド”が起動に失敗したならば、起動に成功したスレッドを終了させてリターンする。
+    ** 検討事項
+        *** なし +
+
+[#_Function4]
+==== NTP Client Daemonの制御
+* 機能概要 +
+    ** Clock Managerが公開する“動作開始用公開関数”が呼び出されるならば、<<#_Function1>>または<<#_Function2>>で取得したパラメータを用いて、NTP Client Daemon監視用スレッド起動とNTP Client Daemonを起動する。
+    ** Clock Managerが提供する“終了用公開関数”が呼び出されるならば、そのNTP Client Daemonを終了する。
+* 前提条件 +
+    ** NTP Client Daemon起動に必要なパラメータ設定が可能であること。
+* 機能詳細
+    ** 詳細挙動 +
+        Clock Managerが公開する“終了用公開関数”が上位モジュールから呼び出されるならば、NTP Client Daemonを終了する。 +
+        Clock Managerが提供する“動作開始用公開関数”が上位モジュールから呼び出されると、
+        Clock Managerは、呼び出されたコンテキストでNTP Client Daemonを起動する。 +
+        Clock Managerが公開する“動作開始用公開関数”が呼び出される場合は2つある；
+        1つ目は後述するClock Managerが公開する関数： `EsfClockManagerSetParamsForcibly`/`EsfClockManagerSetParams` が呼び出されて適切な数値が設定された後で `EsfClockManagerStart` が呼び出されたとき、2つ目は後述するClock Managerが公開する関数： `EsfClockManagerSetParamsForcibly`/`EsfClockManagerSetParams` が呼び出されずにEsfClockManagerStartが呼び出されたときである。 +
+        　 +
+        (1) 端末が起動してから `EsfClockManagerStart` が呼び出される迄に
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` が呼び出され、かつ、
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` によって正しいパラメータが
+        設定されているならば、
+        D' を実行する。 +
+        ここに、D' とは、“揮発領域に保持しているパラメータをNTP Client公開関数へ渡す”である。 +
+        　 +
+        (2) 端末が起動してから `EsfClockManagerStart` が呼び出される迄に
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` が呼び出され、かつ、
+        `EsfClockManagerSetParamsForcibly` / `EsfClockManagerSetParams` によって正しいパラメータが
+        設定されていないならば、
+        Dを実行する。 +
+        ここに、Dとは、次のことである： +
+        (a) Parameter Storage Managerから保存されているNTP Client等のパラメータを読み出し、
+        (b) 読み出した各種値のパラメータチェックを行い、
+            (i) それが適切であったときに限り、その値を採用して、NTP Client公開関数へ渡す；
+            (ii) さもなくば、予め定めておくデフォルト値を採用して、NTP Client公開関数へ渡す。
+    ** エラー時の挙動、復帰方法 +
+        *** “NTP Client Daemon監視用スレッド”起動失敗、“登録されたコールバック関数コールスレッド”起動失敗またはNTP Client Daemon起動失敗ならば、再起動はせずに“NTP Client Daemon監視用スレッド”も“登録されたコールバック関数コールスレッド”もNTP Client Daemonも起動していない状態にすることを試みてエラーを返す。
+
+[#_Function5]
+==== NTP Client Daemonの監視
+* 機能概要 +
+    NTP Client Daemonの状態を監視し、異常を検出するならばエラーログ出力を行う。
+* 前提条件 +
+    ** NTP Client Daemon監視用スレッドが起動していること。
+* 機能詳細
+    ** 詳細挙動 +
+        NTP Client Daemon監視用スレッドは、与えられた周期でNTP Client Daemonを監視する。
+    ** エラー時の挙動、復帰方法 +
+        *** NTP Client Daemon監視用スレッドがNTP Client Daemonのエラーを検出したならば、エラーログ出力を行う。
+
+[#_Function6]
+==== NTP時刻同期完了通知
+* 機能概要 +
+    ** NTP Client Daemon監視用スレッドがNTP時刻同期完了を検出するならば、Clock Managerが有する“登録されたコールバック関数コール用スレッド”に通知する。
+    ** “登録されたコールバック関数コール用スレッド”からそのコールバック関数をコールしてNTP時刻同期完了を通知する。
+* 前提条件 +
+    ** NTP Client Daemonが起動していること。
+    ** NTP情報を取得していること。
+    ** NTP Client Daemon監視用スレッドが起動していること。
+    ** “登録されたコールバック関数コール用スレッド”が起動していること。
+* 機能詳細
+    ** 詳細挙動 +
+        NTP Client Daemon監視用スレッドが与えられた周期でNTP Client Daemonを監視し、その中でNTP時刻同期完了を検出するならば、その完了を“登録されたコールバック関数コール用スレッド”へ通知する。
+        そして、“登録されたコールバック関数コール用スレッド”は登録されているコールバック関数のコールを以って、そのNTP時刻同期完了を上位モジュールへ通知する。 +
+        NTP時刻同期完了は次の条件を満足したときに限る：
+        *** NTP Client Daemonがサンプリングした個数が正数である。
+    ** エラー時の挙動、復帰方法 +
+        *** NTP Client Daemon監視用スレッドがNTP Client Daemonのエラーを検出したならば、エラーログ出力を行う。
+
+[#_FigureClockManagerSequence]
+.制御シーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  Clock Manager->>NTP Client: NTP情報<br>NTP Client Daemon起動要求(ntpc_start_with_params or ntpc_start_with_list)
+
+  loop ポーリング周期
+    Clock Manager->>NTP Client: ステータス確認(ntpc_status)
+    NTP Client-->>Clock Manager: ステータス（ntpc_statusのリターン）
+
+    alt NTP Client Daemonが停止していたとき
+      Clock Manager->>NTP Client: NTP情報<br>NTP Client Daemon起動要求(ntpc_start_with_params or ntpc_start_with_list)
+    end
+  end
+....
+
+.NTP情報強制更新のシーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  上位モジュール->>Clock Manager: 初期化要求(EsfClockManagerInit)
+  Clock Manager->>Parameter Storage Manager: EsfParameterStorageManagerOpen
+  Parameter Storage Manager-->>Clock Manager: EsfParameterStorageManagerOpenの成否
+  Clock Manager-->>上位モジュール: 初期化完了成否（EsfClockManagerInitのリターン）
+  opt 初期化完了成功のとき
+    上位モジュール->>Clock Manager: NTP情報等取得要求(EsfClockManagerGetParams)
+    opt 受理した設定要求が未だ一度もないとき
+      Clock Manager->>Parameter Storage Manager: NTP情報等を不揮発から取得要求(EsfParameterStorageManagerLoad)
+      Parameter Storage Manager-->>Clock Manager: 不揮発内のNTP情報等（EsfParameterStorageManagerLoadのリターン）
+    end
+    Clock Manager-->>上位モジュール: NTP情報等通知（EsfClockManagerGetParamsのリターン）
+    上位モジュール->>Clock Manager: NTP情報等強制設定要求(EsfClockManagerSetParamsForcibly)
+    opt 設定要求が受理可なとき
+      Clock Manager->>Parameter Storage Manager: NTP情報等を不揮発への保存要求(EsfParameterStorageManagerSave)
+      Parameter Storage Manager-->>Clock Manager: 保存成否（EsfParameterStorageManagerSaveのリターン）
+    end
+    Clock Manager-->>上位モジュール: NTP情報等強制設定要求の受理／否認（EsfClockManagerSetParamsForciblyのリターン）
+
+    上位モジュール->>Clock Manager: Clock Manager起動要求(EsfClockManagerStart)
+    Clock Manager->>NTP Client: NTP情報<br>NTP Client Daemon起動要求(ntpc_start_with_params or ntpc_start_with_list)
+    Clock Manager ->>NTP Client: NTP時刻同期完了等の状態チェック(ntpc_status)
+    NTP Client-->>Clock Manager: NTP時刻同期完了を検出（ntpc_statusのリターン）
+  end
+....
+
+.NTP情報更新のシーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  上位モジュール->>Clock Manager: 初期化要求(EsfClockManagerInit)
+  Clock Manager->>Parameter Storage Manager: EsfParameterStorageManagerOpen
+  Parameter Storage Manager-->>Clock Manager: EsfParameterStorageManagerOpenの成否
+  Clock Manager-->>上位モジュール: 初期化完了成否（EsfClockManagerInitのリターン）
+  opt 初期化完了成功のとき
+    上位モジュール->>Clock Manager: NTP情報等取得要求(EsfClockManagerGetParams)
+    opt 受理した設定要求が未だ一度もないとき
+      Clock Manager->>Parameter Storage Manager: NTP情報等を不揮発から取得要求(EsfParameterStorageManagerLoad)
+      Parameter Storage Manager-->>Clock Manager: 不揮発内のNTP情報等（EsfParameterStorageManagerLoadのリターン）
+    end
+    Clock Manager-->>上位モジュール: NTP情報等通知（EsfClockManagerGetParamsのリターン）
+    上位モジュール->>Clock Manager: NTP情報等設定要求(EsfClockManagerSetParams)
+    Clock Manager-->>上位モジュール: NTP情報等設定要求の受理／否認（EsfClockManagerSetParamsのリターン）
+    上位モジュール->>Clock Manager: NTP時刻同期完了通知コールバック関数登録要求(EsfClockManagerRegisterCbOnNtpSyncComplete)
+    Clock Manager-->>上位モジュール: NTP時刻同期完了通知コールバック関数登録結果（EsfClockManagerRegisterCbOnNtpSyncCompleteのリターン）
+
+    上位モジュール->>Clock Manager: Clock Manager起動要求(EsfClockManagerStart)
+    Clock Manager->>NTP Client: NTP情報<br>NTP Client Daemon起動要求(ntpc_start_with_params or ntpc_start_with_list)
+    Clock Manager-->>上位モジュール: Clock Manager起動要求結果（EsfClockManagerStartのリターン）
+    Clock Manager->>NTP Client: NTP時刻同期完了等の状態チェック(ntpc_status)
+    NTP Client-->>Clock Manager: NTP時刻同期完了を検出（ntpc_statusのリターン）
+    Clock Manager->>Parameter Storage Manager: NTP情報等を不揮発への保存要求(EsfParameterStorageManagerSave)
+    Clock Manager->>上位モジュール: NTP時刻同期完了通知（コールバック関数コール）
+
+    上位モジュール->>Clock Manager: NTP情報等取得要求(EsfClockManagerGetParams)
+    Clock Manager-->>上位モジュール: NTP情報等通知（EsfClockManagerGetParamsのリターン）
+    上位モジュール->>Clock Manager: NTP情報等設定要求(EsfClockManagerSetParams)
+    Clock Manager-->>上位モジュール: NTP情報等設定要求の受理／否認（EsfClockManagerSetParamsのリターン）
+
+    上位モジュール->>Clock Manager: 停止要求(EsfClockManagerStop)
+    Clock Manager->>NTP Client: NTP Client Daemon停止要求(ntpc_stop)
+    Clock Manager->>NTP Client: NTP Client Daemonステータス確認(ntpc_status)
+    NTP Client-->>Clock Manager: NTP Client Daemon停止を検出（ntpc_statusのリターン）
+    Clock Manager-->>上位モジュール: 停止結果（EsfClockManagerStopのリターン）
+
+    上位モジュール->>Clock Manager: Clock Manager起動要求(EsfClockManagerStart)
+    Clock Manager->>NTP Client: NTP情報<br>NTP Client Daemon起動要求(ntpc_start_with_params or ntpc_start_with_list)
+    Clock Manager-->>上位モジュール: Clock Manager起動要求結果（EsfClockManagerStartのリターン）
+    Clock Manager->>NTP Client: NTP時刻同期完了等の状態チェック(ntpc_status)
+    NTP Client-->>Clock Manager: NTP時刻同期完了を検出（ntpc_statusのリターン）
+    Clock Manager->>Parameter Storage Manager: NTP情報等を不揮発への保存要求(EsfParameterStorageManagerSave)
+    Clock Manager->>上位モジュール: NTP時刻同期完了通知（コールバック関数コール）
+
+    上位モジュール->>Clock Manager: 停止要求(EsfClockManagerStop)
+    Clock Manager->>NTP Client: NTP Client Daemon停止要求(ntpc_stop)
+    Clock Manager->>NTP Client: NTP Client Daemonステータス確認(ntpc_status)
+    NTP Client-->>Clock Manager: NTP Client Daemon停止を検出（ntpc_statusのリターン）
+    Clock Manager-->>上位モジュール: 停止結果（EsfClockManagerStopのリターン）
+
+    上位モジュール->>Clock Manager: リソース解放要求(EsfClockManagerDeinit)
+    Clock Manager->>Parameter Storage Manager: EsfParameterStorageManagerClose
+    Parameter Storage Manager-->>Clock Manager: EsfParameterStorageManagerCloseの成否
+    Clock Manager-->>上位モジュール: リソース解放完了成否（EsfClockManagerDeinitのリターン）
+  end
+....
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>にClock Managerの非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Clock Managerが有するスレッド数 +
+（ `main` 関数が動くmainスレッドは含まない。）
+|2
+|<<#_NonFunction1>>
+|Stack最大使用量
+|XXX byte
+|<<#_NonFunction2>>
+|ヒープメモリ使用量
+|XXX byte
+|<<#_NonFunction3>>
+|===
+<<<
+
+=== コンポーネントの非機能要件説明
+2024/4/19 現在、本節はT.B.Dです
+
+[#_NonFunction1]
+==== スレッド構成
+Clock Managerモジュールはスレッドを起動させて動作する。（Clock Managerが有するスレッドは2つである。） +
+“NTP Client Daemon監視用スレッド”のスタックサイズは `CONFIG_ESF_CLOCK_MANAGER_NTP_CLIENT_MONITOR_STACKSIZE` 〔B〕である。 +
+一方、“登録されたコールバック関数コールスレッド”のスタックサイズは `CONFIG_ESF_CLOCK_MANAGER_NOTIFIER_STACKSIZE` 〔B〕である。
+
+[#_NonFunction2]
+==== Stack最大使用量
+T.B.D
+[#_NonFunction3]
+==== ヒープメモリ使用量
+T.B.D
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== Config一覧
+<<#_TableConfig>>にConfigの一覧を示す。
+
+[#_TableConfig]
+.Config一覧
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|Config名 |デフォルト値 |概要
+|`CONFIG_EXTERNAL_CLOCK_MANAGER`
+|`n`
+|Clock Manager有効/無効
+
+|`CONFIG_ESF_CLOCK_MANAGER_NTP_CLIENT_MONITOR_STACKSIZE`
+|`CONFIG_PTHREAD_STACK_DEFAULT`
+|“NTP Client Daemon監視用スレッド”のスタックサイズ
+
+|`CONFIG_ESF_CLOCK_MANAGER_NOTIFIER_STACKSIZE`
+|`3072`
+|“登録されたコールバック関数コールスレッド”のスタックサイズ
+
+|===
+
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示す。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|`EsfClockManagerReturnValue`
+|Clock Manager APIの実行結果を定義する列挙型
+|<<#_EsfClockManagerReturnValue>>
+
+|`EsfClockManagerParamType`
+|NTPパラメータ種別を指定する列挙型
+|<<#_EsfClockManagerParamType>>
+
+|`EsfClockManagerParams`
+|NTPパラメータを格納する構造体
+|<<#_EsfClockManagerParams>>
+
+|`EsfClockManagerParamsMask`
+|EsfClockManagerParams構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+|<<#_EsfClockManagerParamsMask>>
+
+|`EsfClockManagerConnection`
+|`EsfClockManagerParams` のサブ構造体 +
+NTPサーバのhost name、または、IPv4アドレスをもつ構造体である。
+|<<#_EsfClockManagerConnection>>
+
+|`EsfClockManagerConnectionMask`
+|`EsfClockManagerParamsMask` のサブ構造体 +
+EsfClockManagerConnection構造体のNTPサーバhost name、若しくはIPv4アドレスをClock Managerへ渡すとき、そのオブジェクトのメンバ変数が設定済みであるか否かを表す構造体である。
+|<<#_EsfClockManagerConnectionMask>>
+
+|`EsfClockManagerCommon`
+|`EsfClockManagerParams` のサブ構造体 +
+NTP同期時間とNTP Client Daemon監視時間をもつ構造体である。
+|<<#_EsfClockManagerCommon>>
+
+|`EsfClockManagerCommonMask`
+|`EsfClockManagerParamsMask` のサブ構造体 +
+EsfClockManagerCommon構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+|<<#_EsfClockManagerCommonMask>>
+
+|`EsfClockManagerSkipAndLimit`
+|`EsfClockManagerParams` のサブ構造体 +
+NTP同期skip/limitパラメータをもつ構造体である。
+|<<#_EsfClockManagerSkipAndLimit>>
+
+|`EsfClockManagerSkipAndLimitMask`
+|`EsfClockManagerParamsMask` のサブ構造体 +
+EsfClockManagerSkipAndLimit構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+|<<#_EsfClockManagerSkipAndLimitMask>>
+
+|`EsfClockManagerSlewParam`
+|`EsfClockManagerParams` のサブ構造体 +
+NTP同期Slewモード設定パラメータをもつ構造体である。
+|<<#_EsfClockManagerSlewParam>>
+
+|`EsfClockManagerSlewParamMask`
+|`EsfClockManagerParamsMask` のサブ構造体 +
+EsfClockManagerSlewParam構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+|<<#_EsfClockManagerSlewParamMask>>
+
+|`ESF_CLOCK_MANAGER_STOP_TIMEOUT`
+|Clock Manager停止時のtimeout時間を定義するマクロ
+（OSS停止に時間を要する場合のフェールセーフ）
+|<<#_ESF_CLOCK_MANAGER_STOP_TIMEOUT>>
+
+|===
+
+
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示す。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+
+|`EsfClockManagerInit`
+|Clock Managerを初期化する。
+|<<#_EsfClockManagerInit>>
+
+|`EsfClockManagerDeinit`
+|Clock Managerのリソースを解放する。
+|<<#_EsfClockManagerDeinit>>
+
+|`EsfClockManagerSetParamsForcibly`
+|NTP時刻同期に必要なパラメータおよび監視時間を強制的に不揮発へ書き込む。
+|<<#_EsfClockManagerSetParamsForcibly>>
+
+|`EsfClockManagerSetParams`
+|NTP時刻同期に必要なパラメータおよび監視時間を設定する。
+|<<#_EsfClockManagerSetParams>>
+
+|`EsfClockManagerGetParams`
+|NTP時刻同期に必要なパラメータおよび監視時間を取得する。
+|<<#_EsfClockManagerGetParams>>
+
+|`EsfClockManagerStart`
+|時刻同期を実行する。
+|<<#_EsfClockManagerStart>>
+
+|`EsfClockManagerStop`
+|時刻同期を停止する。
+|<<#_EsfClockManagerStop>>
+
+|`EsfClockManagerRegisterCbOnNtpSyncComplete`
+|NTP時刻同期が完了したことを通知するコールバック関数を登録する。
+|<<#_EsfClockManagerRegisterCbOnNtpSyncComplete>>
+
+|`EsfClockManagerUnregisterCbOnNtpSyncComplete`
+|NTP時刻同期が完了したことを通知するコールバック関数登録を解除する。
+|<<#_EsfClockManagerUnregisterCbOnNtpSyncComplete>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_EsfClockManagerReturnValue]
+==== EsfClockManagerReturnValue
+Clock Manager APIの実行結果を定義する列挙型である。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kClockManagerSuccess,              // Success
+  kClockManagerParamError,           // Invalid parameter error
+  kClockManagerInternalError,        // Internal error
+  kClockManagerStateTransitionError  // State translation error
+} EsfClockManagerReturnValue;
+....
+
+* *値* 
+
+[#_TableEsfClockManagerReturnValueValue]
+.EsfClockManagerReturnValueの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerParamError`
+|不正な入力パラメータ
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+[#_EsfClockManagerParamType]
+==== EsfClockManagerParamType
+後述する構造体 `EsfClockManagerSkipAndLimit` または構造体 `EsfClockManagerSlewParam` の設定パラメータ種別を表す列挙型である。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfClockManagerParamType {
+  kClockManagerParamTypeOff,
+  kClockManagerParamTypeDefault,
+  kClockManagerParamTypeCustom,
+  kClockManagerParamTypeNumMax
+} EsfClockManagerParamType;
+....
+
+* *値*
+
+[#_TableEsfClockManagerParamType]
+.EsfClockManagerParamTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|`kClockManagerParamTypeOff`
+|該当機能をOFF状態として設定する。（関連するパラメータ指定はdon't care）
+
+|`kClockManagerParamTypeDefault`
+|該当機能パラメータをdefault設定する。（関連するパラメータ指定don't care）
+
+|`kClockManagerParamTypeCustom`
+|該当機能パラメータを個別設定する。
+
+|`kClockManagerParamTypeNumMax`
+|`EsfClockManagerParamType` 型の列挙定数の個数を表す。
+|===
+
+
+
+[#_EsfClockManagerParams]
+==== EsfClockManagerParams
+上位モジュールから取得したパラメータを格納する構造体である。 +
+Parameter Storage Managerから取得したパラメータを格納する構造体である。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerParams {
+  EsfClockManagerConnection connect;
+  EsfClockManagerCommon common;
+  EsfClockManagerSkipAndLimit skip_and_limit;
+  EsfClockManagerSlewParam slew_setting;
+} EsfClockManagerParams;
+
+....
+
+* *値*
+
+[#_TableEsfClockManagerParamsValue]
+.EsfClockManagerParamsの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名|説明|設定値の範囲|デフォルト値
+
+|`connect`
+|接続先NTPサーバのhost name、 +
+または、接続先NTPサーバのIPv4アドレス。
+|<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
+byte 以下。
+|`"time.aitrios.sony-semicon.com"`
+
+|`common`
+|<<#_EsfClockManagerCommon>>を参照されたい。
+|<<#_EsfClockManagerCommon>>を参照されたい。
+|<<#_EsfClockManagerCommon>>を参照されたい。
+
+|`skip_and_limit`
+|<<#_EsfClockManagerSkipAndLimit>>を参照されたい。
+|<<#_EsfClockManagerSkipAndLimit>>を参照されたい。
+|<<#_EsfClockManagerSkipAndLimit>>を参照されたい。
+
+|`slew_settings`
+|<<#_EsfClockManagerSlewParam>>を参照されたい。
+|<<#_EsfClockManagerSlewParam>>を参照されたい。
+|<<#_EsfClockManagerSlewParam>>を参照されたい。
+|===
+
+
+
+
+[#_EsfClockManagerParamsMask]
+==== EsfClockManagerParamsMask
+EsfClockManagerParams構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerParamsMask {
+  EsfClockManagerConnectionMask connect;
+  EsfClockManagerCommonMask common;
+  EsfClockManagerSkipAndLimitMask skip_and_limit;
+  EsfClockManagerSlewParamMask slew_setting;
+} EsfClockManagerParamsMask;
+....
+
+.EsfClockManagerParamsMaskの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名|説明|設定値の範囲|デフォルト値
+
+|`connect`
+|本構造体に含まれる構造体 `EsfClockManagerConnectionMask` のオブジェクトと対になる構造体 `EsfClockManagerConnection` のオブジェクトに属するメンバ変数のどれが設定済み／欲すのであるかを示す。
+|1または0
+|0
+
+|`common`
+|本構造体に含まれる構造体 `EsfClockManagerCommonMask` のオブジェクトと対になる構造体 `EsfClockManagerCommon` のオブジェクトに属するメンバ変数のどれが設定済み／欲すのであるかを示す。
+|メンバ変数毎に1、0。
+|0
+
+|`skip_and_limit`
+|本構造体に含まれる構造体 `EsfClockManagerSkipAndLimitMask` のオブジェクトと対になる構造体 `EsfClockManagerSkipAndLimit` に属するメンバ変数のどれが設定済み／欲すのであるかを示す。
+|メンバ変数毎に1、0。
+|0
+
+|`slew_setting`
+|本構造体に含まれる構造体 `EsfClockManagerSlewParamMask` のオブジェクトと対になる構造体 `EsfClockManagerSlewParam` に属するメンバ変数のどれが設定済み／欲すのであるかを示す。
+|メンバ変数毎に1、0。
+|0
+|===
+
+[#_EsfClockManagerConnection]
+==== EsfClockManagerConnection
+NTPサーバのhost name、または、IPv4アドレスをもつ構造体である。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingConnection {
+  char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+} EsfClockManagerConnection;
+....
+
+.EsfClockManagerConnectionの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名  |説明 |  設定値の範囲 | デフォルト値
+
+|`hostname`
+|接続先NTPサーバのhost name、 +
+または、接続先NTPサーバのIPv4アドレス。
+|末尾の空文字を含んで<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
+〔B〕以下。
+|`"time.aitrios.sony-semicon.com"`
+
+|===
+
+[#_EsfClockManagerConnectionMask]
+==== EsfClockManagerConnectionMask
+EsfClockManagerConnection構造体のNTPサーバhost name、若しくはIPv4アドレスをClock Managerへ渡すとき、そのオブジェクトのメンバ変数が設定済みであるか否かを表す構造体である。
+
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingConnectionMask {
+  uint8_t hostname : 1;
+} EsfClockManagerConnectionMask;
+....
+
+.EsfClockManagerConnectionMaskの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名|説明|設定値の範囲|デフォルト値
+
+|`hostname`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerConnection` のオブジェクトに属するhostnameが設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|===
+
+
+[#_EsfClockManagerCommon]
+==== EsfClockManagerCommon
+NTP同期時間とNTP Client Daemon監視時間をもつ構造体である。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingCommon {
+  int sync_interval;  // NTP client's period
+  int polling_time;   // Clock Manager thread's period
+} EsfClockManagerCommon;
+....
+
+.EsfClockManagerCommonの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名  |説明 |  設定値の範囲 | デフォルト値
+
+|`sync_interval`
+|同期インターバル（設定単位 : sec）
+|[64, 1024]
+|64
+
+|`polling_time`
+|ステータス監視周期（設定単位 : sec）
+|[1, 1024]
+|60
+|===
+
+** `sync_interval` は NTP Client DaemonのNTP時刻同期周期である。
+** `polling_time` は“NTP Client Daemon監視用スレッド”がNTP Client Daemonの状態を監視する周期である。
+
+[#_EsfClockManagerCommonMask]
+==== EsfClockManagerCommonMask
+EsfClockManagerCommon構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingCommonMask {
+  uint8_t sync_interval : 1;
+  uint8_t polling_time : 1;
+} EsfClockManagerCommonMask;
+....
+
+.EsfClockManagerCommonMaskの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名|説明|設定値の範囲|デフォルト値
+
+|`sync_interval`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerCommon` のオブジェクトに属する `sync_interval` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`polling_time`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerCommon` のオブジェクトに属する `polling_time` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|===
+
+
+[#_EsfClockManagerSkipAndLimit]
+==== EsfClockManagerSkipAndLimit
+NTP同期skip/limitパラメータをもつ構造体である。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingSkipAndLimit {
+  EsfClockManagerParamType type;
+  int limit_packet_time;
+  int limit_rtc_correction_value;
+  int sanity_limit;
+} EsfClockManagerSkipAndLimit;
+....
+
+.EsfClockManagerSkipAndLimitの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名  |説明 |  設定値の範囲 | デフォルト値
+
+|`type`
+|本構造体メンバのパラメータ種別を指定する。 +
+他メンバ変数に任意の値を与えたい場合は、 `kClockManagerParamTypeCustom` を設定してください。 +
+default設定で動作させる場合は、 `kClockManagerParamTypeDefault` を設定してください。 +
+SkipAndLimit機能を無効にする場合は、 `kClockManagerParamTypeOff` を設定してください。
+|<<#_EsfClockManagerParamType>> を参照されたい。
+|`kClockManagerParamTypeOff`
+
+|`limit_packet_time`
+|NTPパケットラウンドトリップの閾値（設定単位 : msec）。 +
+本端末とNTPサーバ間のラウンドトリップ (round-trip) ―― i.e., [<<#_thebibliography1,1>>]で定めているdelta ―― がこの値を超えていた場合は、 +
+その取得値はNTP時刻同期のサンプルに採択しない。
+|[0, 10000]
+|66
+
+|`limit_rtc_correction_value`
+|RTC補正幅 ―― RTC補正値によって補正するシステム時刻と現在のシステム時刻の差 ―― の最大値（設定単位 : sec）。 +
+NTPサーバから取得・算出したRTC補正値を制限する。 +
+即ち、算出したRTC補正値の絶対値が本設定値以上の場合は、 +
+算出したRTC補正値を`` sgn(算出したRTC補正値) × +
+`limit_rtc_correction_value` '' +
+に制限する。 +
+例）66を設定した場合： +
+算出RTC補正値が +70msec ならば RTC補正を+66msecとして； +
+算出RTC補正値が -70msec ならば RTC補正を-66msecとする。
+|[0, 1000]
+|66
+
+|`sanity_limit`
+|[<<#_thebibliography1,1>>]で定めているthetaの閾値（設定単位 : msec）。 +
+NTPサーバとの通信時間がこの値を超えていた場合、RAM上にエラー発生回数を記憶する。
+|[0, 32767]
+|1000
+|===
+
+[#_EsfClockManagerSkipAndLimitMask]
+==== EsfClockManagerSkipAndLimitMask
+EsfClockManagerSkipAndLimit構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingSkipAndLimitMask {
+  uint8_t type : 1;
+  uint8_t limit_packet_time : 1;
+  uint8_t limit_rtc_correction_value : 1;
+  uint8_t sanity_limit : 1;
+} EsfClockManagerSkipAndLimitMask;
+....
+
+.EsfClockManagerSkipAndLimitMaskの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名|説明|設定値の範囲|デフォルト値
+
+|`type`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSkipAndLimit` のオブジェクトに属する `type` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`limit_packet_time`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSkipAndLimit` のオブジェクトに属する `limit_packet_time` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`limit_rtc_correction_value`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSkipAndLimit` のオブジェクトに属する `limit_rtc_correction_value` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`sanity_limit`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSkipAndLimit` のオブジェクトに属する `sanity_limit` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+|===
+
+
+[#_EsfClockManagerSlewParam]
+==== EsfClockManagerSlewParam
+NTP同期Slewモード設定パラメータをもつ構造体である。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingSlewParam {
+  EsfClockManagerParamType type;
+  int stable_rtc_correction_value;
+  int stable_sync_number;
+} EsfClockManagerSlewParam;
+....
+
+
+.EsfClockManagerSlewParamの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名  |説明 |  設定値の範囲 | デフォルト値
+
+|`type`
+|本構造体メンバのパラメータ種別を指定する。 +
+他メンバ変数に任意の値を与えたい場合は、 `kClockManagerParamTypeCustom` を設定してください。 +
+default設定で動作させる場合は、 `kClockManagerParamTypeDefault` を設定してください。 +
+slewモード機能を無効にする場合は、 `kClockManagerParamTypeOff` を設定してください。
+|<<#_EsfClockManagerParamType>> を参照されたい。
+|`kClockManagerParamTypeOff`
+
+|`stable_rtc_correction_value`
+|安定RTC補正値（設定単位 : msec）。 +
+RTC補正値の絶対値が本設定値以下の場合は、安定と判断する。 即ち、 +
+abs(RTC補正値) ≦ (安定RTC補正値) +
+⇔ その往復NTPパケットは安定。
+|[0, 1000]
+|33
+
+|`stable_sync_number`
+|同期インターバル間隔を延ばす基準（設定単位 : 回）。 +
+`stable_rtc_correction_value` の安定状態をこの設定値の回数以上連続した場合、同期インターバル間隔を長くする。 +
+`stable_rtc_correction_value` の安定判断を満たさない場合、同期インターバル間隔を短くする。 +
+同期インターバル間隔を変更する単位は<<#_EsfClockManagerCommon>>の `sync_interval` の設定に基づく。
+|[0, 1000]
+|5
+|===
+
+[#_EsfClockManagerSlewParamMask]
+==== EsfClockManagerSlewParamMask
+EsfClockManagerSlewParam構造体のオブジェクトをClock Managerへ渡すとき、そのオブジェクトのどのメンバ変数が設定済みであるか否かを表す構造体である。
+
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfClockManagerSettingSlewParamMask {
+  uint8_t type : 1;
+  uint8_t stable_rtc_correction_value : 1;
+  uint8_t stable_sync_number : 1;
+} EsfClockManagerSlewParamMask;
+....
+
+.EsfClockManagerSlewParamMaskの値の説明
+[width="100%", cols="20%,50%,15%,15%",options="header"]
+|===
+|メンバ名|説明|設定値の範囲|デフォルト値
+
+|`type`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSlewParam` のオブジェクトに属する `type` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`stable_rtc_correction_value`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSlewParam` のオブジェクトに属する `stable_rtc_correction_value` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`stable_sync_number`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerSlewParam` のオブジェクトに属する `stable_sync_number` が設定済み／欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|===
+
+
+[#_ESF_CLOCK_MANAGER_STOP_TIMEOUT]
+==== ESF_CLOCK_MANAGER_STOP_TIMEOUT
+
+Clock Manager停止時のtimeout時間を定義するマクロです。単位は〔ms〕である。
+（OSS停止に時間を要する場合のフェールセーフ）
+
+* *書式*
+
+[source, C]
+....
+#define ESF_CLOCK_MANAGER_STOP_TIMEOUT (2000)
+....
+
+
+
+[#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE]
+==== ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE
+
+以下いずれかに使用する文字列の最大値（単位はbyte） +
+・接続先NTPサーバのhost name、 +
+・接続先NTPサーバのIPv4アドレス。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (272)
+
+....
+
+
+<<<
+
+=== API定義
+
+[#_EsfClockManagerInit]
+==== EsfClockManagerInit
+* *機能* +
++
+Clock Managerを初期化する。 +
+スレッドセーフではない。呼び出し元のコンテキストで動作する。 +
+揮発領域にパラメータを保持する為の構造体オブジェクトを生成（ `malloc` をコール）し、初期化する。また、 `EsfParameterStorageManagerOpen` をコールする。
+その他にも、制御に必要なオブジェクト（例えば、 `pthread_mutex_t` や `pthread_cond_t` の構造体オブジェクト）の生成と初期化をする。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerInit(void)**``
+
+* *引数の説明* +
++
+無し
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerInitReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerInitReturnValue]
+.EsfClockManagerInitの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+呼び出しが正常終了ならば、READY状態へ遷移する。そうでなければ状態遷移はしない。
+IDLE状態のときに本関数が呼び出され正常終了ならば、 READY状態へ状態遷移する。
+READY状態のときに本関数が呼び出されたときは、 `kClockManagerSuccess` を返すが、状態は遷移しません。
+RUNNING状態のときに本関数が呼び出されたときは、 `kClockManagerStateTransitionError` を返す。
+
+[#_EsfClockManagerDeinit]
+==== EsfClockManagerDeinit
+* *機能* +
++
+Clock Managerのリソースを解放する。 +
+スレッドセーフではない。呼び出し元のコンテキストで動作する。 +
+揮発領域に存在するパラメータを保持する為の構造体オブジェクトを消去（ `free` ）する。また、 `EsfParameterStorageManagerClose` をコールする。
+その他にも、制御に必要なオブジェクト（例えば、 `pthread_mutex_t` や `pthread_cond_t` の構造体オブジェクト）の解放を行う。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerDeinit(void)**``
+
+* *引数の説明* +
++
+無し
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerDeinitReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerDeinitReturnValue]
+.EsfClockManagerDeinitの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+呼び出しが正常終了ならば、IDLE状態へ遷移する。そうでなければ状態遷移はしない。
+READY状態のときに本関数が呼び出され正常終了ならば、 IDLE状態へ状態遷移する。
+IDLE状態のときに本関数が呼び出されたときは、 `kClockManagerSuccess` を返すが、状態は遷移しません。
+RUNNING状態のときに本関数が呼び出されたときは、 `kClockManagerStateTransitionError` を返す。
+
+[#_EsfClockManagerSetParamsForcibly]
+==== EsfClockManagerSetParamsForcibly
+* *機能* +
++
+NTP時刻同期に必要なパラメータおよび監視時間を設定する。 +
+スレッドセーフである。呼び出し元のコンテキストで動作する。 +
+本関数の仮引数が適正であるときに限って、本関数が呼び出されたコンテキストからParameter Storage Managerへパラメータの書き込みを依頼 ―― Parameter Storage Managerが公開する関数をコール ―― する。 +
+<<#_EsfClockManagerStart,`EsfClockManagerStart`>>がコールされてからNTP時刻同期が完了するまでの間に本関数が呼び出されたならば、本関数は `kClockManagerInternalError` を返す。 +
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerSetParamsForcibly(const EsfClockManagerParams *data, const EsfClockManagerParamsMask *mask)**``
+
+* *引数の説明* +
++
+**``[IN] const EsfClockManagerParams *data``**:: NTP情報
+**``[IN] const EsfClockManagerParamsMask *mask``**:: 仮引数dataが指す構造体オブジェクトのどのメンバ変数が指定されているかを表現する。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerSetParamsForciblyReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerSetParamsForciblyReturnValue]
+.EsfClockManagerSetParamsForciblyの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerParamError`
+|仮引数が設定範囲外またはNULLである。
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+<<#_EsfClockManagerStart,`EsfClockManagerStart`>>がコールされてからNTP時刻同期が完了するまでの間に本関数が呼び出されたならば、本関数は `kClockManagerInternalError` を返す。
+本関数の仮引数で与えられたパラメータの構文検査を行う。その全ての検査を合格したならば、パラメータはParameter Storage Manager経由で不揮発領域に保持される。
+処理結果が正常終了であろうとエラーであろうと、状態遷移はしません。
+
+[#_EsfClockManagerSetParams]
+==== EsfClockManagerSetParams
+* *機能* +
++
+NTP時刻同期に必要なパラメータおよび監視時間を設定する。 +
+スレッドセーフである。呼び出し元のコンテキストで動作する。 +
+Parameter Storage Managerへの書き込みは、NTP Client DaemonによってNTP時刻同期が完了した後で行う。それまでは揮発領域で保持しておく。
+というのは、不揮発への保存は動作が確かに取れたものに限るという設計思想に因るためである。 +
+本関数の仮引数で与えられたパラメータは、それ以降にEsfClockManagerStartが呼び出されることでシステムの動作へ反映される。
+<<#_EsfClockManagerStart,`EsfClockManagerStart`>>がコールされてからNTP時刻同期が完了するまでの間に本関数が呼び出されたならば、本関数は `kClockManagerInternalError` を返す。 +
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerSetParams(const EsfClockManagerParams *data, const EsfClockManagerParamsMask *mask)**``
+
+* *引数の説明* +
++
+**``[IN] const EsfClockManagerParams *data``**:: NTP情報
+**``[IN] const EsfClockManagerParamsMask *mask``**:: 仮引数dataが指す構造体オブジェクトのどのメンバ変数が指定されているかを表現する。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerSetParamsReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerSetParamsReturnValue]
+.EsfClockManagerSetParamsの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerParamError`
+|仮引数が設定範囲外またはNULLである。
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+本関数の仮引数で与えられたパラメータの検査を行う。その全ての検査を合格したならば、パラメータは揮発領域に保持される。
+<<#_EsfClockManagerStart,`EsfClockManagerStart`>> で開始するNTP時刻同期が成功で完了したならば揮発領域に保持されているパラメータが不揮発領域へ書き込まれ、NTP時刻同期が失敗で完了したならば揮発領域に保持されているパラメータは不揮発領域に保持されているそれで上書きされる。 +
+処理結果が正常終了であろうとエラーであろうと、状態遷移はしません。
+
+[#_EsfClockManagerGetParams]
+==== EsfClockManagerGetParams
+* *機能* +
++
+NTP時刻同期に必要なパラメータおよび監視時間を取得する。 +
+スレッドセーフである。呼び出し元のコンテキストで動作する。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerGetParams(EsfClockManagerParams *const data)**``
+
+* *引数の説明* +
++
+**``[OUT] EsfClockManagerParams *const data``**:: NTP情報
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerGetParamsReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerGetParamsReturnValue]
+.EsfClockManagerGetParamsの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerParamError`
+|仮引数がNULLである。
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+本関数によって取得可能なパラメータは次の通りである： +
+1. 端末が起動してから本関数が呼び出される迄に、 `EsfClockManagerSetParams` で設定されたパラメータが存在するならば、そのパラメータを返す。 +
+2. 端末が起動してから本関数が呼び出される迄に、 `EsfClockManagerSetParams` で設定されたパラメータが存在しないならば、不揮発内のパラメータを返す。 +
+
++
+不揮発から読み出した値が範囲外であるならば、その値は予め定めておくデフォルト値を返す。 +
+処理結果が正常終了であろうとエラーであろうと、状態遷移はしません。
++
+
+
+[#_EsfClockManagerStart]
+==== EsfClockManagerStart
+* *機能* +
++
+時刻同期を実行する。 +
+スレッドセーフである。呼び出し元のコンテキストで動作する。ブロッキングする。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerStart(void)**``
+
+* *引数の説明* +
++
+無し
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerStartReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerStartReturnValue]
+.EsfClockManagerStartの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+Clock Managerの“NTP Client Daemon監視用スレッド”と“登録されたコールバック関数コールスレッド”の起動処理を行う。 +
+NTP情報をNTP Client公開関数の引数に渡して、NTP Client Daemonの起動を行う。 +
+そして、RUNNING状態へ遷移する。 +
+
+[#_EsfClockManagerStop]
+==== EsfClockManagerStop
+* *機能* +
++
+時刻同期を停止する。 +
+スレッドセーフである。呼び出し元のコンテキストで動作する。ブロッキングする。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerStop(void)**``
+
+* *引数の説明* +
++
+無し
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerStopReturnValue>>のいずれかの値を返す。
+NTP Client停止処理にて、
+<<#_ESF_CLOCK_MANAGER_STOP_TIMEOUT>>に規定の時間を経過しても停止状態に遷移しない場合、 `kClockManagerStateTransitionError` を返します。
+
+[#_EsfClockManagerStopReturnValue]
+.EsfClockManagerStopの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+NTP Client公開の停止関数を使用して、NTP Client Daemonを停止する。 +
+Clock Managerの“NTP Client Daemon監視用スレッド”と“登録されたコールバック関数コールスレッド”の停止処理を行う。 +
+そして、IDLE状態へ遷移する。終了するまで最大ESF_CLOCK_MANAGER_STOP_TIMEOUT〔ms〕間ブロッキングする。
+
+[#_EsfClockManagerRegisterCbOnNtpSyncComplete]
+==== EsfClockManagerRegisterCbOnNtpSyncComplete
+* *機能* +
++
+NTP時刻同期が完了したことを通知するコールバック関数を登録する。 +
+スレッドセーフである。 +
+Clock Managerに同時に複数個のコールバック関数を登録しておくことはできない。つまり、 `EsfClockManagerRegisterCbOnNtpSyncComplete(f)` の後に
+`EsfClockManagerRegisterCbOnNtpSyncComplete(g)` がコールされれば、Clock Managerは最終的に `g` のみを登録されたコールバック関数とする。ここに、
+`f` と `g` は関数へのポインタである。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerRegisterCbOnNtpSyncComplete(void (*on_ntp_sync_complete)(bool))**``
+
+* *引数の説明* +
++
+仮引数の個数はただ1つだけであって、その型は `bool` であり、かつ、戻り値の型は `void` である関数へのポインタ。 +
+<<#_EsfClockManagerStart,`EsfClockManagerStart`>> で開始するNTP時刻同期が成功で完了したならば `on_ntp_sync_complete` の仮引数は `true` で呼び出され、NTP時刻同期が失敗で完了したならば `on_ntp_sync_complete` の仮引数は `false` で呼び出される。 +
+尚、コールバック関数を呼び出すコンテキストは、Clock Managerの“登録されたコールバック関数コールスレッド”である。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerRegisterCbOnNtpSyncCompleteReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerRegisterCbOnNtpSyncCompleteReturnValue]
+.EsfClockManagerRegisterCbOnNtpSyncCompleteの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerParamError`
+|仮引数がNULLである。
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+与えられた関数へのポインタをコールバック関数として登録します。
+処理結果が正常終了であろうとエラーであろうと、状態遷移はしません。
+
+[#_EsfClockManagerUnregisterCbOnNtpSyncComplete]
+==== EsfClockManagerUnregisterCbOnNtpSyncComplete
+* *機能* +
++
+NTP時刻同期が完了したことを通知するコールバック関数登録を解除する。 +
+スレッドセーフである。
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerUnregisterCbOnNtpSyncComplete(void)**``
+
+* *引数の説明* +
++
+無し
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerUnregisterCbOnNtpSyncCompleteReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerUnregisterCbOnNtpSyncCompleteReturnValue]
+.EsfClockManagerUnregisterCbOnNtpSyncCompleteの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerInternalError`
+|内部エラー
+
+|`kClockManagerStateTransitionError`
+|状態遷移エラー
+|===
+
+* *説明* +
+登録されているコールバック関数の解除をします。もしコールバック関数が登録されていないときに本関数が呼び出されたときは、 `kClockManagerSuccess` を返します。
+処理結果が正常終了であろうとエラーであろうと、状態遷移はしません。
+
+<<<
+
+== API使用時の呼び出し例
+
+各APIを使用する場合の呼び出し例を以下に示します。
+
+[#_FigureClockManagerAPIUsageSequence1]
+.時刻同期開始シーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  activate 上位モジュール
+
+  %%上位モジュール-->>Clock Manager: Clock Manager停止
+  上位モジュール->>Clock Manager: Clock Manager起動(EsfClockManagerStart)
+
+  activate Clock Manager
+
+  Clock Manager->>NTP Client: NTP Client起動(ntpc_start_with_params or ntpc_start_with_list)
+
+  activate NTP Client
+
+  Clock Manager -->> 上位モジュール : Return（EsfClockManagerStartのリターン）
+
+
+  loop ポーリング周期
+    Clock Manager->>NTP Client: ステータス確認(ntpc_status)
+    NTP Client-->>Clock Manager: ステータス（ntpc_statusのリターン）
+
+    alt NTP Client停止
+      Clock Manager->>NTP Client: NTP Client起動(ntpc_start_with_params or ntpc_start_with_list)
+    end
+  end
+
+  deactivate NTP Client
+  deactivate Clock Manager
+  deactivate 上位モジュール
+....
+
+[#_FigureClockManagerAPIUsageSequence2]
+.時刻同期停止シーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  activate 上位モジュール
+  activate Clock Manager
+　activate NTP Client
+
+  上位モジュール->>Clock Manager: Clock Manager停止(EsfClockManagerStop)
+
+  Clock Manager->>NTP Client: NTP Client Daemon停止要求(ntpc_stop)
+
+  %loop 停止完了の監視
+    Clock Manager->>NTP Client: ステータス確認(ntpc_status)
+    NTP Client-->>Clock Manager: ステータス（ntpc_statusのリターン）
+    alt NTP Client Daemon停止を検出したとき
+      Clock Manager-->>上位モジュール: 停止正常終了（EsfClockManagerStopのリターン）
+    else
+      Clock Manager-->>上位モジュール: 停止エラー終了（EsfClockManagerStopのリターン）
+    end
+  %end
+  deactivate NTP Client
+  %NTP Client-->>Clock Manager: NTP Client停止完了を検出
+
+  deactivate Clock Manager
+  deactivate 上位モジュール
+....
+
+[#_FigureClockManagerAPIUsageSequence3]
+.時刻同期完了通知コールバック関数登録シーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  activate 上位モジュール
+
+  上位モジュール->>Clock Manager: NTP時刻同期完了通知コールバック関数登録要求(EsfClockManagerRegisterCbOnNtpSyncComplete)
+
+  activate Clock Manager
+
+
+
+  Clock Manager -->> 上位モジュール : Return（EsfClockManagerRegisterCbOnNtpSyncCompleteのリターン）
+
+
+
+  deactivate Clock Manager
+  deactivate 上位モジュール
+....
+
+.時刻同期完了通知コールバック関数登録解除シーケンス図
+[source,mermaid]
+....
+sequenceDiagram
+  activate 上位モジュール
+
+  上位モジュール->>Clock Manager: NTP時刻同期完了通知コールバック関数登録解除要求(EsfClockManagerUnregisterCbOnNtpSyncComplete)
+
+  activate Clock Manager
+
+
+
+  Clock Manager -->> 上位モジュール : Return（EsfClockManagerUnregisterCbOnNtpSyncCompleteのリターン）
+
+
+
+  deactivate Clock Manager
+  deactivate 上位モジュール
+....
+
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+<<#_appendix1>>はParameter Storage Manager、<<#_appendix2>>はNTP Clientに対する変更内容の概要をまとめたものです。 +
+詳細は各モジュールの仕様書を参照してください。
+
+[#_appendix1]
+=== 付録：Parameter Storage Manager
+Parameter Storage Managerは<<#_TableEsfClockManagerParamsValue>>のパラメータを保持している。 +
+
+
+
+* *書式*
+
+[source, C]
+....
+
+typedef struct EsfClockManagerParamsForPsm {
+  EsfClockManagerConnectionForPsm connect;
+  EsfClockManagerCommonForPsm common;
+  EsfClockManagerSkipAndLimitForPsm skip_and_limit;
+  EsfClockManagerSlewParamForPsm slew_setting;
+} EsfClockManagerParamsForPsm;
+
+typedef struct EsfClockManagerParamsForPsmMask {
+  EsfClockManagerConnectionForPsmMask connect;
+  EsfClockManagerCommonForPsmMask common;
+  EsfClockManagerSkipAndLimitForPsmMask skip_and_limit;
+  EsfClockManagerSlewParamForPsmMask slew_setting;
+} EsfClockManagerParamsForPsmMask;
+
+typedef struct EsfClockManagerSettingConnectionForPsm {
+  char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+} EsfClockManagerConnectionForPsm;
+
+typedef struct EsfClockManagerSettingConnectionForPsmMask {
+  uint8_t hostname : 1;
+} EsfClockManagerConnectionForPsmMask;
+
+typedef struct EsfClockManagerSettingCommonForPsm {
+  int sync_interval;  // NTP client's period
+  int polling_time;   // Clock Manager thread's period
+} EsfClockManagerCommonForPsm;
+
+typedef struct EsfClockManagerSettingCommonForPsmMask {
+  uint8_t sync_interval : 1;  // NTP client's period
+  uint8_t polling_time : 1;   // Clock Manager thread's period
+} EsfClockManagerCommonForPsmMask;
+
+typedef struct EsfClockManagerSettingSkipAndLimitForPsm {
+  uint8_t type;
+  int limit_packet_time;
+  int limit_rtc_correction_value;
+  int sanity_limit;
+} EsfClockManagerSkipAndLimitForPsm;
+
+typedef struct EsfClockManagerSettingSkipAndLimitForPsmMask {
+  uint8_t type : 1;
+  uint8_t limit_packet_time : 1;
+  uint8_t limit_rtc_correction_value : 1;
+  uint8_t sanity_limit : 1;
+} EsfClockManagerSkipAndLimitForPsmMask;
+
+typedef struct EsfClockManagerSettingSlewParamForPsm {
+  uint8_t type;
+  int stable_rtc_correction_value;
+  int stable_sync_number;
+} EsfClockManagerSlewParamForPsm;
+
+typedef struct EsfClockManagerSettingSlewParamForPsmMask {
+  uint8_t type : 1;
+  uint8_t stable_rtc_correction_value : 1;
+  uint8_t stable_sync_number : 1;
+} EsfClockManagerSlewParamForPsmMask;
+....
+
+* *値*
+
+各構造体のメンバ変数は、その構造体名、または、構造体タグ名から `ForPsm` を取り除いて得られる構造体名に属する同名のメンバ変数と同様である。
+<<#_EsfClockManagerParams>> 記載内容を参照されたい。
+
+
+
+[#_appendix2]
+=== 付録：NTP Client
+
+Clock Managerからパラメータを設定してNTP Client Daemonを実行させるため、OSSであるNTP Clientに修正が必要である。 +
+Clock ManagerとNTP Client間のシーケンスは<<#_FigureClockManagerSequence>>である。
+
+タスクとして起動されたNTP Client Daemonは、自発的にNTP時刻同期を開始する。NTP時刻同期が成功した後も、そのタスクが生存している限り、そのタスクは自発的にNTP時刻同期を行う。
+
+以下は、修正後のNTP Client Daemonに於けるNTP時刻同期繰り返しの図である。
+（修正前のNTP Client Daemonの場合、tは定数である。）
+[source,mermaid]
+....
+sequenceDiagram
+  activate 上位モジュール
+
+  上位モジュール->>Clock Manager: Clock Manager起動要求(EsfClockManagerStart)
+  activate Clock Manager
+  Clock Manager->>NTP Client Daemon: NTP情報<br>NTP Client起動要求(ntpc_start_with_params or ntpc_start_with_list)
+
+  activate NTP Client Daemon
+
+  loop NTP Client Daemon生存時
+    Note over NTP Client Daemon: NTP時刻同期処理
+
+    Note over NTP Client Daemon: t〔s〕間スリープ<br> （tは定数とは限らない。）
+  end
+  deactivate NTP Client Daemon
+
+
+  loop NTP Client Daemon監視
+    alt EsfClockManagerStopが呼び出されたとき
+      alt NTP Client Daemon生存時
+        activate NTP Client Daemon
+        Clock Manager->>NTP Client Daemon: NTP Client Daemon終了要求(ntpc_stop)
+
+        deactivate NTP Client Daemon
+      else NTP Client Daemon非生存時
+        Clock Manager->>NTP Client Daemon: NTP Client Daemon終了要求(ntpc_stop)
+      end
+    else EsfClockManagerStopが呼び出されていないとき
+      alt NTP Client Daemon非生存時
+        Clock Manager->>NTP Client Daemon: NTP情報<br>NTP Client Daemon起動要求(ntpc_start_with_params or ntpc_start_with_list)
+
+        activate NTP Client Daemon
+
+        loop NTP Client Daemon生存時
+          Note over NTP Client Daemon: NTP時刻同期処理
+
+          Note over NTP Client Daemon: t〔s〕間スリープ<br> （tは定数とは限らない。）
+        end
+      end
+    end
+  end
+
+  deactivate NTP Client Daemon
+  deactivate Clock Manager
+  deactivate 上位モジュール
+....
+
+==== 修正内容一覧
+
+* <<#_NTPClientModifications1, 外部からNTP Clientのパラメータ設定を行う対応>>
+* <<#_NTPClientModifications2, 時刻同期スキップ機能の対応>> +
+* <<#_NTPClientModifications3, 疑似slewモードの追加対応>>
+* <<#_NTPClientModifications4, 同期インターバルを可変にする対応>>
+
+[#_NTPClientModifications1]
+==== 外部からNTP Clientのパラメータ設定を行う対応
+
+NTP情報をNTP Clientモジュールで使用するためにパラメータ設定箇所の変更が必要である。 +
+NTP ClientのKconfigで行っていたNTP Clientのパラメータ設定も外部から入力することに変更する。 +
+
+[#_NTPClientParameterInput1]
+===== 専用APIを追加
+Clock Managerモジュールからパラメータを入力して、NTP Clientモジュールを起動させるAPIを追加する。 +
+
+[#_TableNTPClientAPI]
+.NTP Clientの既存API拡張内容
+[width="100%", cols="20%,15%,65%",options="header"]
+|===
+|API名 |概要 |拡張内容
+|`ntpc_dualstack_family`
+|プロトコルファミリーを設定する。
+|変更無し
+
+|`ntpc_start_with_list`
+|NTP Client Daemonを起動 +
+引数でNTPサーバ接続先を指定する。
+|変更無し
+
+|`ntpc_start_with_params`
+|NTP Client Daemonを起動 +
+引数でParameter Storage Managerから取得したパラメータ、または、上位モジュールから与えられたパラメータを指定してNTP Client Daemonを起動させる。
+|新規作成関数
+
+|`ntpc_start`
+|NTP Client Daemonを起動 +
+CONFIG_NETUTILS_NTPCLIENT_SERVERに接続する。
+|変更無し
+
+|`ntpc_stop`
+|NTP Client Daemonを終了する。
+|変更無し
+
+|`ntpc_status`
+|NTP Client Daemonのステータスを取得
+|NTP Client Daemonの生死を確認する等のため変更あり。
+|===
+
+[#_TableNTPClientConfig]
+.NTP ClientのConfig一覧
+[width="100%", cols="25%,15%,25%,35%",options="header"]
+|===
+|Config名 |デフォルト値 |概要 |対応内容（変更内容）
+
+|`CONFIG_NETUTILS_NTPCLIENT`
+|`n`
+|NTP Client有効／無効
+|変更無し（y設定で利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_SERVER`
+|`0.pool.ntp.org;1.pool.ntp.org;2.pool.ntp.org`
+|NTP Serverのhost name
+|変更無し（利用しない）  +
+このconfigを用いないAPI（引数指定）で起動する。
+
+|`CONFIG_NETUTILS_NTPCLIENT_SERVERIP`
+|`0x0a000001`
+|IP Address
+|このconfigを用いずIPアドレス指定可能に変更する。
+
+|`CONFIG_NETUTILS_NTPCLIENT_PORTNO`
+|`123`
+|Port Number
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_STACKSIZE`
+|`CONFIG_DEFAULT_TASK_STACKSIZE`
+|スタックサイズ
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_SERVERPRIO`
+|`100`
+|daemon優先度
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_STAY_ON`
+|`y`
+|ポーリング有効化
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_POLLDELAYSEC`
+|`60`
+|同期インターバル
+|上位モジュールから与えられた数値、若しくは、Parameter Storage Managerの数値を使用する。
+
+|`CONFIG_NETUTILS_NTPCLIENT_RETRIES`
+|`60`
+|時刻同期のリトライ回数
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_NUM_SAMPLES`
+|`5`
+|時刻同期のサンプリング回数
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_SIGWAKEUP`
+|`18`
+|シグナルナンバー
+|変更無し（このConfigのまま利用）
+
+|`CONFIG_NETUTILS_NTPCLIENT_WITH_AUTH`
+|`n`
+|認証設定
+|変更無し（このConfigのまま利用）
+|===
+
+[#_NTPClientModifications2]
+==== 時刻同期スキップ機能の対応
+
+===== 背景
+
+RTC補正値はNTP Clientモジュール内で複数個のサンプリング値をもとに算出される。 +
+NTP Client Daemonより優先度の高い処理が行われたとき、サンプリング値のNTPパケット往復時間 ―― ラウンドトリップ ―― に遅延が発生する。 +
+サンプリング値のNTPパケット往復時間に遅延時間 ―― NTP Client Daemonより優先度の高いスレッドが実行権を手離しNTP Client Daemonに実行権が来る迄の時間 ―― が加わるため、RTC補正値に誤差が発生する。
+
+===== 対策
+
+* *NTPパケットラウンドトリップのしきい値* +
+サンプリング値のNTPパケットラウンドトリップがしきい値より大きい場合、取得したサンプリング値を使用しない。
+
+.対応パラメータ
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|パラメータ項目 |デフォルト値 |概要
+
+|NTPパケット往復時間 ―― ラウンドトリップ ―― のしきい値
+|66
+|NTP ClientでRTC補正値を算出する際、NTP時刻の正確性を判定するしきい値として使用（単位はms）。
+|===
+
+.NTPパケット通信時間のしきい値の効果説明図
+image::./images/ClockManager_1.png[scaledwidth="100%",align="center"]
+
+* *Sanity Limit* +
+RTC補正値がSanity Limit以上になる場合、エラーログを出力して停止する。
+
+.対応パラメータ
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|パラメータ項目 |デフォルト値 |概要
+
+|Sanity Limit
+|1000
+|RTC補正値を異常値と判断するためのしきい値（単位はms）。
+|===
+
+.Sanity Limitの効果説明図
+image::./images/ClockManager_2.png[scaledwidth="100%",align="center"]
+
+[#_NTPClientModifications3]
+==== 疑似slewモードの追加対応
+
+RTC補正値に制限をかけることで少しずつ時刻を修正するslewモードの仕組みを疑似的に行う。
+
+.対応パラメータ
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|パラメータ項目 |デフォルト値 |概要
+
+|RTC補正幅 ―― システム時刻の移動量の絶対値 ―― の上限値
+|66
+|NTP Clientで算出したRTC補正値に制限をかける（単位はms）。
+|===
+
+.RTC補正値の上限値の効果説明図
+image::./images/ClockManager_3.png[scaledwidth="100%",align="center"]
+
+[#_NTPClientModifications4]
+==== 同期インターバルを可変にする対応
+
+NTP時刻同期を行ったとき、次式
+
+  (RTC補正値) ≦ (安定RTC補正値) 制限を設けない場合；
+  (制限されたRTC補正値) ≦ (安定RTC補正値) 制限を設ける場合。
+
+を満たす回数が、連続して指定回数 ―― 即ち、安定同期回数 ―― と等しくなったときに、 +
+
+  (次回の安定RTC補正値) ← floor((現在の安定RTC補正値) / 2)
+  (次回の同期インターバル) ← (現在の同期インターバル) + sync_interval
+
+とする。
+そうでないときは、 +
+
+  (次回の安定RTC補正値) ← 2 × (現在の安定RTC補正値)
+  (次回の同期インターバル) ← (現在の同期インターバル) - sync_interval
+
+とする。
+
+.対応パラメータ
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|パラメータ項目 |デフォルト値 |概要
+|安定RTC補正値
+|33
+|時刻同期の安定動作を判断するRTC補正値（単位はms）。
+
+|安定同期回数
+|5
+|同期インターバル間隔を延ばす基準（設定単位 : 回）
+
+|同期インターバル
+|64
+|時刻同期を行うインターバル時間。 +
+64秒 -- 1024秒の間で変更可能。 +
+単位は秒。
+|===
+
+.安定RTC補正値/安定同期回数の効果説明図
+image::./images/ClockManager_4.png[scaledwidth="100%",align="center"]
+
+<<<
+
+== 使用しているOSSの一覧
+
+[#_TableOSS]
+.使用OSS一覧
+[width="100%", cols="30%,70%",options="header"]
+|===
+|OSS名 |説明
+
+|NTP Client
+|NTPサーバと接続して時刻情報を取得する。NuttXの時刻情報を更新する。
+|===
+
+<<<
+
+== 参考文献
+
+[#_thebibliography1]
+* [1] D. Mills, J. Martin, Ed., J. Burbank, W. Kasch, ``Network Time Protocol Version 4: Protocol and Algorithms Specification'', RFC 5905, https://www.rfc-editor.org/rfc/rfc5905.txt, Internet Engineering Task Force, June 2010.
+[#_thebibliography2]
+* [2] ``Parameter Storage Manager 機能仕様書''，0.1.2版， https://github.com/aitrios/aitrios-edge-device-manager.git ．
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|初版
+|v0.0.2
+|変更 +
+・定義名称変更 +
+　・ 部分文字列：SSF_CLOCKMANAGER -> ESF_CLOCK_MANAGER +
+　・ 部分文字列：SsfClockManager -> EsfClockManager +
+・ntpc_start_with_listの説明 +
+・誤記修正 +
+　・ 重複していた“#_TableEsfClockManagerReturnValueValue”の一方 -> “#_TableEsfClockManagerParamType” +
+　・ 重複していた“EsfClockManagerReturnValueの値の説明”の一方 -> “EsfClockManagerParamTypeの値の説明” +
+　・ “SkipAndLimit機能を無効にする場合はkClockManagerParamType_OFFを設定してください” -> “slewモード機能を無効にする場合はkClockManagerParamType_OFFを設定してください” +
+　・ PTHREAD_STACK_DEFAULT -> CONFIG_PTHREAD_STACK_DEFAULT +
+　・ DEFAULT_TASK_STACKSIZE -> CONFIG_DEFAULT_TASK_STACKSIZE +
+　・ Nuttx -> NuttX +
+・追加 +
+　・ntpc_start_with_paramsを追加 +
+　・CONFIG_ESF_CLOCK_MANAGER_STACKSIZE（旧名称：CONFIG_SSF_CLOCK_MANAGER_STACKSIZE）とCONFIG_ESF_CLOCK_MANAGER_PRIORITY（旧名称：CONFIG_SSF_CLOCK_MANAGER_PRIORITY）に関する注釈 +
+・削除 +
+　・API: EsfClockManagerCheckParam (旧名称：SsfClockManagerCheckParam)を削除 +
+|v0.0.3
+|変更 +
+・全体的な誤記修正 +
+・全体的に表現文言を技術文書らしく +
+・“Device Setting”を“Parameter Storage Manager”へ変更 +
+・EsfClockManagerStartの書式変更 +
+・CONFIG_ESF_CLOCK_MANAGER_STACKSIZE -> CONFIG_ESF_CLOCK_MANAGER_NTP_CLIENT_MONITOR_STACKSIZE +
+・データフロー図 +
+・“NTP Client等のパラメータ不揮発からの読み出し” +
+・“Clock Managerが有するスレッド制御” +
+・“NTP Client Daemonの制御” +
+・NTP情報更新のシーケンス図 +
+・接頭辞 `SsfDeviceSetting` を持つ型名を削除 +
+・ `kClockManagerParamType_Off` -> `kClockManagerParamTypeOff` +
+・ `kClockManagerParamType_Default` -> `kClockManagerParamTypeDefault` +
+・ `kClockManagerParamType_Custom` -> `kClockManagerParamTypeCustom` +
+・ `kClockManagerParamType_NUM_MAX` -> `kClockManagerParamTypeNumMax` +
+・追加 +
+　・NTP時刻同期完了通知の仕組みを有することを記載 +
+　・参考文献 +
+　・2次元コードを読み取って得られた情報を保存する場合に対応 +
+　・NTP情報強制更新のシーケンス図 +
+　・パラメータ設定APIを記述 +
+　・パラメータ取得APIを記述 +
+　・EsfClockManagerInit +
+　・EsfClockManagerDeinit +
+　・CONFIG_ESF_CLOCK_MANAGER_NOTIFIER_STACKSIZE +
+・削除 +
+　・CONFIG_ESF_CLOCK_MANAGER_PRIORITY +
+|v0.0.4
+|変更 +
+誤記訂正 ntp.pool.org を pool.ntp.org へ。 +
+|v0.0.5
+|変更 +
+デフォルトNTPサーバを"pool.ntp.org"から"time.aitrios.sony-semicon.com" へ。 +
+|v0.0.6
+|変更 +
+・NTP時刻同期完了通知が呼び出されるのは成功したときに限る、に変更。 +
+・追加 +
+　・NTP同期が通知後も同期され続けることの説明追記
+|===

@@ -1,0 +1,2167 @@
+= LogManager機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.15
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOSのデバイス異常状態やデバイス状態のログを蓄積するLogManagerモジュールについて定義します。 +
+バージョンV0.0.13では、DlogのUART出力とメモリ(RAM)へのデータ保存、Elog出力を対象範囲とします。
+以降、Flash保存と対象範囲を広げていきます。
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+本書中で使用する用語の一覧を示します。
+
+=== Dlog
+AITRIOS内部システム開発者が使用する異常解析ログ（Debug Log）
+
+=== Elog
+デバイスで発生したイベントをAITRIOSユーザに通知するログ（Event Log）
+
+=== HAL
+ハードウェア差分を吸収するESF下に所在するモジュール
+
+=== EVP
+デバイスとクラウド(オンプレサーバ含む)間の認証や通信を担うプラットフォーム(Edge Virtualization Platform)。
+
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+LogManagerはDlog、Elogの2種類のログを蓄積し、外部通知するための情報としての加工を行い、データ提供するブロックです。
+
+- Dlog、Elog処理概要図 +
+  各矢印はデータの流れ、入出力を示しています。
+
+[{mermaid_block}]
+....
+graph LR;
+subgraph master
+subgraph master2
+EVP["EVP"]
+UtilityLog["UtilityLog"]
+end
+style master2 color:#fff, fill:#fff, stroke:#fff 
+log["LogManager"]
+HAL["HAL"]
+Security["Security"]
+repo[("データ保存領域")]
+
+UtilityLog -->|"ログデータ蓄積<br>Bulk送信<br>ログ設定変化通知設定"| log
+log -->|"ログ設定変化通知<br>Bulk送信結果通知"| UtilityLog
+log -->|"例外発生情報取得"| HAL
+log -->|"データ格納用APIコール"|EVP
+EVP -->|"データ格納結果"|log
+log -->|"データ"| repo
+log -->|"暗号化/復号要求"| Security
+style master color:#fff, fill:#fff, stroke:#fff 
+end
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+LogManagerと他モジュールとの関係を、以下のようにコンポーネント図で表しています。  +
+各矢印はデータの流れ、入出力を示しています。
+
+.コンポーネント図
+[{mermaid_block}]
+....
+flowchart TB
+subgraph master
+  direction LR
+  subgraph left
+    subgraph 上位Apps
+      APP_BlobUpload[Blob Upload機能]
+    end
+    ESF_Main[ESF_Main]
+    subgraph Module
+      Module_WriteCtrl[Log記録]
+    end
+    subgraph UtilityLog
+      LOG_Write[Log処理]
+    end
+  end
+  style left color:#fff, fill:#fff, stroke:#fff
+
+  subgraph center
+    direction TB
+    subgraph LogManager
+      LC_DLOGThread[Dlog用thread]
+      LC_ELOGThread[Elog用thread]
+      LC_DLOGRam[(Dlog用RAM)]
+    end
+    style LogManager fill:#f9f
+  end
+  style center color:#fff, fill:#fff, stroke:#fff
+
+  subgraph right
+    subgraph ParameterStorageManager
+      DS_SettingInfo[Log設定情報]
+    end
+
+    subgraph HAL
+      subgraph データ処理
+        HAL_StorageCtrl[Storage操作]
+        HAL_UARTCtrl[UART操作]
+        HAL_ExceptionCtrl[例外情報操作]
+      end
+    end
+
+    subgraph Storage
+      DLOG_Data[Dlogデータ]
+      ELOG_Data[Elogデータ]
+    end
+  end
+  style right color:#fff, fill:#fff, stroke:#fff
+  style master color:#fff, fill:#fff, stroke:#fff
+
+Top_Apps --> |LogManager構成情報取得<br>例外発生情報取得| LogManager
+
+Module --> |Dlogデータ<br>Elogデータ | UtilityLog
+
+LogManager ---> |LogManager構成情報<br>例外発生情報| Top_Apps
+
+UtilityLog --> |Log書き込み要求<br>Bulk送信要求<br>Log設定変更通知設定 | LogManager
+LogManager --> |Log設定変更通知<br>Bulk送信結果通知| UtilityLog
+
+LogManager --> |Dlog設定保存・取得<br>Elog設定保存・取得|ParameterStorageManager
+LogManager --> |Dlogデータ保存<br>Elogデータ保存|Storage
+LogManager --> |例外発生情報取得| データ処理
+
+上位Apps --> |Log出力先/Dlogレベル/Elogレベル/Dlogフィルタ設定| LogManager
+
+ESF_Main --> |初期化/開始/終了| LogManager
+LC_DLOGThread --> |Dlog 暗号化要求| Security
+Security -.-> |Dlog 暗号化データ| LC_DLOGThread
+LC_ELOGThread --> |Elog Telemetry送信| EVP
+EVP -.->  LC_ELOGThread
+end
+....
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|ParameterStorageManager
+|Dlog出力先/Dlogレベル/Elogレベル/フィルタ設定のFlash保存と保存データの取得  +
+|
+
+|UtilityLog
+|Dlog/Elog/BulkLog出力要求を受け、以下の出力判定を行う  +
+・出力先振り分け(UART/蓄積(RAM)) +
+・エラーレベル判定(指定レベル以下は出力無) +
+・指定Moduleのログフィルタリング(指定Module以外は出力無) +
+|
+
+|UtilityMSG
+|UtilityLogから出力されたElogをElog用スレッドに渡す
+|
+
+|Security
+|Dlogデータの暗号化/復号を行う
+|
+
+|EVP
+|DeviceControlServiceを利用し、EVPにBlob送信またはテレメトリ送信を行う
+|
+
+|HAL
+|例外発生情報の取得を行う
+|
+
+|FileSystem
+|下記データのFlash保存/取得を行う  +
+・Dlogデータ +
+・Elogデータ +
+|Dlog/ElogのFlashへのデータ保存はT.B.D
+
+|===
+
+<<<
+
+=== 状態遷移
+LogManagerの取り得る状態を<<#_TableStates>>に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明
+
+|Invalid
+|LogManager未初期化状態。
+
+|Init
+|LogManager初期化済状態。
+
+|Start
+|LogManager開始状態。
+
+|===
+
+LogManagerでは各APIを呼び出すことで<<#_状態遷移図>>に示す状態遷移を行います。 +
+また、``**EsfLogManagerDeinit**``を除き、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_状態遷移図]
+.状態遷移図
+[{mermaid_block}]
+....
+stateDiagram-v2
+    [*] --> Invalid
+    Invalid --> Init : EsfLogManagerInit
+    Init --> Invalid : EsfLogManagerDeinit
+    Init --> Start : EsfLogManagerStart
+    Start --> Invalid : EsfLogManagerDeinit
+    Init --> Init : EsfLogManagerRegisterChangeDlogCallback<br>EsfLogManagerUnregisterChangeDlogCallback
+    Start --> Start : EsfLogManagerRegisterChangeDlogCallback<br>EsfLogManagerUnregisterChangeDlogCallback<br>とその他API
+....
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。×はAPI受け付け不可を示し、ここでのAPI呼び出しはkEsfLogManagerStatusFailedを返し状態遷移は起きません。エラーの詳細は <<#_EsfLogManagerStatus>>を参照してください。
+
+CAUTION: 状態遷移を伴うAPI（``**EsfLogManagerInit**``、``**EsfLogManagerStart**``、``**EsfLogManagerDeinit**``）は、スレッドセーフではないため、同じスレッドから順番に呼び出してください。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.2+| 3+|状態
+|Invalid | Init | Start
+.10+|API名
+
+|``**EsfLogManagerInit**``
+|Init
+|×
+|×
+
+|``**EsfLogManagerStart**``
+|×
+|Start
+|×
+
+|``**EsfLogManagerRegisterChangeDlogCallback**``
+|×
+|Init
+|Start
+
+|``**EsfLogManagerUnregisterChangeDlogCallback**``
+|×
+|Init
+|Start
+
+|``**EsfLogManagerDeinit**``
+|×
+|Invalid
+|Invalid
+
+|``**その他API**``
+|×
+|×
+|Start
+
+|===
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|初期化
+|LogManagerを初期化します。
+|<<#_初期化>>
+
+|開始
+|LogManagerの開始処理をします。
+|<<#_開始>>
+
+|終了
+|LogManagerを終了します。
+|<<#_終了>>
+
+|ログ設定
+|Dlog/Elogの設定を行う機能です。
+|<<#_ログ設定>>
+
+|ログ設定取得
+|Dlog/Elogの設定取得を行う機能です。
+|<<#_ログ設定取得>>
+
+|Dlog保存
+|Dlogデータをメモリ(RAM)及びFlashに蓄積する機能です。 +
+※2024/08/01現在 Flash保存はT.B.Dです。 
+|<<#_Dlog保存>>
+
+|Elog出力
+|ElogデータをEVPのテレメトリ機能により送信します。 
+|<<#_Elog出力>>
+
+|ログ設定変化通知
+|ログ設定が変化した際、コールバックで通知します。 
+|<<#_ログ設定変化通知>>
+
+|ログ設定変化通知解除
+|ログ設定が変化した際に通知するコールバックを解除します。 
+|<<#_ログ設定変化通知解除>>
+
+|多量ログ送信
+|多量ログをEVPにBlob送信します。 
+|<<#_多量ログ送信>>
+
+|Flashデータ取得（T.B.D）
+|Flash内に蓄積したDlogデータを取得する機能で、平文 or 暗号化済データを選択してデータ取得することが出来ます。 +
+※2024/08/01現在 Flashデータ取得はT.B.Dです。 +
+|<<#_Flashデータ取得>>
+
+|LogManager構成情報取得
+|Dlog、RAM、バッファサイズ等LogManager構成情報を取得する機能です。
+|<<#_LogManager構成情報取得>>
+
+|例外発生情報取得（T.B.D）
+|例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
+|<<#_例外発生情報取得>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_初期化]
+==== 初期化
+* 機能概要
+    ** LogManagerの初期化を行います。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** LogManagerの状態をInvalidからInitに遷移します。
+    ** ログ設定変化通知設定またはログ設定変化通知解除のみ可能で、その他機能はエラーとなります。
+
+[#_開始]
+==== 開始
+* 機能概要
+    ** LogManagerの開始を行います。
+    ** Dlog/Elogの設定をFlashから取得します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** LogManagerの状態をInitからStartに遷移します。
+    ** DLog/ELog蓄積バッファの確保を行い、DLog/ELog/Blobスレッドを生成します。
+    ** ParameterStorageManagerの提供APIをコールすることにより、Dlog/Elogの設定をFlashから取得します。
+
+[#_終了]
+==== 終了
+* 機能概要
+    ** LogManagerの終了処理を行います。
+    
+* 前提条件
+    ** HALが正常動作していること。
+
+* 機能詳細
+    ** LogManagerの終了処理を行い、状態をInitまたはStartからInvalidに遷移します。
+    ** ConfigのFlash保存設定が有効な場合、RAMに蓄積中のDlogデータをFlashのログ格納領域に保存します。
+    ** 2024/08/01現在 Flash保存はT.B.Dです。 
+
+[#_ログ設定]
+==== ログ設定
+* 機能概要
+    ** Dlog/Elog出力要求時の動作設定を行います。設定出来る機能は以下になります。
+    *** Dlog出力先指定
+    *** Dlogレベル指定
+    *** Elogレベル指定
+    *** Dlogフィルタ指定
+    *** Storage Name指定
+    *** Storage Path指定
+    ** 上記設定を再度設定した場合、新しい設定値で全ての値を上書きします。 +
+    ※Mask値を定義する構造体でデータ有効指定したものが対象となり、データ無効指定したものは上書きせず、設定を維持します。
+    ** データ有効指定した設定値はParameter Storage Managerモジュールに対し、パラメータ保存要求を行いFlashに保存されます。次回以降の起動時、同じ設定で処理を行う場合は、前回の設定値を反映するため再度設定は不要です。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** Dlog出力先指定
+    *** <<#_EsfLogManagerDlogDest>>の値を設定することで、UART出力またはログ蓄積を行います。 +
+        ※LogManagerが未起動時にはログ蓄積を行なわず、エラー通知も行いません。
+    ** Dlogレベル指定
+    *** <<#_EsfLogManagerDlogLevel>>の値を設定することで、Dlog出力要求時に指定レベル以上のログを出力します。 +
+        ※指定レベル未満で出力しない場合、出力処理を行わないだけでエラーにはなりません。 +
+        Criticalが最上位、Traceが最下位となります。
+    ** Elogレベル指定
+    *** <<#_EsfLogManagerElogLevel>>の値を設定することで、Elog出力要求時に指定レベル以上のログを出力します。 +
+        ※指定レベル未満で出力しない場合、出力処理を行わないだけでエラーにはなりません。 +
+        Criticalが最上位、Traceが最下位となります。
+    ** Dlogフィルタ指定
+    *** 出力したいモジュールの識別値を指定することで、Dlog出力要求時に指定モジュールのみ出力します。 +
+    *** Dlogフィルタ指定時には、指定モジュールかつDlogレベル指定以上のログが出力されます。 +
+    ※上記条件に非該当の場合、出力処理を行わないだけでエラーにはなりません。
+    *** 解除する場合はモジュールの識別値を0指定することでフィルタ処理を解除し、Dlogレベル判定のみ行います。
+    ** Storage Name指定
+        *** ログデータのupload先を、指定文字列によって振り分けます。+
+        Local upload :: "http://" から始まる文字列の場合、指定のURLにLocalアップロードします。 +
+        Cloud upload :: "http://" 以外から始まる文字列の場合、Cloudアップロードします。 +
+        ※Local upload指定は、EsfLogManagerSettingBlockTypeの指定がkEsfLogManagerBlockTypeVicapp以外は、kEsfLogManagerStatusParamErrorを返します。
+    ** Storage Path指定
+        *** 指定パスにログデータをアップロードします。
+
+[#_ログ設定取得]
+==== ログ設定取得
+* 機能概要
+    ** LogManagerに設定している、Dlog/Elog出力要求時の動作設定を取得します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** LogManagerに設定している、Dlog/Elog出力要求時の動作設定を取得します。
+    ** 取得出来る値は<<#_EsfLogManagerParameterValue>>を参照して下さい。
+
+[#_Dlog保存]
+==== Dlog保存
+* 機能概要
+    ** Dlogデータをメモリ(RAM)及びFlashに蓄積します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** UtilityLogから蓄積要求されたDlogデータをメモリ(RAM)に蓄積します。
+    ** RAMは2面以上の領域を確保し、1面が最大蓄積量に到達した場合の処理はT.B.D。
+    ** RAMが全ての面でフルになった場合、一番古いログを最新ログで上書きする動作とします。
+    ** メモリエラー等発生した場合RAM蓄積しません。呼び出し元にエラーを返します。
+    ** 2024/08/01 現在、Flash保存機能はT.B.Dです。
+
+    ** 制限事項
+    *** この機能はUtilityLog向け機能のため、他のモジュールは使用しないで下さい。
+
+[#_Elog出力]
+==== Elog出力
+* 機能概要
+    ** ElogデータをEVPのテレメトリ機能により送信します。
+    ** オプションとしてFlash保存を有効にしている場合、ElogをFlashに保存します。
+    
+* 前提条件
+    ** EVPが正常動作していること。
+
+* 機能詳細
+    ** EVPテレメトリ送信動作
+    *** UtilityLogから送信されたElogデータをEVPのテレメトリ送信します。
+    *** テレメトリ送信に失敗した場合、送信処理をリトライします。
+
+    ** Elog蓄積動作
+    *** Flash蓄積オプションが有効な場合、Elog送信失敗時にFlashに蓄積します。
+    *** Flashがフルになった場合、一番古いログを最新ログで上書きする動作とします。
+    *** 書き込みエラー等発生した場合Flashに蓄積しません。呼び出し元にエラーを返します。
+    *** 2024/10/10 現在、Flash保存機能はT.B.Dです。
+
+    ** 制限事項
+    *** この機能はUtilityLog向け機能のため、他のモジュールは使用しないで下さい。
+
+[#_ログ設定変化通知]
+==== ログ設定変化通知
+* 機能概要
+    ** ログ設定変化時、登録関数にコールバック通知します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** ログ設定が変化した際、登録関数にログ設定とモジュールIDをコールバック通知します。
+    *** LogManagerの状態がInit状態で登録した場合、EsfLogManagerStart()をトリガーにコールバック通知します。 +
+        ※Initの段階ではFlashから設定値を取得していないため。
+    ** 制限事項
+    *** この機能はUtilityLog向け機能のため、他のモジュールは使用しないで下さい。
+
+[#_ログ設定変化通知解除]
+==== ログ設定変化通知解除
+* 機能概要
+    ** ログ設定変化通知で登録したコールバック通知を解除します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** ログ設定変化通知で登録した、モジュールIDに紐づくコールバック通知を解除します。
+    ** 制限事項
+    *** この機能はUtilityLog向け機能のため、他のモジュールは使用しないで下さい。
+
+[#_多量ログ送信]
+==== 多量ログ送信
+* 機能概要
+    ** 一度に多量ログをEVPに送信します。
+    
+* 前提条件
+    ** EVPが正常動作していること。
+
+* 機能詳細
+    ** 送信処理
+    *** 送信処理結果を指定のコールバック関数に通知します。
+    *** 転送処理が失敗した場合、送信処理をリトライ（最大5回）します。 +
+        転送失敗時はコールバックで返すsizeを"0"で返します。
+    ** 制限事項
+    *** この機能はUtilityLog向け機能のため、他のモジュールは使用しないで下さい。
+    
+
+[#_Flashデータ取得]
+==== Flashデータ取得（T.B.D）
+* 機能概要
+    ** Flashに蓄積したDlogデータを取得します。データ取得は平文 or 暗号化済データのどちらかを指定して下さい。
+    
+* 前提条件
+    ** 特になし
+
+* 機能詳細
+    ** Flashに蓄積しているDlogデータを、引数指定した形式(平文 or 暗号化済データ)で返します +
+    ** 取得出来るデータサイズ上限は、LogManager構成情報取得の各データサイズが上限となります。
+
+[#_LogManager構成情報取得]
+==== LogManager構成情報取得
+* 機能概要
+    ** LogManagerが取り扱う、メモリのデータサイズを取得する機能です +
+    (取得出来るメモリ種別は「機能詳細」を参照)。
+    
+* 前提条件
+    ** 特になし
+
+* 機能詳細
+    ** LogManagerが扱う各種バッファ情報等の構成情報を呼び出し元に返します。 
+    ** 返却するデータは下記になります。
+    *** Dlog用RAMのバッファ1面サイズと面数
+    *** Dlog用Flashのバッファ1面サイズと面数（T.B.D）
+    *** Elog用Flashのバッファサイズと面数
+    *** Exception用データのバッファイズと面数（T.B.D）
+    ** 構成情報の格納バッファがNULLの場合のみエラーとなります。
+    ** 未サポート(T.B.D)の項目は、面数とデータサイズ共に0で返します。
+
+[#_例外発生情報取得]
+==== 例外発生情報取得(T.B.D)
+* 機能概要
+    ** 例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
+    
+* 前提条件
+    ** 特になし
+
+* 機能詳細
+    ** アプリ等から受理したバッファに例外発生時の情報を文字列化して格納します。 
+    ** 例外発生情報が積まれていない場合、何も返さず結果も正常応答します。
+    ** 例外発生情報にアクセスできない等異常が発生した場合、エラーとなります。
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+2024/08/01 現在、本節はT.B.Dです。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|XXX byte
+|<<#_Stack最大使用量>>
+
+|スレッド使用数
+|3つ
+|<<#_スレッド使用数>>
+
+|最大処理時間
+|XXXX ms
+|<<#_最大処理時間>>
+
+|ヒープメモリ使用量
+|XXXX byte
+|<<#_ヒープメモリ使用量>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+2024/08/01 現在、本節はT.B.Dです。
+
+[#_Stack最大使用量]
+==== Stack最大使用量
+設計時点での目標値は XXXbyte。
+
+[#_スレッド使用数]
+==== スレッド使用数
+Dlog、Elog、Blob処理用に3つ生成します。
+
+[#_最大処理時間]
+==== 最大処理時間
+設計時点での目標値は XXms。
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+設計時点での目標値は XXXbyte。
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfLogManagerState
+|LogManagerの状態を定義する列挙型です。
+|<<#_EsfLogManagerState>>
+
+|EsfLogManagerStatus
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfLogManagerStatus>>
+
+|EsfLogManagerDlogDest
+|Dlogのログ出力先を定義する列挙型です。
+|<<#_EsfLogManagerDlogDest>>
+
+|EsfLogManagerDlogLevel
+|Dlogのログレベルを定義する列挙型です。
+|<<#_EsfLogManagerDlogLevel>>
+
+|EsfLogManagerElogLevel
+|Elogのログレベルを定義する列挙型です。
+|<<#_EsfLogManagerElogLevel>>
+
+|EsfLogManagerElogMessage
+|Elogのログメッセージを定義する構造体です。
+|<<#_EsfLogManagerElogMessage>>
+
+|EsfLogManagerSettingBlockType
+|ログ設定を行うブロックを定義する列挙型です。
+|<<#_EsfLogManagerSettingBlockType>>
+
+|EsfLogManagerParameterMask
+|ログ設定のMask値を定義する構造体で、各ログ設定項目の有効無効を設定します。
+|<<#_EsfLogManagerElogLevel>>
+
+|EsfLogManagerParameterValue
+|ログ設定項目の各設定値を格納する構造体です。
+|<<#_EsfLogManagerParameterValue>>
+
+|EsfLogManagerMemoryType
+|メモリ種別を定義する列挙型です。
+|<<#_EsfLogManagerMemoryType>>
+
+|EsfLogManagerEncrypt
+|暗号化の有無を定義する列挙型です。
+|<<#_EsfLogManagerEncrypt>>
+
+|EsfLogManagerDlogChangeInfo
+|ログ設定変化コールバック通知用の構造体です。
+|<<#_EsfLogManagerDlogChangeInfo>>
+
+|EsfLogManagerChangeDlogCallback
+|ログ設定変化時に通知するコールバック関数の定義です。
+|<<#_EsfLogManagerChangeDlogCallback>>
+
+|EsfLogManagerBulkDlogCallback
+|多量ログ送信結果を通知するコールバック関数の定義です。
+|<<#_EsfLogManagerLogBufferInfo>>
+
+|EsfLogManagerLogBufferInfo
+|バッファの構成情報（サイズ、面数）を定義する構造体です。
+|<<#_EsfLogManagerLogBufferInfo>>
+
+|EsfLogManagerLogInfo
+|LogManagerの構成情報（バッファサイズ等）を定義する構造体です。
+|<<#_EsfLogManagerLogInfo>>
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfLogManagerInit
+|LogManagerの初期化を行います。
+|<<#_EsfLogManagerInit>>
+
+|EsfLogManagerStart
+|LogManagerのスレッド開始処理やログ蓄積用メモリ確保を行います。
+|<<#_EsfLogManagerStart>>
+
+|EsfLogManagerDeinit
+|LogManagerの終了処理を行います。
+|<<#_EsfLogManagerDeinit>>
+
+|EsfLogManagerSetParameter
+|LogManagerのパラメータ設定を行います。
+|<<#_EsfLogManagerSetParameter>>
+
+|EsfLogManagerGetParameter
+|LogManagerのパラメータ設定取得を行います。
+|<<#_EsfLogManagerGetParameter>>
+
+|EsfLogManagerGetModuleParameter
+|モジュールIDに紐づけられたLogManagerのパラメータ設定を取得します。
+|<<#_EsfLogManagerGetModuleParameter>>
+
+|EsfLogManagerStoreDlog
+|LogManagerにデータの蓄積要求を行います。
+|<<#_EsfLogManagerStoreDlog>>
+
+|EsfLogManagerSendElog
+|ElogデータをEVPのテレメトリに出力します。
+|<<#_EsfLogManagerSendElog>>
+
+|EsfLogManagerGetLogInfo
+|LogManagerの構成情報（バッファサイズ等）を取得します。
+|<<#_EsfLogManagerGetLogInfo>>
+
+|EsfLogManagerRegisterChangeDlogCallback
+|指定モジュールIDに該当するログ設定が変化した場合、引数で指定されたコールバック関数に通知します。
+|<<#_EsfLogManagerRegisterChangeDlogCallback>>
+
+|EsfLogManagerUnregisterChangeDlogCallback
+|指定モジュールIDに該当するログ設定が変化した場合に通知する、コールバック関数の登録を解除します。
+|<<#_EsfLogManagerUnregisterChangeDlogCallback>>
+
+|EsfLogManagerSendBulkDlog
+|多量ログをまとめてEVPにBlob送信する場合に使用します。
+|<<#_EsfLogManagerSendBulkDlog>>
+
+|EsfLogManagerGetExceptionData
+|例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
+|<<#_EsfLogManagerGetExceptionData>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_EsfLogManagerState]
+==== EsfLogManagerState
+LogManagerの状態を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerStateInvalid,
+  kEsfLogManagerStateInit,
+  kEsfLogManagerStateStart,
+  kEsfLogManagerStateNum
+} EsfLogManagerState;
+....
+
+* *値* 
++
+[#_EsfLogManagerStateの値の説明]
+.EsfLogManagerStateの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerStateInvalid
+|未初期化状態
+|kEsfLogManagerStateInit
+|初期化状態
+|kEsfLogManagerStateStart
+|開始状態
+|kEsfLogManagerStateNum
+|kEsfLogManagerStateNum要素数(メンバ最後に配置)
+|===
+
+[#_EsfLogManagerStatus]
+==== EsfLogManagerStatus
+APIの実行結果を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerStatusOk,
+  kEsfLogManagerStatusFailed,
+  kEsfLogManagerStatusParamError,
+  kEsfLogManagerStatusNum
+} EsfLogManagerStatus;
+....
+
+* *値* 
++
+[#_EsfLogManagerStatusの値の説明]
+.EsfLogManagerStatusの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerStatusOk
+|エラーなし
+|kEsfLogManagerStatusFailed
+|エラー
+|kEsfLogManagerStatusParamError
+|パラメータエラー
+|kEsfLogManagerStatusNum
+|EsfLogManagerStatus要素数(メンバ最後に配置)
+|===
+
+[#_EsfLogManagerDlogDest]
+==== EsfLogManagerDlogDest
+
+Dlogの出力先を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerDlogDestUart,
+  kEsfLogManagerDlogDestStore,
+  kEsfLogManagerDlogDestBoth,
+  kEsfLogManagerDlogDestNum
+} EsfLogManagerDlogDest;
+....
+
+* *値* 
++
+[#_EsfLogManagerDestの値の説明]
+.EsfLogManagerDestの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerDestUart
+|UART出力
+|kEsfLogManagerDlogDestStore
+|Memory(RAM)出力
+|kEsfLogManagerDestBoth
+|UART&Memory出力
+|kEsfLogManagerDestNum
+|EsfLogManagerDest要素数(メンバ最後に配置)
+|===
+
+
+[#_EsfLogManagerDlogLevel]
+==== EsfLogManagerDlogLevel
+
+Dlogのログレベルを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerDlogLevelCritical,
+  kEsfLogManagerDlogLevelError,
+  kEsfLogManagerDlogLevelWarn,
+  kEsfLogManagerDlogLevelInfo,
+  kEsfLogManagerDlogLevelDebug,
+  kEsfLogManagerDlogLevelTrace,
+  kEsfLogManagerDlogLevelNum
+} EsfLogManagerDlogLevel;
+....
+
+* *値* 
++
+[#_EsfLogManagerDlogLevelの値の説明]
+.EsfLogManagerDlogLevelの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerDlogLevelCritical
+|Critical
+|kEsfLogManagerDlogLevelError
+|Error
+|kEsfLogManagerDlogLevelWarn
+|Warning
+|kEsfLogManagerDlogLevelInfo
+|Info
+|kEsfLogManagerDlogLevelDebug
+|Debug
+|kEsfLogManagerDlogLevelTrace
+|Trace
+|kEsfLogManagerDlogLevelNum
+|EsfLogManagerlogLevel要素数(メンバ最後に配置)
+|===
+
+[#_EsfLogManagerElogLevel]
+==== EsfLogManagerElogLevel
+
+Elogのログレベルを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerElogLevelCritical,
+  kEsfLogManagerElogLevelError,
+  kEsfLogManagerElogLevelWarn,
+  kEsfLogManagerElogLevelInfo,
+  kEsfLogManagerElogLevelDebug,
+  kEsfLogManagerElogLevelTrace,
+  kEsfLogManagerElogLevelNum
+} EsfLogManagerElogLevel;
+....
+
+* *値* 
++
+[#_EsfLogManagerElogLevelの値の説明]
+.EsfLogManagerElogLevelの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerElogLevelCritical
+|Critical
+|kEsfLogManagerElogLevelError
+|Error
+|kEsfLogManagerElogLevelWarn
+|Warning
+|kEsfLogManagerElogLevelInfo
+|Info
+|kEsfLogManagerElogLevelDebug
+|Debug
+|kEsfLogManagerElogLevelTrace
+|Trace
+|kEsfLogManagerElogLevelNum
+|EsfLogManagerElogLevel要素数(メンバ最後に配置)
+|===
+
+[#_EsfLogManagerElogMessage]
+==== EsfLogManagerElogMessage
+
+送信するElogに含まれる情報を定義する構造体です。 +
+
+* *書式*
++
+[source, C]
+....
+typedef struct EsfLogManagerElogMessage{
+  EsfLogManagerElogLevel elog_level;
+  char time[ESF_LOG_DATATIME_SIZE];
+  uint32_t component_id;
+  uint32_t event_id;
+} EsfLogManagerElogMessage;
+....
+
+* *値* 
++
+[#_EsfLogManagerElogMessageの値の説明]
+.EsfLogManagerElogMessageの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名 |説明
+|elog_level
+|Elogのログレベル
+|time
+|Elogのタイムスタンプ
+|component_id
+|Elogを出力したコンポーネントを識別するID
+|event_id
+|デバイスで発生したイベントを識別するID
+|===
+
+[#_EsfLogManagerSettingBlockType]
+==== EsfLogManagerSettingBlockType
+
+ログ設定を行うブロックを定義する列挙型です。 +
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerBlockTypeSysApp,
+  kEsfLogManagerBlockTypeEdgeApp = kEsfLogManagerBlockTypeSysApp,
+  kEsfLogManagerBlockTypeSensor,
+  kEsfLogManagerBlockTypeAiisp,
+  kEsfLogManagerBlockTypeVicapp,
+  kEsfLogManagerBlockTypeAll,
+  kEsfLogManagerBlockTypeNum
+} EsfLogManagerSettingBlockType;
+....
+
+* *値* 
++
+[#_EsfLogManagerSettingBlockTypeの値の説明]
+.EsfLogManagerSettingBlockTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerBlockTypeSysApp
+|SysAppブロック指定
+|kEsfLogManagerBlockTypeEdgeApp
+|EdgeAppブロック指定
+|kEsfLogManagerBlockTypeSensor
+|Sensorブロック指定
+|kEsfLogManagerBlockTypeAiisp
+|Aiispブロック指定
+|kEsfLogManagerBlockTypeSVicapp
+|Vicappブロック指定
+|kEsfLogManagerBlockTypeAll
+|全ブロック指定
+|kEsfLogManagerBlockTypeNum
+|EsfLogManagerSettingBlockType要素数(メンバ最後に配置)
+|===
+
+[#_EsfLogManagerParameterMask]
+==== EsfLogManagerParameterMask
+
+Mask値を定義する構造体で、データの有効無効を設定します。 +
+<<#_EsfLogManagerParameterValue>>の値を有効にする場合は"1"を指定し、無効にする場合は"0"を指定して下さい。
+
+* *書式*
++
+[source, C]
+....
+typedef struct EsfLogManagerParameterMask{
+  uint8_t dlog_dest :1;
+  uint8_t dlog_level :1;
+  uint8_t elog_level :1;
+  uint8_t dlog_filter :1;
+  uint8_t storage_name :1;
+  uint8_t storage_path :1;
+} EsfLogManagerParameterMask;
+....
+
+* *値* 
++
+[#_EsfLogManagerParameterMaskの値の説明]
+.EsfLogManagerParameterMaskの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|dlog_dest
+|1の場合はDlog出力先の値を設定し、0の場合は設定しません
+|dlog_level
+|1の場合はDlog出力レベルの値を設定し、0の場合は設定しません
+|elog_level
+|1の場合はElog出力レベルの値を設定し、0の場合は設定しません
+|dlog_filter
+|1の場合はDlogのログフィルタの値を設定し、0の場合は設定しません
+|storage_name
+|1の場合はstorage nameを設定し、0の場合は設定しません
+|storage_path
+|1の場合はstorage pathを設定し、0の場合は設定しません
+|===
+
+[#_EsfLogManagerParameterValue]
+==== EsfLogManagerParameterValue
+
+ログ設定項目の各設定値を格納する構造体です。 +
+
+* *書式*
++
+[source, C]
+....
+typedef struct EsfLogManagerParameterValue{
+  LogManagerDlogDest dlog_dest;
+  LogManagerDlogLevel dlog_level;
+  LogManagerElogLevel elog_level;
+  uint32_t dlog_filter;
+  char storage_name[64];
+  char storage_path[256];
+} EsfLogManagerParameterValue;
+....
+
+* *値* 
++
+[#_EsfLogManagerParameterValueの値の説明]
+.EsfLogManagerParameterValueの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|dlog_dest
+|Dlog出力先を設定
+|dlog_level
+|Dlog出力レベルを設定
+|elog_level
+|Elog出力レベルを設定
+|dlog_filter
+|Dlog出力を許可するモジュールIDを指定
+|storage_name
+|storage nameを指定 +
+※NULL文字が含まれてない場合、エラー(kEsfLogManagerStatusParamError)を返します。 +
+|storage_path
+|storage pathを指定 +
+※storage_pathに指定する文字列は以下条件のいずれかに該当する場合、エラー(kEsfLogManagerStatusParamError)を返します。 +
+  ・文字列に、NULL文字が含まれてない場合。 +
+  ・文字列が、末尾がドット (.)、スラッシュ (/)、円記号 ()、で終わる。 +
+  ・文字列に、空白文字(スペース等)を含まれている。 +
+  補足：文字列は、大文字と小文字が区別されます。
+|===
+
+[#_EsfLogManagerMemoryType]
+==== EsfLogManagerMemoryType
+
+メモリ種別を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerMemoryTypeCurrentRAM,
+  kEsfLogManagerMemoryTypeFullRAM,
+  kEsfLogManagerMemoryTypeFlash,
+  kEsfLogManagerMemoryTypeNum
+} EsfLogManagerMemoryType;
+....
+
+* *値* 
++
+[#_EsfLogManagerMemoryTypeの値の説明]
+.EsfLogManagerMemoryTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerMemoryTypeCurrentRAM
+|蓄積中のRAM（一面）
+|kEsfLogManagerMemoryTypeFullRAM
+|蓄積量が最大まで到達したRAM（一面）
+|kEsfLogManagerMemoryTypeFlash
+|Flashは現在、指定できません（T.B.D）
+|kEsfLogManagerMemoryTypeNum
+|EsfLogManagerMemoryType要素数(メンバ最後に配置)
+|===
+
+
+[#_EsfLogManagerEncrypt]
+==== EsfLogManagerEncrypt
+
+暗号化の有無を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfLogManagerEncryptDisable,
+  kEsfLogManagerEncryptEnable,
+  kEsfLogManagerEncryptNum
+} EsfLogManagerEncrypt;
+....
+
+* *値* 
++
+[#_EsfLogManagerEncryptの値の説明]
+.EsfLogManagerEncryptの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfLogManagerEncryptDisable
+|暗号化無効
+|kEsfLogManagerEncryptEnable
+|暗号化有効
+|kEsfLogManagerEncryptNum
+|EsfLogManagerEncrypt要素数(メンバ最後に配置)
+|===
+
+[#_EsfLogManagerDlogChangeInfo]
+==== EsfLogManagerDlogChangeInfo
+
+ログ設定変化コールバック通知する際に格納する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct EsfLogManagerDlogChangeInfo{
+  EsfLogManagerParameterValue value;
+  uint32_t module_id;
+} EsfLogManagerDlogChangeInfo;
+....
+
+* *値* 
++
+[#_EsfLogManagerDlogChangeInfoの値の説明]
+.EsfLogManagerDlogChangeInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|value
+|ログ設定
+|module_id
+|ログ設定が変更されたモジュールID
+|===
+
+[#_EsfLogManagerChangeDlogCallback]
+==== EsfLogManagerChangeDlogCallback
+
+ログ設定変化時に通知するコールバック関数の定義です。
+
+* *書式*
++
+[source, C]
+....
+typedef void (*EsfLogManagerChangeDlogCallback)(EsfLogManagerDlogChangeInfo *info);
+....
+
+* *引数* 
++
+**``[OUT] EsfLogManagerDlogChangeInfo *info``**:: 
+<<#_EsfLogManagerDlogChangeInfo>>参照。
+
+
+[#_EsfLogManagerBulkDlogCallback]
+==== EsfLogManagerBulkDlogCallback
+
+多量ログ送信結果を通知するコールバック関数の定義です。
+
+* *書式*
++
+[source, C]
+....
+typedef void (*EsfLogManagerBulkDlogCallback)(size_t size, void *user_data);
+....
+
+* *引数* 
++
+**``[OUT] size_t size``**:: 
+送信サイズ(送信失敗時は0)。
+**``[OUT] void *user_data``**:: 
+ユーザデータ。
+
+[#_EsfLogManagerLogBufferInfo]
+==== EsfLogManagerLogBufferInfo
+バッファの構成情報（サイズ、面数）を定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct EsfLogManagerLogBufferInfo{
+  uint32_t size;
+  uint32_t num;
+} EsfLogManagerLogBufferInfo;
+....
+
+* *値*
++
+[#_EsfLogManagerLogBufferInfoの値の説明]
+.EsfLogManagerLogBufferInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|size
+|バッファ1面のサイズ
+|num
+|バッファの面数
+|===
+
+
+[#_EsfLogManagerLogInfo]
+==== EsfLogManagerLogInfo
+LogManagerの構成情報（バッファ数等）を定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct EsfLogManagerLogInfo{
+  EsfLogManagerLogBufferInfo dlog_ram;
+  EsfLogManagerLogBufferInfo dlog_flash; (T.B.D)
+  EsfLogManagerLogBufferInfo elog_ram; (T.B.D)
+  EsfLogManagerLogBufferInfo elog_flash; (T.B.D)
+  EsfLogManagerLogBufferInfo exception_flash;（T.B.D）
+} EsfLogManagerLogInfo;
+....
+
+* *値*
++
+[#_EsfLogManagerLogInfoの値の説明]
+.EsfLogManagerLogInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|dlog_ram
+|Dlog用RAMのバッファ構成情報
+|dlog_flash
+|Dlog用Flashのバッファ構成情報 (T.B.D)
+|elog_ram
+|Elog用RAMのバッファ構成情報 (T.B.D)
+|elog_flash
+|Elog用Flashのバッファ構成情報 (T.B.D)
+|exception_flash
+|exception用Flashのバッファ構成情報 (T.B.D)
+|===
+
+以下、EsfLogManagerLogInfoが取り扱うデータ範囲とデフォルト値を示します。
+[#_EsfLogManagerLogInfoの取り扱い範囲]
+.EsfLogManagerLogInfoの取り扱い範囲
+[width="100%", cols="35%,35%,20%,10%",options="header"]
+|===
+|EsfLogManagerLogInfoメンバ |EsfLogManagerLogInfoメンバ |取り扱い範囲 |値
+1.2+|dlog_ram |size |1~ |4096
+|num |0 or 2~15 |2
+1.2+|dlog_flash |size |1~ |65536
+|num |0 or 1~15 |1
+1.2+|elog_ram |size |1~ |2048
+|num |0 or 1固定 |1
+1.2+|elog_flash |size |1~ |65536
+|num |0 or 1~15 |1
+1.2+|exception_flash |size |1~ |65536
+|num |0 or 1~15 |1
+|===
+
+<<<
+
+=== API定義
+
+[#_EsfLogManagerInit]
+==== EsfLogManagerInit
+* *機能* 
++
+LogManagerの初期化を行います。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerInit(void) **``  
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusFailed
+|異常終了 +
+ LogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+LogManagerの初期化処理を行い、LogManagerの状態をInitに遷移します。 +
+エラーの場合、状態遷移は行われません。 +
+本APIは、多重呼び出し禁止です。 +
+通常時再呼び出しする場合はEsfLogManagerDeinitを必ず実施ください。 
+
+[#_EsfLogManagerStart]
+==== EsfLogManagerStart
+* *機能* 
++
+LogManagerを開始します。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerStart(void) **``  
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusFailed
+|異常終了 +
+ メモリ確保、Flashアクセス、スレッド生成等に失敗し、LogManagerを起動できない場合、またはLogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+LogManagerの初期化処理を行い、LogManagerの状態をStartに遷移します。 +
+Dlog/Elog蓄積用メモリの獲得と、Dlog/Elog/Blob用スレッドの生成を行い、Flashからログ設定内容を取得します。 +
+本APIは、多重呼び出し禁止です。 +
+通常時再呼び出しする場合はEsfLogManagerDeinitを必ず実施ください。 
+
+[#_EsfLogManagerDeinit]
+==== EsfLogManagerDeinit
+* *機能* 
++
+LogManagerの終了処理を行います。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerDeinit(void) **``  
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusFailed
+|異常終了 +
+ Flashアクセス、スレッド削除等資源解放に失敗し、LogManagerを終了できない場合。 +
+ LogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+LogManagerの終了処理を行い、状態をInvalidに遷移します。 +
+エラーの場合、状態遷移は行われません。 +
+Flash保存が有効な場合、RAMに蓄積中Dlog及びElogデータをHALの提供するAPIにより、各Flash領域に保存します。 +
+Flash保存が無効な場合、RAMに蓄積中Dlog及びElogデータは破棄します。そのため必要に応じて本APIを実行前、蓄積データを取得するAPIをコールし、データ取得後に実行して下さい。 +
+2024/08/01現在 Flash保存はT.B.Dです。
+本APIは、多重呼び出し禁止です。 
+
+[#_EsfLogManagerSetParameter]
+==== EsfLogManagerSetParameter
+* *機能* 
++
+LogManagerのパラメータ設定を行います。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerSetParameter(const EsfLogManagerSettingBlockType block_type, const EsfLogManagerParameterValue value, const EsfLogManagerParameterMask mask) **``  
+
+* *引数の説明* +
++
+**``[IN] EsfLogManagerSettingBlockType block_type``**:: 
+ログ設定を行うブロックを指定します。
+
++
+**``[IN] EsfLogManagerParameterValue value``**:: 
+
+ログ設定項目の各設定値を格納する構造体です。 +
++
+**``[IN] EsfLogManagerParameterMask mask``**:: 
+
+ログ設定のMask値を定義する構造体で、各ログ設定項目の有効無効を設定します。
+
+
+* *戻り値* +
++
+実行結果は常に<<#_EsfLogManagerStatus>>の下記の値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|パラメータ指定が不正な場合
+|kEsfLogManagerStatusFailed
+|異常終了 +
+Flash保存出来ない場合、またはLogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+Dlog/Elog出力要求時の以下処理を指定します。 設定の詳細は <<#_ログ設定>>を参照して下さい。
+** Dlog出力先指定
+** Dlogレベル指定
+** Elogレベル指定
+** Dlogフィルタ指定
+** Storage Name指定
+** Storage Path指定
+
+[#_EsfLogManagerGetParameter]
+==== EsfLogManagerGetParameter
+* *機能* 
++
+LogManagerのパラメータ設定取得を行います。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerGetParameter(EsfLogManagerSettingBlockType block_type, EsfLogManagerParameterValue *value) **``  
+
+* *引数の説明* +
++
+**``[IN] EsfLogManagerSettingBlockType block_type``**:: 
+ログ取得を行うブロックを指定します。
+
++
+**``[OUT] EsfLogManagerParameterValue value``**:: 
+
+LogManagerに設定しているDlog/Elog出力要求時の設定値を格納する構造体です。 +
+
+* *戻り値* +
++
+実行結果は常に<<#_EsfLogManagerStatus>>の下記の値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|パラメータ指定が不正な場合
+|kEsfLogManagerStatusFailed
+|異常終了 +
+設定取得処理が失敗した場合、またはLogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+LogManagerに設定している、各ブロックごとのDlog/Elog出力要求時の設定値を取得します。 +
+取得可能な設定内容は <<#_EsfLogManagerParameterValue>>を参照して下さい
+
+[#_EsfLogManagerGetModuleParameter]
+==== EsfLogManagerGetModuleParameter
+* *機能* 
++
+モジュールIDに紐づけられたLogManagerのパラメータ設定を取得します。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerGetModuleParameter(uint32_t module_id, EsfLogManagerParameterValue *value) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+パラメータ設定を取得したいモジュールIDを指定します。
+
++
+**``[OUT] EsfLogManagerParameterValue value``**:: 
+
+Dlog/Elog出力要求時の設定値を格納する構造体です。 +
+
+* *戻り値* +
++
+実行結果は常に<<#_EsfLogManagerStatus>>の下記の値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|パラメータ指定が不正な場合
+|kEsfLogManagerStatusFailed
+|異常終了 +
+設定取得処理が失敗した場合、またはLogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+モジュールIDに紐づけられたDlog/Elog出力要求時の設定値を取得します。 +
+取得可能な設定内容は <<#_EsfLogManagerParameterValue>>を参照して下さい。 +
+※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
+
+[#_EsfLogManagerStoreDlog]
+==== EsfLogManagerStoreDlog
+* *機能* 
++
+LogManagerへDlogの蓄積要求を行います。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size) **``  
+
+* *引数の説明* +
++
+**``[IN] uint8_t *str``**:: 
+蓄積を行う文字列ポインタを指定します。 +
++
+**``[IN] uint32_t size``**:: 
+文字列サイズを指定します。 +
+
+* *戻り値* +
++
+実行結果は常に<<#_EsfLogManagerStatus>>の下記の値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|パラメータ指定が不正な場合
+|kEsfLogManagerStatusFailed
+|異常終了 +
+蓄積処理に失敗した場合、またはLogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+文字列ポインタで指定された文字列を、指定のサイズでDLog用メモリに蓄積を行います。 +
+※DLog用メモリの蓄積量がFullになった場合の処理はT.B.D。 +
+※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
+
+[#_EsfLogManagerSendElog]
+==== EsfLogManagerSendElog
+* *機能* 
++
+LogManagerへElogの送信要求を行います。
+
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerSendElog(const EsfLogManagerElogMessage *message) **``
+
+* *引数の説明* +
++
+**``[IN] EsfLogManagerElogMessage *message``**::
+
+Elogのログメッセージです。 +
+<<#_EsfLogManagerElogMessage>>に示す構造体にログレベル、ログを出力したコンポーネントの識別ID、発生したイベントの識別IDを格納します。 +
+NULLを指定した場合はエラーとなります。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値|説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|引数のmessageがNULLの場合 
+|kEsfLogManagerStatusFailed
+|異常終了 +
+ UtilityMSGによるElogスレッドへの情報通知が失敗した場合、またはLogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+* *説明* +
+UtilityLogから受け取ったElogをEVPテレメトリで送信します。 +
+送信失敗時は時間置いて、再度送信処理を実行します。 +
+Flash蓄積オプションが有効な場合、送信失敗時にFlashへ保存します。 +
+本APIは多重呼び出し可能です。 +
+※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
+
+[#_EsfLogManagerGetLogInfo]
+==== EsfLogManagerGetLogInfo
+* *機能* 
++
+Dlog RAMバッファサイズ等LogManager構成情報を取得する機能です。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerGetLogInfo(EsfLogManagerLogInfo *log_info) **``  
+
+* *引数の説明* +
++
+**``[OUT] EsfLogManagerLogInfo *log_info``**:: 
+
+LogManagerの構成情報です。 +
+<<#_EsfLogManagerLogInfo>>に示す構造体にバッファサイズ、面数等を格納します。 +
+NULLを指定した場合はエラーとなります。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|引数のlog_infoがNULLの場合 
+|kEsfLogManagerStatusFailed
+|LogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+LogManagerの構成情報（バッファサイズ等）を取得します。 +
+引数log_infoがNULLの場合、エラーとなります。 +
+本APIは、多重呼び出し可能です。 
+
+[#_EsfLogManagerRegisterChangeDlogCallback]
+==== EsfLogManagerRegisterChangeDlogCallback
+* *機能* 
++
+指定モジュールIDに該当するログ設定が変化した場合、引数で指定されたコールバック関数に通知する機能です。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerRegisterChangeDlogCallback(uint32_t module_id, EsfLogManagerChangeDlogCallback callback) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+ログ設定変化を通知するモジュールIDを指定します。
+
+**``[IN] EsfLogManagerChangeDlogCallback callback``**:: 
+ログ設定変化時に通知する関数を指定します。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusFailed
+|LogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+指定モジュールIDに該当するログ設定が変化した場合、引数で指定されたコールバック関数に通知します。 +
+LogManagerの状態がStartに遷移していない場合、Start遷移後に通知します。 +
+本APIは、多重呼び出し可能です。 +
+※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
+
+[#_EsfLogManagerUnregisterChangeDlogCallback]
+==== EsfLogManagerUnregisterChangeDlogCallback
+* *機能* 
++
+ログ設定変化時のコールバック登録を解除する機能です。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerUnregisterChangeDlogCallback(uint32_t module_id) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t module_id``**:: 
+ログ設定変化時のコールバック登録を解除するモジュールIDを指定します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusFailed
+|LogManagerの状態が遷移表記載の"x"に該当する場合
+|===
+
+* *説明* +
+指定モジュールIDで登録したコールバック登録を解除します。 +
+本APIは、多重呼び出し可能です。 +
+※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
+
+[#_EsfLogManagerSendBulkDlog]
+==== EsfLogManagerSendBulkDlog
+* *機能* 
++
+多量ログをEVPに送信する機能です。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerSendBulkDlog(size_t size, uint8_t *bulk_log, EsfLogManagerBulkDlogCallback callback,void *user_data) **``  
+
+* *引数の説明* +
++
+**``[IN] size_t size``**:: 
+送信データサイズを指定します。
+
+**``[IN] uint8_t *bulk_log``**:: 
+送信データのポインタアドレスを指定します。
+
+**``[IN] EsfLogManagerBulkDlogCallback callback``**:: 
+送信結果を通知するコールバック関数を指定します。
+
+**``[IN] void *user_data``**:: 
+送信結果時に通知するユーザデータを指定します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusFailed
+|LogManagerの状態が遷移表記載の"x"に該当する場合 +
+領域確保数が``CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE``を超える場合 +
+そのほか何らかの内部エラーが発生した場合
+|===
+
+* *説明* +
+指定サイズでEVPにデータを送信します。 +
+コールバック関数が指定されていない場合は内部でデータ領域を確保・コピーしてデータ保持します。 +
+確保できる最大データ領域数は``CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE``個です。 +
+EVPへのデータ送信が完了すると、コールバック関数に送信したデータサイズとユーザデータをセットして返します。 データ領域を確保した場合はこのタイミングで開放します。 +
+※送信成功時にはsizeに送信サイズをセットし、失敗した場合はsizeに0を設定します。 +
+本APIは、多重呼び出し可能です。 +
+※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
+
+
+[#_EsfLogManagerGetExceptionData]
+==== EsfLogManagerGetExceptionData
+* *機能* 
++
+例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
+
+* *書式* +
++
+``** EsfLogManagerStatus EsfLogManagerGetExceptionData(uint32_t size, uint8_t *buf, uint32_t *out_size) **``  
+
+* *引数の説明* +
++
+**``[IN] uint32_t size``**:: 
+LogManager構成情報より得られるExceptionデータのバッファサイズを指定ください。
+上記データサイズ未満の場合、下記バッファにデータは格納されません。
+
+**``[OUT] uint8_t *buf``**:: 
+Exception用データ格納バッファ。NULLの場合、上記データサイズ未満の場合、エラーを返します +
+エラーの場合、バッファにデータは格納されません。
+
+**``[OUT] uint32_t *out_size``**:: 
+実際に格納したExceptionデータのサイズを返します。 +
+エラーまたはExceptionデータサイズが0の場合、0を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfLogManagerStatus>>のいずれかの値が返ります。
+[#_EsfLogManagerStatusの戻り値の説明]
+.EsfLogManagerStatusの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfLogManagerStatusOk
+|正常終了
+|kEsfLogManagerStatusParamError
+|引数のbuf、out_sizeがNULLの場合
+|kEsfLogManagerStatusFailed
+|異常終了 +
+Exceptionデータへのアクセスに失敗、bufがExceptionデータより小さい値の場合
+|===
+
+* *説明* +
+引数bufに文字列化したExceptionデータを格納します。 +
+エラーの場合、引数bufにデータは格納されません。 +
+本APIは、多重呼び出し可能です。 
+
+== API使用時の呼び出し例
+
+Dlogシーケンスを以下に示します。
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant App as App
+    participant Module as Module
+    participant UtilityLog as UtilityLog
+    participant LogManager as LogManager
+    participant ParameterStorageManager as Parameter Storage Manager
+    participant hal as HAL
+    participant evp as EVP　
+    participant Security as Security
+    
+    note over App,Security : LogManager の初期化
+    App ->> +LogManager : EsfLogManagerInit()
+    note over LogManager : 初期化
+    LogManager -->> -App : EsfLogManagerStatus : kEsfLogManagerStatusOk
+
+    note over App,Security : LogManager の開始
+    App ->> +LogManager : EsfLogManagerStart()
+    note over LogManager : ログ格納用バッファ確保<BR>Dlogスレッド起床<BR>Blobスレッド起床
+    LogManager ->> +ParameterStorageManager : Flashデータ取得要求
+    note over ParameterStorageManager : Flashデータ取得
+    ParameterStorageManager -->> -LogManager : Dlog出力先/Dlogレベル/Dlogフィルタ設定
+    LogManager -->> -App : EsfLogManagerStatus : kEsfLogManagerStatusOk
+
+    note over App,Security : ログ設定変化時のコールバック登録
+    Module ->> +UtilityLog : UtilityLogRegisterSetDlogLevelCallback(ハンドル,登録関数)
+    UtilityLog ->> +LogManager : EsfLogManagerRegisterChangeDlogCallback(モジュールID,登録関数)
+    note over LogManager :コールバック関数とモジュールIDを登録
+    LogManager -->> -UtilityLog : EsfLogManagerStatus : kEsfLogManagerStatusOk
+    UtilityLog -->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+   
+    note over App,Security : Dlog出力先/Dlogレベル/Dlogフィルタ設定
+    App ->> +LogManager : EsfLogManagerSetParameter(ログ設定値, Mask指定)
+    note over LogManager : Dlog出力先/Dlogレベル/Dlogフィルタ登録
+    LogManager ->> +ParameterStorageManager : （パラメータ保存要求<br>Dlog出力先/Dlogレベル/Dlogフィルタ設定）
+    note over ParameterStorageManager : Flashへパラメータ保存
+    ParameterStorageManager -->> -LogManager : 成功
+    LogManager -->> UtilityLog : ログ設定変化コールバック通知
+    UtilityLog -->> Module : ログ設定変化コールバック通知
+    LogManager -->> -App : UtilityLogStatus:kUtilityLogStatusOK
+
+    note over App,Security : LogManager構成情報取得
+    App ->> +LogManager : EsfLogManagerGetLogInfo()
+    note over LogManager : LogManager構成情報取得
+    LogManager -->> -App : LogManager構成情報<br>EsfLogManagerStatus : kEsfLogManagerStatusOk
+
+    note over App,Security : Dlogログ保存 & Dlog蓄積データFull
+    Module ->> UtilityLog : UtilityLogWriteDlog(ログデータ)
+    activate UtilityLog
+    UtilityLog ->> LogManager : EsfLogManagerGetParameter(ログ設定取得)
+    activate LogManager
+    note over LogManager : Dlog出力先/Dlogレベル/Elogレベル/Dlogフィルタ値取得
+    LogManager -->> UtilityLog : EsfLogManagerStatus : kEsfLogManagerStatusOk
+    deactivate LogManager
+    UtilityLog ->> LogManager : EsfLogManagerStoreDlog(ログデータ)
+    activate LogManager
+    alt Dlogログ格納用バッファ(1面分)がフルの場合
+      note over LogManager : バッファフルをDlogスレッドに通知
+      note over LogManager : 使用RAM面の切り替え
+      note over LogManager : ログデータをバッファに保存
+      LogManager -->> UtilityLog : EsfLogManagerStatus : kEsfLogManagerStatusOk
+      deactivate LogManager
+      UtilityLog -->> Module : UtilityLogStatus : kUtilityLogStatusOk
+      deactivate UtilityLog
+      activate LogManager
+      opt Dlogスレッド処理
+        note over LogManager : Temporaryバッファ作成
+        note over LogManager : Temporaryバッファにバッファフルデータをコピー
+        note over LogManager : バッファフルデータをクリア
+      end
+      LogManager -->> evp : バッファFULL通知(T.B.D)
+      note over LogManager,evp : EVPへのデータ通知処理等は現在T.B.D
+    else バッファがフル以外
+      activate LogManager
+      note over LogManager : ログデータをバッファに保存
+      LogManager -->> UtilityLog : 処理完了
+      deactivate LogManager
+      activate UtilityLog
+      UtilityLog -->> Module : UtilityLogStatus : kUtilityLogStatusOk
+      deactivate UtilityLog
+   end
+
+    note over App, Security : Elogテレメトリ送信
+    Module ->> UtilityLog : UtilityLogWriteElog(ログデータ)
+    activate UtilityLog 
+    UtilityLog ->> LogManager : EsfLogManagerSendElog(ログデータ) 
+    activate LogManager 
+    note over LogManager : 送信されたElogのログレベルを判定する
+    note over LogManager : UtilityMSGでElogスレッドにログデータを送信 
+    LogManager -->> UtilityLog : EsfLogManagerStatus : kEsfLogManagerStatusOk 
+    deactivate LogManager
+    UtilityLog -->> Module : UtilityLogStatus : kUtilityLogStatusOk
+    deactivate UtilityLog
+    opt Elogスレッド処理
+      LogManager ->> evp : Flashに保存したElogをテレメトリ送信
+      alt テレメトリ送信に失敗した場合
+        LogManager ->> evp : 時間をおいて再送する
+        note over LogManager : Flash保存オプションが有効な場合、送信できなかったElogをFlashに一時保存
+
+      end
+    end
+
+    note over App,Security : BulkDlog送信
+    activate UtilityLog
+    Module ->> +UtilityLog : UtilityLogWriteBulkDlog(ハンドル,レベル,サイズ,データ,コールバック関数,ユーザデータ)
+    UtilityLog ->> LogManager :EsfLogManagerSendBulkDlog(サイズ,データ,コールバック関数,ユーザデータ)
+    activate LogManager
+      note over LogManager : DlogスレッドにBulkログデータ処理要求
+    LogManager --> UtilityLog : EsfLogManagerStatus : kEsfLogManagerStatusOk 
+    UtilityLog -->> Module : UtilityLogStatus : kUtilityLogStatusOk
+    deactivate UtilityLog
+    opt Elogスレッド処理
+      note over LogManager : データをTemporaryバッファにコピーして暗号化
+      note over LogManager : Blobスレッドにデータ送信要求
+    end
+    opt Blobスレッド処理
+      alt ローカルアップロード
+        LogManager ->> evp : SYS_put_blob()
+      else クラウドアップロード
+        LogManager ->> evp : SYS_put_blob_mstp()
+      end
+    evp --> LogManager : SYS_result : SYS_RESULT_OK
+    end
+    LogManager --> UtilityLog : 送信結果をコールバック通知
+    deactivate LogManager
+    UtilityLog -->> Module : 送信結果をコールバック通知
+
+    note over App,Security : ログ設定変化時のコールバック登録解除
+    Module ->> +UtilityLog : UtilityLogUnregisterSetDlogLevelCallback(ハンドル)
+    UtilityLog ->> +LogManager : EsfLogManagerUnregisterChangeDlogCallback(モジュールID)
+    note over LogManager :コールバック関数とモジュールIDの登録解除
+    LogManager -->> -UtilityLog : EsfLogManagerStatus : kEsfLogManagerStatusOk
+    UtilityLog -->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+
+
+    note over App,Security :LogManager の終了
+    App ->> +LogManager : EsfLogManagerDeinit()
+
+    note over LogManager : ログデータのFlash保存
+    LogManager ->> +hal : Dlog(バッファ未保存分)Flash保存要求
+    note over hal : Dlog(バッファ未保存分)をFlashに保存
+    hal -->> -LogManager : 処理結果 : OK
+
+    note over LogManager : ログ格納用バッファ返却
+    note over LogManager : Dlogスレッド破棄
+    LogManager  -->> -App : EsfLogManagerStatus : kEsfLogManagerStatusOk
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+** フラッシュ保存
+*** 2024/08/01 現在、Flash保存はT.B.Dです。
+
+=== 本モジュールで使用するCONFIG一覧
+.本モジュールで使用するCONFIG一覧
+[width="100%",cols="20%,20%,60%",options="header"]
+|===
+|Config名 |デフォルト値 |説明
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DLOG_NUM_OF_BUF
+|2
+|Dlog用RAMの面数（2～15:未サポートは0）
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DLOG_SIZE_OF_BUF
+|4096
+|Dlog用RAMの1面サイズ（1～）
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DLOG_THREAD_STACK_SIZE
+|4096
+|Dlog用threadサイズ（1～）
+
+|EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUM
+|5
+|Localへのupload時に、内部で確保する最大データ領域数です。
+
+|EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUM
+|5
+|Cloudへのupload時に、内部で確保する最大データ領域数です。
+
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DLOG_FLASH_ENABLE
+|disable
+|フラッシュ保存機能の有効化（enable/disable）
+
+|CONFIG_EXTERNAL_LOG_MANAGER_EXCEPTION_UPLOAD_ENABLE
+|disable
+|Exception Upload機能の有効化（enable/disable）
+
+|CONFIG_EXTERNAL_LOG_MANAGER_ENABLE_UPLOAD
+|disable
+|DeviceControlServiceの有効化（enable/disable）※disable時はstubを使用
+
+|CONFIG_EXTERNAL_LOG_MANAGER_ENABLE_SYSLOG
+|n
+|LogManager内部のログを出力する時、syslog関数を使用するようにします。指定されていない場合はprintf関数を使用します。
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DEFAULT_DLOG_LEVEL
+|6 (Info)
+|ParameterStorageManagerからDlogレベルを読みだせなかった際に返すデフォルト値です。
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DEFAULT_ELOG_LEVEL
+|6 (Info)
+|ParameterStorageManagerからElogレベルを読みだせなかった際に返すデフォルト値です。
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DEFAULT_DLOG_DEST
+|1 (Uart)
+|ParameterStorageManagerからDlog出力先を読みだせなかった際に返すデフォルト値です。
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DEFAULT_DLOG_FILTER
+|0x00000000 (フィルタなし)
+|ParameterStorageManagerからDlogフィルタを読みだせなかった際に返すデフォルト値です。
+
+|CONFIG_EXTERNAL_LOG_MANAGER_DEFAULT_STORAGE_NAME
+|``""``
+|ParameterStorageManagerからStorage Nameを読みだせなかった際に返すデフォルト値です。
+
+|EXTERNAL_LOG_MANAGER_DEFAULT_STORAGE_PATH
+|``""``
+|ParameterStorageManagerからStorage Pathを読みだせなかった際に返すデフォルト値です。
+
+|===
+
+
+<<<
+
+== 使用しているOSSの一覧
+
+特になし
+
+<<<
+
+== 参考文献
+
+特になし
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|初版リリース
+|v0.0.2
+|・Dlogに関する記載追加 +
+ ・UtilitiesLog/LogManager分岐による記載内容の修正
+|v0.0.3
+|・レビュー指摘修正 +
+ ・UtilitiesLog/LogManager構成変更による記載内容の修正
+|v0.0.4
+|・レビュー指摘修正 +
+ ・UtilitiesLogからUtilityLogへの記載変更 +
+ ・EsfLogManagerSetParameter()/EsfLogManagerGetParameter()の引数に、ブロックタイプ指定を追加 +
+ ・CallBack通知APIを削除
+|v0.0.5
+|・Elog保存および送信機能に関する記載追加
+|v0.0.6
+|・LogManagerの状態遷移を変更 +
+ ・以下機能を追加 +
+   　- LogManager開始 +
+   　- ログ設定変化通知 +
+   　- ログ設定変化通知解除 +
+   　- 多量ログ送信 +
+|v0.0.7
+|・本モジュールで使用するCONFIG一覧を更新
+|v0.0.8
+|・EsfLogManagerChangeDlogCallbackの引数修正
+|v0.0.9
+|・config EXTERNAL_LOG_MANAGER_ENABLE_SYSLOG追加
+|v0.0.10
+|・誤記修正 +
+ ・EsfLogManagerSettingBlockTypeにブロック種別を追加
+|v0.0.11
+|・EsfLogManagerSendBulkDlogの説明更新 +
+ ・config EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE追加
+|v0.0.12
+|・storage_name/storage_pathに設定する文字列の制約を追加
+|v0.0.13
+|・storage_name/storage_pathに設定する文字列の制約を変更
+|v0.0.14
+|``**EsfLogManagerInit**``、``**EsfLogManagerStart**``、``**EsfLogManagerDeinit**``の制約を追加
+|v0.0.15
+|・storage_nameの説明を記載 +
+・storage_pathの説明を記載 +
+・CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATEの記載を削除 +
+・EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUMの記載を追加 +
+・EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUMの記載を追加 +
+|===

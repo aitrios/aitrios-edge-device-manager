@@ -1,0 +1,825 @@
+= PL LED (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document describes the specifications of the PL LED, which is one of the PL layers of the AITRIOS Edge System Framework. +
+The purpose of PL LED is to absorb the differences that arise on each board regarding controllable LEDs, blinking functions, and available colors for illumination.
+
+<<<
+
+== Terminology
+
+[#_words]
+.List of Terms
+[width="100%", cols="30%,70"]
+[options="header"]
+|===
+|Term |Description 
+|PL
+|Porting Layer. +
+ A layer that absorbs differences in cameras and OS.
+|===
+
+<<<
+
+== Component Description
+
+The PL LED layer consists of a PL I/F that can be used without being aware of camera/OS differences, +
+with the purpose of absorbing these differences related to LED functions in cameras and OS. +
+Additionally, it can be extended or modified according to the target camera.
+
+=== Overview of the Component
+
+The following software architecture diagram focuses on this block.
+
+.Overview Diagram
+image::./images/led_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Detailed Explanation of the Component
+
+Below is an example usage sequence of the PL LED. +
+After executing <<#_PlLedInitialize, PlLedInitialize>>, the upper layer can use the PL LED API to utilize various LED functions.
+
+[#_led_seq]
+.Sequence Overview
+image::./images/led_seq.png[scaledwidth="100%",align="center"]
+
+==== Dependent Blocks (for internal PL LED use)
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage Purpose |Link
+|HAL IOExp
+|Used to control LED on and off.
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/hal_ioexp.adoc
+|Timer
+|Used to control LED blinking by using the timer function.
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/utility/timer/utility_timer.adoc
+|===
+
+<<<
+
+=== State Transitions
+The possible states of PL LED are shown in <<#_TableStates>>.
+
+[#_TableStates]
+.List of States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description 
+
+|LED_READY
+|Initial state of the LED.
+
+|LED_RUNNING
+|The LED is ready for execution.
+
+|LED_START
+|The LED is in an active state. +
+ *A sub-state of LED_RUNNING, where the state is maintained per LED.*
+
+|LED_STOP
+|The LED is in a stopped state. +
+ *A sub-state of LED_RUNNING, where the state is maintained per LED.*
+|===
+
+In PL LED, the state transitions as shown in <<#_FigureState>>. +
+Additionally, if an error occurs during any API execution, the state transition does not occur. +
+
+[#_FigureState]
+.State Transition Diagram
+image::./images/led_state.png[scaledwidth="100%",align="center"]
+
+The availability of each API and the destination states after execution are shown in <<#_TableStateTransition>>. +
+The state name in the table indicates the destination state after the API execution, meaning that the API can be called. +
+× indicates that the API cannot be accepted, and calling the API in this state will return an error without any state transition. +
+For details on errors, refer to section 4.2.1. HalErrCode in the hal_overview.adoc.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="15%,25%,30%,30%,30%"]
+|===
+ 2.3+|                         3+|State
+                              .2+|LED_READY    2+|LED_RUNNING
+                                                 |LED_START   |LED_STOP
+.5+.^|API Name  |PlLedInitialize   |LED_RUNNING    |×           |×
+              |PlLedFinalize     |×             |LED_READY   |LED_READY
+              |PlLedStart        |×             |×           |LED_RUNNING +
+                                                               LED_START
+              |PlLedStop         |×             |LED_RUNNING +
+                                                  LED_STOP    |×
+              |PlLedGetInfo      |×             |LED_RUNNING +
+                                                  LED_START   |LED_RUNNING +
+                                                               LED_STOP
+|===
+
+<<<
+
+=== List of Component Functions
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.List of Functions
+[width="100%", cols="25%,50%,25%",options="header"]
+|===
+|Function Name |Description  |Section Number
+|Starting LED Blinking/Lighting
+|Starts LED blinking/lighting.
+|<<#_Function1>>
+
+|Stopping LED Blinking/Lighting
+|Stops LED blinking/lighting.
+|<<#_Function2>>
+
+|Getting LED Information
+|Retrieves information about the LEDs, such as the number of LEDs in the camera.
+|<<#_Function3>>
+|===
+
+<<<
+
+=== Explanation of Component Functions
+[#_Function1]
+==== Starting LED Blinking/Lighting
+Function Overview::
+Starts LED blinking/lighting.
+Preconditions::
+<<#_PlLedInitialize, PlLedInitialize>> has been executed, and the LED is in a runnable state. +
+The target LED is in a stopped state.
+Function Details::
+Refer to <<#_PlLedStart, PlLedStart>> for details.
+Detailed Behavior::
+Starts LED blinking/lighting.
+Behavior on Error and Recovery Method::
+Refer to the error codes and check the state transition and argument values.
+Considerations::
+None.
+
+[#_Function2]
+==== Stopping LED Blinking/Lighting
+Function Overview::
+Stops LED blinking/lighting.
+Preconditions::
+<<#_PlLedInitialize, PlLedInitialize>> has been executed, and the LED is in a runnable state. +
+The target LED is in a running state.
+Function Details::
+Refer to <<#_PlLedStop, PlLedStop>> for details.
+Detailed Behavior::
+Stops LED blinking/lighting.
+Behavior on Error and Recovery Method::
+Refer to the error codes and check the state transition and argument values.
+Considerations::
+None.
+
+[#_Function3]
+==== Getting LED Information in the Camera
+Function Overview::
+Retrieves information about the LEDs, such as the number of LEDs in the camera.
+Preconditions::
+<<#_PlLedInitialize, PlLedInitialize>> has been executed, and the LED is in a runnable state.
+Function Details::
+Refer to <<#_PlLedGetInfo, PlLedGetInfo>> for details.
+Detailed Behavior::
+Retrieves information about the LEDs in the camera, such as the number of LEDs.
+Behavior on Error and Recovery Method::
+Refer to the error codes and check the state transition and argument values.
+Considerations::
+None.
+
+<<<
+
+=== Non-functional Requirements List for the Component
+
+The non-functional requirements list is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description  |Section Number
+|Maximum Stack Usage
+|The maximum stack size used by PL LED
+|<<#_stack, 3.7.1>>
+
+|Maximum Heap Usage
+|Memory allocated by malloc
+|<<#_heap, 3.7.2>>
+
+|Maximum Static Data Usage
+|The maximum static data size used by PL LED
+|<<#_static, 3.7.3>>
+
+|Performance
+|Performance of functions provided by PL LED
+|<<#_performance, 3.7.4>>
+|===
+
+=== Explanation of Non-functional Requirements for the Component
+
+==== Maximum Stack Usage
+[#_stack]
+512 bytes
+
+==== Maximum Heap Usage
+[#_heap]
+0 bytes
+
+==== Maximum Static Data Usage
+[#_static]
+256 bytes
+
+==== Performance
+[#_performance]
+[T.B.D.] Less than milliseconds
+
+<<<
+
+== API Specifications
+=== List of Definitions
+==== List of Data Types
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.List of Data Types
+[width="100%", cols="25%,55%,20%",options="header"]
+|===
+|Data Type Name |Description  |Section Number
+|enum PlErrCode
+|Enumeration type defining the result of API execution.
+|Refer to hal_overview.adoc 4.2.1. HalErrCode
+|PlLedColorsInfo
+|Structure representing color information.
+|<<#_PlLedColorsInfo, 4.2.1>>
+|PlLedLedsInfo
+|Structure representing LED information.
+|<<#_PlLedLedsInfo, 4.2.3>>
+|PlLedInfo
+|Structure representing public LED information.
+|<<#_PlLedInfo, 4.2.4>>
+|===
+
+==== List of APIs
+The list of APIs available for direct use by upper layers is shown in <<#_TablePublicAPI>>.
+
+[#_TablePublicAPI]
+.APIs available for direct use by upper layers
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Description |Section Number
+|PlLedInitialize
+|Performs the overall initialization of LEDs.
+|<<#_PlLedInitialize, 4.3.1>>
+
+|PlLedFinalize
+|Performs the overall finalization of LEDs.
+|<<#_PlLedFinalize, 4.3.2>>
+
+|PlLedStart
+|Starts LED blinking/lighting.
+|<<#_PlLedStart, 4.3.3>>
+
+|PlLedStop
+|Stops LED blinking/lighting.
+|<<#_PlLedStop, 4.3.4>>
+
+|PlLedGetInfo
+|Retrieves information about the LEDs in the camera, such as the number of LEDs.
+|<<#_PlLedGetInfo, 4.3.5>>
+|===
+
+<<<
+[#_BuildConfig]
+==== Build Configuration
+The configuration information for PL LED is listed in the build configuration.
+
+* *Format*
+[source, C]
+....
+CONFIG_PL_LED_LEDS_NUM=3
+CONFIG_PL_LED_LED0_ID=0
+CONFIG_PL_LED_LED1_ID=1
+CONFIG_PL_LED_LED2_ID=2
+
+CONFIG_PL_LED_COLORS_NUM=3
+CONFIG_PL_LED_COLOR0_ID=0
+CONFIG_PL_LED_COLOR1_ID=1
+CONFIG_PL_LED_COLOR2_ID=2
+
+CONFIG_PL_LED_LED0_RED=16
+CONFIG_PL_LED_LED0_GREEN=17
+CONFIG_PL_LED_LED1_RED=18
+CONFIG_PL_LED_LED1_GREEN=19
+CONFIG_PL_LED_LED2_RED=20
+CONFIG_PL_LED_LED2_GREEN=21
+CONFIG_PL_LED_THREAD_PRIORITY=115
+....
+
+[#_BuildConfig_table]
+.Explanation of BuildConfig
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|CONFIG_PL_LED_LEDS_NUM
+|Number of LEDs
+|CONFIG_PL_LED_LED0_ID
+|ID of LED 0
+|CONFIG_PL_LED_LED1_ID
+|ID of LED 1
+|CONFIG_PL_LED_LED2_ID
+|ID of LED 2
+|CONFIG_PL_LED_COLORS_NUM
+|Number of colors for LEDs
+|CONFIG_PL_LED_COLOR0_ID
+|ID of Color 0 (Red)
+|CONFIG_PL_LED_COLOR1_ID
+|ID of Color 1 (Green)
+|CONFIG_PL_LED_COLOR2_ID
+|ID of Color 2 (Orange)
+|CONFIG_PL_LED_LED0_RED
+|IOExp ID corresponding to the red color of LED 0
+|CONFIG_PL_LED_LED0_GREEN
+|IOExp ID corresponding to the green color of LED 0
+|CONFIG_PL_LED_LED1_RED
+|IOExp ID corresponding to the red color of LED 1
+|CONFIG_PL_LED_LED1_GREEN
+|IOExp ID corresponding to the green color of LED 1
+|CONFIG_PL_LED_LED2_RED
+|IOExp ID corresponding to the red color of LED 2
+|CONFIG_PL_LED_LED2_GREEN
+|IOExp ID corresponding to the green color of LED 2
+|CONFIG_PL_LED_THREAD_PRIORITY
+|Thread priority for PL LED
+|===
+
+<<<
+
+=== Data Type Definitions
+==== PlErrCode
+An enumeration type defining the result of API execution. +
+Refer to hal_overview.adoc 4.2.1. HalErrCode
+
+[#_PlLedColorsInfo]
+==== PlLedColorsInfo
+A structure representing color information.
+
+* *Format*
+[source, C]
+....
+typedef struct led_info_color {
+  uint32_t color_id; // Color ID (red = 0, green = 1, orange = 2)
+} PlLedColorsInfo;
+....
+
+[#_PlLedLedsInfo]
+==== PlLedLedsInfo
+A structure representing LED information.
+
+* *Format*
+[source, C]
+....
+typedef struct led_info_led {
+  uint32_t          led_id;      // LED number
+  uint32_t          colors_num;  // Number of colors
+  PlLedColorsInfo   colors[CONFIG_PL_LED_COLORS_NUM]; // Color information
+} PlLedLedsInfo;
+....
+
+[#_PlLedInfo]
+==== PlLedInfo
+A structure representing device information for PL LED (number of LEDs, number of colors, etc.).
+
+* *Format*
+[source, C]
+....
+typedef struct led_info {
+  uint32_t        leds_num;                // Number of LEDs
+  PlLedLedsInfo   leds[CONFIG_PL_LED_NUM]; // LED information
+  uint32_t        interval_resolution_ms;  // Minimum unit for LED blinking interval (in milliseconds)
+                                           // The specification is 50ms.
+  struct timespec interval_ts_min;         // Minimum value for LED blinking interval
+  struct timespec interval_ts_max;         // Maximum value for LED blinking interval
+} PlLedInfo;
+....
+
+<<<
+
+=== Explanation of Each API
+[#_PlLedInitialize]
+==== PlLedInitialize
+* *Function* +
+Performs the overall initialization of LEDs.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlLedInitialize(void)
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the execution result.
+
+* *Description* +
+** Performs the overall initialization of LEDs.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from Multiple Threads
+|Allowed
+|Calls from Multiple Tasks
+|Allowed
+|Blocking within API
+|Blocking.
+If another context is already running the PL LED API, this waits for completion before executing.
+|===
+
+[#_PlLedInitialize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|PlLedInitialize was called multiple times
+|-
+|No impact
+|Not required
+
+|kPlErrLock (tentative)
+|Failed in exclusive processing
+|-
+|No impact
+|Not required
+
+|kPlErrCodeError (tentative)
+|Timer API returned an error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLedFinalize]
+==== PlLedFinalize
+* *Function* +
+Performs the overall finalization of LEDs.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlLedFinalize(void)
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the execution result.
+
+* *Description* +
+** Performs the overall finalization of LEDs.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from Multiple Threads
+|Allowed
+|Calls from Multiple Tasks
+|Allowed
+|Blocking within API
+|Blocking.
+If another context is already running the PL LED API, this waits for completion before executing.
+|===
+
+[#_PlLedFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|PlLedInitialize was not executed
+|-
+|No impact
+|Not required
+
+|kPlErrLock (tentative)
+|Failed in exclusive processing
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLedStart]
+==== PlLedStart
+
+* *Function* +
+Starts LED blinking/lighting.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlLedStart(uint32_t led_id, uint32_t color_id, const struct timespec *interval_ts)
+....
+
+* *Argument Description* +
+**[IN] uint32_t led_id**:: 
+The target LED number. +
+Select from the information obtained by <<#_PlLedGetInfo, PlLedGetInfo>>. +
+If the specified LED is already in a running state, an error is returned.
+Call <<#_PlLedStop, PlLedStop>> to change the LED to a stopped state before calling this API.
+
+**[IN] uint32_t color_id**:: 
+The color of the LED. +
+Select from the information obtained by <<#_PlLedGetInfo, PlLedGetInfo>>.
+
+**[IN] const struct timespec *interval_ts**:: 
+Specifies the blinking interval. The LED will light up for the specified time, then turn off for the specified time. This repeats until the PlLedStop API is called. +
+To keep the LED on continuously, specify 0. +
+For the minimum and maximum values of the blinking interval, refer to the interval_ts_min and interval_ts_max fields in the PlLedInfo structure obtained by the <<#_PlLedGetInfo, PlLedGetInfo>> API. +
+If the specified time is below the minimum blinking unit (the minimum time for each ON and OFF period), it will be rounded up to the minimum blinking unit (50ms). +
+(Example): if interval_ts_min = 100us, it will be rounded up to 50ms
+** 99us -> Error
+** 100us -> Rounded up to 50ms
+** 10ms -> Rounded up to 50ms
+** 55ms -> 100ms
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the execution result.
+
+* *Description* +
+** Starts LED blinking/lighting.
+** This API can be used after executing <<#_PlLedInitialize, PlLedInitialize>>.
+** This API can be used when the specified LED is in an operational state.
+** After lighting the LED, the specified LED transitions to a running state.
+** This API is asynchronous.
+** This API starts LED blinking/lighting. In blinking mode, the initial state is LED=ON, and it alternates between on and off based on the specified blinking interval.
+** The priority of the LED thread is fixed internally and is set higher than that of the upper layer.
+** Select the target LED and color from the information obtained by <<#_PlLedGetInfo, PlLedGetInfo>>.
+
+TIP: If you want to perform complex operations such as alternating between red and green, handle it at the upper layer. +
+     The PL LED only provides single-color blinking functionality.
+
+Example of LED blinking operation:
+[#_led_pl_start]
+.PlLedStart
+image::./images/led_start.png[scaledwidth="100%",align="center"]
+
+LED blinking timing chart:
+[#_led_timing]
+.LED Lighting
+image::./images/led_timing.png[scaledwidth="100%",align="center"]
+
+Example of continuous LED lighting:
+[#_pl_led]
+.PL LED API
+image::./images/led_api_flow.png[scaledwidth="100%",align="center"]
+
+
+[#_PlLedStart_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Asynchronous API
+|Execution Context
+|Until parameter checking: Runs in the caller's context +
+ For lighting/blinking processing: Runs in the PL LED context
+|Simultaneous Calls
+|Allowed
+|Calls from Multiple Threads
+|Allowed
+|Calls from Multiple Tasks
+|Allowed
+|Blocking within API
+|Blocking. +
+If another context is already running the PL LED API, this waits for completion before executing.
+|===
+
+[#_PlLedStart_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|PlLedInitialize was not executed
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kPlErrLock (tentative)
+|Failed in exclusive processing
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLedStop]
+==== PlLedStop
+* *Function* +
+Stops LED blinking or turns off the LED.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlLedStop(uint32_t led_id)
+....
+
+* *Argument Description* +
+**[IN] uint32_t led_id**:: 
+The target LED number. +
+Select from the information obtained by <<#_PlLedGetInfo, PlLedGetInfo>>. +
+If the specified LED is not currently blinking or lit, an error is returned.
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the execution result.
+
+* *Description* +
+** Stops blinking or turns off the specified LED.
+** This API can be used after executing <<#_PlLedInitialize, PlLedInitialize>>.
+** This API can be used when the specified LED is in an active state.
+** Select the target LED from the information obtained by <<#_PlLedGetInfo, PlLedGetInfo>>.
+
+[#_PlLedStop_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from Multiple Threads
+|Allowed
+|Calls from Multiple Tasks
+|Allowed
+|Blocking within API
+|Blocking.
+If another context is already running the PL LED API, this waits for completion before executing.
+|===
+
+[#_PlLedStop_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|PlLedInitialize was not executed
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kPlErrLock (tentative)
+|Failed in exclusive processing
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLedGetInfo]
+==== PlLedGetInfo
+* *Function* +
+Retrieves information about the LEDs in the camera, such as the number of LEDs.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlLedGetInfo(PlLedInfo *info)
+....
+
+* *Argument Description* +
+**[OUT] struct PlLedInfo *info**:: 
+Public information for PL LED.
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the execution result.
+
+* *Description* +
+** Retrieves information about the LEDs in the camera, such as the number of LEDs.
+** This API can be used after executing <<#_PlLedInitialize, PlLedInitialize>>.
+** This API uses the UtilityTimerSystemInfo API to obtain the minimum and maximum values for the timer, and stores them in the interval_ts_min and interval_ts_max fields of the PlLedInfo structure.
+
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from Multiple Threads
+|Allowed
+|Calls from Multiple Tasks
+|Allowed
+|Blocking within API
+|Blocking. +
+  If another context is already running the PL LED API, this waits for completion before executing.
+|===
+
+[#_PlLedGetInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|PlLedInitialize was not executed
+|No change
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|No change
+|No impact
+|Not required
+
+|kPlErrLock (tentative)
+|Failed in exclusive processing
+|No change
+|No impact
+|Not required
+|===
+
+<<<
+
+
+== Example of API Calls
+
+Refer to <<#_led_seq, Sequence Overview>> and <<#_led_pl_start, PlLedStart>>.
+
+== Special Notes and Component-specific Descriptions
+None
+
+== List of OSS Used
+None
+
+<<<
+
+== References
+None
+
+<<<
+
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|First Edition
+|===

@@ -1,0 +1,15 @@
+/Kconfig
+/.kconfig
+build/
+ut_lcov_output/
+allure-results/
+allure-report/
+.depend
+Make.dep
+*.o
+*.su
+*.built
+*.info
+.pytest_cache
+__pycache__
+_unit_test.log

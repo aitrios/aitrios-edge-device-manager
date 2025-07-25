@@ -1,0 +1,1099 @@
+= PL WDT (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document describes the specifications of the PL WDT, one of the components in the AITRIOS PL I/F layer. The purpose of the PL WDT is to absorb control differences in the Watch Dog Timer (WDT) for each camera. It handles setting interrupt handlers for WDT events and starting or stopping the WDT.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. A layer that abstracts differences in camera/OS.
+
+|WDT
+|Watch Dog Timer. A system that monitors the health of the system using a timer.
+
+|I/F
+|Interface
+|===
+
+<<<
+
+== Component Description
+
+The PL WDT layer is the core part of the PL I/F that abstracts camera-specific differences in WDT control. It allows for the addition or modification based on the target camera.
+
+=== Component Overview
+
+The following diagram shows the software structure centered around this block.
+
+.Overview Diagram
+image::./images/wdt_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Detailed Component Description
+
+The following example shows the usage sequence of the PL WDT. +
+After executing `PlWdtInitialize`, the upper layers can use various WDT features via the PL WDT API.
+
+[#_button_seq]
+.Sequence Overview
+image::./images/wdt_seq.png[scaledwidth="100%",align="center"]
+
+==== Dependent Blocks (For Internal PL Use)
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage Purpose |Link
+|Pl WDTLib
+|Used to control WDT.
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/porting_layer/power_manager/wdt/pl_wdt_lib.adoc
+|===
+
+<<<
+
+=== State Transitions
+The possible states of PL WDT are listed in <<#_TableStates>>.
+
+[#_TableStates]
+.List of States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|PL_WDT_READY
+|PL WDT is uninitialized.
+
+|PL_WDT_RUNNING
+|PL WDT is initialized.
+
+|WDT_STOP
+|WDT is stopped. A substate of PL_WDT_RUNNING.
+
+|WDT_START
+|WDT is running. A substate of PL_WDT_RUNNING.
+|===
+
+
+[#_FigureState]
+.State Transition Diagram
+image::./images/wdt_state.png[scaledwidth="100%",align="center"]
+
+The availability of each API in each state and the resulting transition destinations are shown in <<#_TableStateTransition>>. The state names in the table indicate the state after the API execution is completed, meaning that the API call is accepted. +
+A "×" indicates that the API is not accepted; in such cases, calling the API results in an error and no state transition occurs. For error details, refer to <<#_PlErrCode>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|State
+.2+|PL_WDT_READY
+2+|PL_WDT_RUNNING
+|WDT_STOP
+|WDT_START
+.20+|API Name
+
+|``**PlWdtInitialize**``
+|PL_WDT_RUNNING
+|×
+|×
+
+|``**PlWdtFinalize**``
+|×
+|PL_WDT_READY
+|PL_WDT_READY
+
+|``**PlWdtStart**``
+|×
+|WDT_START
+|×
+
+|``**PlWdtStop**``
+|×
+|×
+|WDT_STOP
+
+|``**PlWdtRegisterIrqHandler**``
+|×
+|WDT_STOP
+|×
+
+|``**PlWdtUnregisterIrqHandler**``
+|×
+|WDT_STOP
+|×
+
+|``**PlWdtTerminate**``
+|×
+|×
+|WDT_START
+
+|``**PlWdtKeepAlive**``
+|PL_WDT_READY
+|WDT_STOP
+|WDT_START
+|===
+<<<
+
+=== List of Component Functions
+See <<#_TableFunction>> below.
+
+[#_TableFunction]
+.List of Functions
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+
+|Start/Stop PL WDT
+|Starts or stops the WDT.
+|<<#_Function1, 3.5.1.>>
+
+|WDT Interrupt Configuration
+|Registers or unregisters the interrupt handler.
+|<<#_Function2, 3.5.2.>>
+
+|Stop KeepAlive Transmission
+|Stops transmitting KeepAlive to the WDT.
+|<<#_Function3, 3.5.3.>>
+
+|Send KeepAlive
+|Sends KeepAlive to the WDT.
+|<<#_Function4, 3.5.4.>>
+|===
+
+<<<
+
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== Start/Stop PL WDT
+Function Overview::  
+Starts and stops the WDT.
+
+Preconditions::  
+PlWdtInitialize must have been executed.
+
+Function Details::  
+For starting the WDT, refer to <<#_PlWdtStart, PlWdtStart>>. +  
+For stopping the WDT, refer to <<#_PlWdtStop, PlWdtStop>>.
+
+Detailed Behavior::  
+For starting the WDT, refer to <<#_PlWdtStart_disc, PlWdtStart>>. +  
+For stopping the WDT, refer to <<#_PlWdtStop_disc, PlWdtStop>>.
+
+Behavior on Error and Recovery::  
+For errors when starting the WDT, refer to <<#_PlWdtStart_error, PlWdtStart>>. +  
+For errors when stopping the WDT, refer to <<#_PlWdtStop_error, PlWdtStop>>.
+
+Items Under Consideration::  
+None
+
+[#_Function2]
+==== WDT Interrupt Configuration
+Function Overview::  
+Registers and unregisters the interrupt handler. +  
+If an interrupt is not registered, the system will reboot when the WDT triggers.
+
+Preconditions::  
+PlWdtInitialize must have been executed. +  
+The PL WDT state must be <<#_TableStates, WDT_STOP>>.
+
+Function Details::  
+For registering an interrupt handler, refer to <<#_PlWdtRegisterIrqHandler, PlWdtRegisterIrqHandler>>. +  
+For unregistering an interrupt handler, refer to <<#_PlWdtUnregisterIrqHandler, PlWdtUnregisterIrqHandler>>.
+
+Detailed Behavior::  
+For registering an interrupt handler, refer to <<#_PlWdtRegisterIrqHandler_disc, PlWdtRegisterIrqHandler>>. +  
+For unregistering an interrupt handler, refer to <<#_PlWdtUnregisterIrqHandler_disc, PlWdtUnregisterIrqHandler>>.
+
+Behavior on Error and Recovery::  
+For errors when registering an interrupt handler, refer to <<#_PlWdtRegisterIrqHandler_error, PlWdtRegisterIrqHandler>>. +  
+For errors when unregistering an interrupt handler, refer to <<#_PlWdtUnregisterIrqHandler_error, PlWdtUnregisterIrqHandler>>.
+
+Items Under Consideration::  
+None
+
+[#_Function3]
+==== Stop KeepAlive Transmission
+Function Overview::  
+Stops transmitting KeepAlive to the WDT.
+
+Preconditions::  
+PlWdtInitialize must have been executed. +  
+The PL WDT state must be <<#_TableStates, WDT_START>>.
+
+Function Details::  
+For stopping KeepAlive transmission, refer to <<#_PlWdtTerminate, PlWdtTerminate>>.
+
+Detailed Behavior::  
+For stopping KeepAlive transmission, refer to <<#_PlWdtTerminate_disc, PlWdtTerminate>>.
+
+Behavior on Error and Recovery::  
+For errors when stopping KeepAlive transmission, refer to <<#_PlWdtTerminate_error, PlWdtTerminate>>.
+
+Items Under Consideration::  
+None
+
+[#_Function4]
+==== Send KeepAlive
+Function Overview::  
+Sends KeepAlive to the WDT.
+
+Preconditions::  
+None
+
+Function Details::  
+For details, refer to <<#_PlWdtKeepAlive, PlWdtKeepAlive>>.
+
+Detailed Behavior::  
+For details, refer to <<#_PlWdtKeepAlive_disc, PlWdtKeepAlive>>.
+
+Behavior on Error and Recovery::  
+For details, refer to <<#_PlWdtKeepAlive_error, PlWdtKeepAlive>>.
+
+Items Under Consideration::  
+None
+
+
+=== List of Non-Functional Requirements for the Component
+
+See <<#_TableNonFunction>> below.
+
+[#_TableNonFunction]
+.List of Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+
+|Maximum Stack Usage
+|Maximum stack size used by PL WDT
+|<<#_stack, 3.7.>>
+
+|Maximum Heap Usage
+|Maximum heap size used by PL WDT
+|<<#_heap, 3.7.>>
+
+|Maximum Static Data Usage
+|Maximum size of static data used by PL WDT
+|<<#_static, 3.7.>>
+
+|Performance
+|Performance of functions provided by PL WDT
+|<<#_paformance, 3.7.>>
+|===
+
+=== Description of Non-Functional Requirements for the Component
+
+[#_stack]
+==== Maximum Stack Usage
+512 bytes + 8192 bytes (2 threads) = 8704 bytes
+
+[#_heap]
+==== Maximum Heap Usage
+PL WDT does not use heap memory.
+
+[#_static]
+==== Maximum Static Data Usage
+256 bytes
+
+[#_paformance]
+==== Performance
+Less than 1 millisecond
+
+<<<
+
+== API Specification
+=== List of Definitions
+==== List of Data Types
+See <<#_TableDataType>> below.
+
+[#_TableDataType]
+.List of Data Types
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+
+|enum PlErrCode
+|Enumeration that defines the result of API execution.
+|<<#_PlErrCode, 4.2.1.>>
+
+|PlWdtIrqHandler
+|Function pointer representing the WDT interrupt handler.
+|<<#_PlWdtIrqHandler, 4.2.2.>>
+|===
+
+==== List of APIs
+See <<#_TablePublicAPI>> below.
+
+[#_TablePublicAPI]
+.Public APIs Available for Direct Use by Upper Layers
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Description |Section
+
+|PlWdtInitialize
+|Enables the WDT for use.
+|<<#_PlWdtInitialize, 4.3.1.>>
+
+|PlWdtFinalize
+|Disables the WDT.
+|<<#_PlWdtFinalize, 4.3.2.>>
+
+|PlWdtStart
+|Starts the WDT.
+|<<#_PlWdtStart, 4.3.3.>>
+
+|PlWdtStop
+|Stops the WDT.
+|<<#_PlWdtStop, 4.3.4.>>
+
+|PlWdtRegisterIrqHandler
+|Registers an interrupt handler.
+|<<#_PlWdtRegisterIrqHandler, 4.3.5.>>
+
+|PlWdtUnregisterIrqHandler
+|Unregisters the interrupt handler.
+|<<#_PlWdtUnregisterIrqHandler, 4.3.6.>>
+
+|PlWdtTerminate
+|Stops the transmission of KeepAlive.
+|<<#_PlWdtTerminate, 4.3.7.>>
+
+|PlWdtKeepAlive
+|Sends KeepAlive to the WDT.
+|<<#_PlWdtKeepAlive, 4.3.8.>>
+|===
+
+<<<
+
+=== Build Configuration
+[#_BuildConfig]
+==== Build Configuration (for esp32s3)
+WDT configuration settings are defined in the build configuration.
+
+* *Format* +
+[source, C]
+....
+CONFIG_EXTERNAL_PL_WDT_NUM=2
+CONFIG_EXTERNAL_PL_WDT_LOW_THREAD_PRIORITY=50
+CONFIG_EXTERNAL_PL_WDT_HIGH_THREAD_PRIORITY=120
+CONFIG_EXTERNAL_PL_WDT_KEEP_ALIVE_SEC=10
+CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC=60
+CONFIG_EXTERNAL_PL_WDT1_TIMEOUT_SEC=70
+....
+
+[#_BuildConfig_table]
+.Description of BuildConfig
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|CONFIG_EXTERNAL_PL_WDT_NUM
+|Number of WDTs used. +  
+Modify the OS CONFIG definitions accordingly. +  
+CONFIG_ESP32_MWDT0, CONFIG_ESP32_MWDT1
+
+|CONFIG_EXTERNAL_PL_WDT_LOW_THREAD_PRIORITY
+|Thread priority for KeepAlive transmission (low priority)
+
+|CONFIG_EXTERNAL_PL_WDT_HIGH_THREAD_PRIORITY
+|Thread priority for KeepAlive transmission (high priority)
+
+|CONFIG_EXTERNAL_PL_WDT_KEEP_ALIVE_SEC
+|Interval for KeepAlive transmission [sec]. Not supported if set longer than the timeout period.
+
+|CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC
+|Timeout period for WDT0 [sec]. Not supported if set to 1 second or less.
+
+|CONFIG_EXTERNAL_PL_WDT1_TIMEOUT_SEC
+|Timeout period for WDT1 [sec]. Not supported if set to 1 second or less.
+|===
+<<<
+
+=== Data Type Definitions
+
+[#_PlErrCode]
+==== PlErrCode
+Enumeration that defines the result of API execution. +
+(T.B.D.)
+
+[#_PlWdtIrqHandler]
+==== PlWdtIrqHandler
+Function pointer representing the main WDT interrupt handler. +
+This is executed when the system detects a WDT interrupt.
+
+* *Format* +
+[source, C]
+....
+typedef void (*PlWdtIrqHandler)(void *private_data)
+....
+
+* *Parameter Description* +
+**[IN] void *private_data**::  
+The private_data specified in PlWdtRegisterIrqHandler is set here.
+
+<<<
+
+=== API Descriptions
+
+[#_PlWdtInitialize]
+==== PlWdtInitialize
+
+* *Function* +
+Enables the PL WDT for use.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtInitialize(const PlConfigObj *wdt_root)
+....
+
+* *Parameter Description* +
+**[IN] PlConfigObj *wdt_root**::  
+Configuration object data. Returns an error if NULL.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Enables the PL WDT for use.
+
+[#_PlWdtInitialize_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Not allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes. However, calling Initialize more than once results in an error.
+|===
+
+[#_PlWdtInitialize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|Already enabled.
+|-
+|No impact
+|None required
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+[#_PlWdtFinalize]
+==== PlWdtFinalize
+
+* *Function* +
+Disables the PL WDT.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtFinalize(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Disables the PL WDT.  
+** This API can be used only after PlWdtInitialize has been executed.
+
+[#_PlWdtFinalize_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Not allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.  
+PL impl developers must call this from within PL APIs.  
+Calling Finalize more than once results in an error.
+|===
+
+[#_PlWdtFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|PlWdtInitialize has not been executed
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+
+[#_PlWdtStart]
+==== PlWdtStart
+
+* *Function* +
+Starts the WDT.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtStart(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Starts <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT_NUM>> instances of WDT.  
+** If the PL WDT state is <<#_TableStates, WDT_START>>, an error is returned.  
+** After the WDT is started, if KeepAlive is not sent within <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT*_TIMEOUT_SEC>> [sec], and an interrupt handler has been registered with <<#_PlWdtRegisterIrqHandler, PlWdtRegisterIrqHandler>>, the registered handler will be executed. After the handler returns, a software reset will be performed.  
+** If no interrupt handler is registered and KeepAlive is not sent within <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT*_TIMEOUT_SEC>> [sec], a reboot will be triggered.
+
+[#_PlWdtStart_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.
+|===
+
+[#_PlWdtStart_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|PlWdtInitialize has not been executed.
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+[#_PlWdtStop]
+==== PlWdtStop
+
+* *Function* +
+Stops the WDT.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtStop(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Stops the WDT.  
+** If the PL WDT state is <<#_TableStates, WDT_STOP>>, an error is returned.
+
+[#_PlWdtStop_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.
+|===
+
+[#_PlWdtStop_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|PlWdtInitialize has not been executed.
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+[#_PlWdtRegisterIrqHandler]
+==== PlWdtRegisterIrqHandler
+
+* *Function* +
+Registers an interrupt handler.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtRegisterIrqHandler(PlWdtIrqHandler handler, void *private_data)
+....
+
+* *Parameter Description* +
+**[IN] <<#_PlWdtIrqHandler, PlWdtIrqHandler>> handler**::  
+Interrupt handler. Returns an error if NULL.
+
+**[IN] void *private_data**::  
+Data passed to the interrupt handler. NULL is acceptable.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Registers an interrupt handler for WDT0 among the <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT_NUM>> available WDTs.  
+** Returns an error if the PL WDT state is <<#_TableStates, WDT_START>>.  
+** Returns an error if an interrupt handler is already registered.  
+** The registered handler is invoked when no KeepAlive is sent to WDT0 from the KeepAlive transmission thread for a duration exceeding <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC>> [sec].  
+** After the registered handler returns, the PL WDT performs a software reset. If the handler does not return, the reset is not triggered by WDT0, but will be triggered by WDT1 when it activates.
+
+TIP:  
+If <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT*_TIMEOUT_SEC>> is 60 seconds or less, the timeout value is set directly in the chip. +  
+If it is 61 seconds or more, 60 seconds is set in the chip, and the timeout is enforced by the KeepAlive transmission thread.
+
+[#_PlWdtRegisterIrqHandler_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.
+|===
+
+[#_PlWdtRegisterIrqHandler_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|PlWdtInitialize has not been executed.
+|-
+|No impact
+|None required
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+[#_PlWdtUnregisterIrqHandler]
+==== PlWdtUnregisterIrqHandler
+
+* *Function* +
+Unregisters the interrupt handler.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtUnregisterIrqHandler(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Unregisters the interrupt handler.  
+** If the PL WDT state is <<#_TableStates, WDT_START>>, an error is returned.  
+** If no interrupt handler is registered, an error is returned.
+
+[#_PlWdtUnregisterIrqHandler_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.
+|===
+
+[#_PlWdtUnregisterIrqHandler_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|PlWdtInitialize has not been executed.
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+[#_PlWdtTerminate]
+==== PlWdtTerminate
+
+* *Function* +
+Stops the transmission of KeepAlive to the WDT.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtTerminate(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Stops the transmission of KeepAlive to the WDT.  
+** If the PL WDT state is <<#_TableStates, WDT_STOP>>, an error is returned.  
+** After stopping KeepAlive transmission, the WDT will trigger after <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC>> [sec].  
+** If <<#_BuildConfig, CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC>> is 61 [sec] or more, the WDT will trigger after 60 [sec].
+
+[#_PlWdtTerminate_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.
+|===
+
+[#_PlWdtTerminate_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|PlWdtInitialize has not been executed.
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+[#_PlWdtKeepAlive]
+==== PlWdtKeepAlive
+
+* *Function* +
+Sends KeepAlive to the WDT.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlWdtKeepAlive(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** Sends KeepAlive to the WDT.  
+** This API can be executed regardless of the current state.  
+** After executing this API, the WDT timeout period is reset.
+
+[#_PlWdtKeepAlive_disc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller's context
+
+|Concurrent Calls
+|Allowed
+
+|Calls from Multiple Threads
+|Allowed
+
+|Calls from Multiple Tasks
+|Allowed
+
+|Blocking Behavior Inside API
+|Blocks.  
+If another PL WDT API is running in a different context, this call waits until it completes.
+|===
+
+[#_PlWdtKeepAlive_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInternal (tentative)
+|Failure in internal function call
+|-
+|No impact
+|None required
+
+|kPlErrLock (tentative)
+|Blocking error
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+== API Usage Examples
+
+=== Example of PlWdtStart
+.PlWdtStart
+image::./images/wdt_start.png[scalewidth="100%", align="center"]
+
+=== Example When WDT Triggers (Interrupt Handler Registered)
+.PL WDT interrupt (Registered)
+image::./images/wdt_interrupt.png[scalewidth="100%", align="center"]
+
+=== Example When WDT Triggers (Interrupt Handler Not Registered)
+.PL WDT interrupt (Unregistered)
+image::./images/wdt_interrupt_os.png[scalewidth="100%", align="center"]
+
+=== Example of Stopping KeepAlive Transmission
+.PL WDT terminate
+image::./images/wdt_terminate.png[scalewidth="100%", align="center"]
+
+=== Example of PlWdtStop
+.PlWdtStop
+image::./images/wdt_stop.png[scalewidth="100%", align="center"]
+
+== List of OSS Used
+None
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|Initial draft
+
+|0.0.2
+|- General: Inserted half-width spaces before and after English words for readability +
+- Dependency block: Removed Osal Msg +
+- Replaced all mentions of PL with PL WDT +
+- Changed READY/RUNNING to PL_SYSCTL_READY/PL_SYSCTL_RUNNING +
+- Added PlErrCode to data types +
+- Moved PlWdtInitialize / PlWdtFinalize APIs to the top of the list +
+- Updated error codes for PlWdtInitialize +
+- Updated error codes for PlWdtFinalize +
+- Updated error codes for PlWdtStart +
+- Updated error codes for PlWdtStop +
+- Updated error codes for PlWdtRegisterIrqHandler +
+- Updated error codes for PlWdtUnregisterIrqHandler +
+- Updated error codes for PlWdtTerminate +
+- Replaced all images (*.png) with English-labeled versions
+
+|0.0.3
+|- General: +
+Added PlWdtKeepAlive +
+Revised behavior specification when WDT interrupt handler is registered +
+|===

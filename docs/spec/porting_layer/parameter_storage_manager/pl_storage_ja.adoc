@@ -1,0 +1,2788 @@
+= PL Storage
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.6
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書では AITRIOS PL の impl レイヤーの一つである、Storage impl の仕様について記載します。
+PL Storage の目的は、上位レイヤーが補助記憶装置へアクセスする際、Flash や eMMC などターゲットの種別を意識せずに共通の I/F でアクセスできること、異なるカメラでも上位レイヤーは同じ実装のまま使用できることが目的になります。
+PL Storage では tmpID 以外の Rollback 機能を提供しません。下位レイヤーの性能に依存した安全性になります。
+tmpID を使わない書き込みは直接上書きになるので、成功しなければ破損して不定データとなる前提での運用が必要です。
+
+== 用語
+
+[#_words]
+.用語一覧
+[cols="1,5a",options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting Layer. カメラ/ OS 差分を吸収する層
+
+|public API
+|上位レイヤーから直接使用可能な API
+
+|カメラ
+|本稿ではスマートカメラを示します。
+
+|データ
+|補助記憶装置に存在するアイテムです。
+
+|データ ID
+|補助記憶装置に存在するアイテムを表す ID です。
+
+* WIFI_AP_SSID や NTP_ADDRなど
+
+|Security Module (TBD)
+|security/ およびセキュリティがアクセスする porting_layer/ が提供する機能を指します。
+
+|コンテナ
+|Security Module が提供するFlashメモリの管理機能におけるデータの管理単位です。
+
+* コンテナにはリストとファイルの2種類があります。
+* Flashメモリのどのパーティションに、どのようなデータを書くか、
+最大サイズはいくつかを事前に決めて使用します。
+
+|コンテナ ID
+|コンテナを一意に識別するIDです。Security Module が公開しているヘッダに定義されています。
+
+|ファイル
+|大きいデータを管理するコンテナです。1つのファイルで1つのデータ IDを管理します。
+
+* ファイルシステムのファイルとは別の概念です。
+
+|リスト
+|小さいデータを管理するコンテナです。1つのリストで複数のデータ IDを管理します。
+
+|リストデータ ID
+|1つのリストで複数のデータ IDを管理するため、リスト内でのデータ IDを一意に識別するための IDです。
+|===
+
+== コンポーネントの説明
+
+PL Storage レイヤーは、カメラ差分を意識せずに使える PL I/F に対する本体部分であり、補助記憶装置に関する機能のカメラ差分を吸収することが目的となります。
+また、ターゲットとするカメラに合わせて追加・変更が可能です。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/storage_layer.png[scaledwidth="100%",align="center"]
+
+=== コンポーネントの詳細説明
+
+PL Storage の使用シーケンス例を以下に示します。
+上位レイヤーは PlStorageInitialize を実行後、PL Storage  API を使用して各種 Storage 機能を使うことができます。
+PlStorageInitialize でマウントし、PlStorageFinalize でアンマウントします。
+
+[#_storage_seq]
+.シーケンス概要
+[{mermaid_block}]
+----
+sequenceDiagram
+participant psm as Upper Layer
+participant psmpl as PL Storage
+psm ->> +psmpl: PlStorageInitialize
+psmpl -->> psm: return
+psm ->> +psmpl: PlStorage***
+psmpl -->> -psm: return
+psm ->> psmpl: PlStorageFinalize
+psmpl -->> -psm: return
+----
+
+=== 状態遷移
+PL Storage の取り得る状態を<<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|PL_STORAGE_READY
+|PL Storage 初期状態。
+
+|PL_STORAGE_RUNNING
+|PL Storage 実行可能状態。
+
+|CLOSE
+|PL_STORAGE_RUNNING 中の個別状態で、未 Open 状態。
+
+|OPEN
+|PL_STORAGE_RUNNING 中の個別状態で、Open (handle 利用可能) 状態。
+
+|CLOSE (TMPID)
+|PL_STORAGE_RUNNING 中の個別状態で、TmpID 取得中の未 Open 状態。
+
+|OPEN (TMPID)
+|PL_STORAGE_RUNNING 中の個別状態で、TmpID 取得中の Open (handle 利用可能) 状態。
+|===
+
+PL では <<#_FigureState>> に示す状態遷移を行います。 +
+また、各 API でエラーが発生した場合には状態遷移は起こりません。(パラメータエラー以外の Close を除く) +
+
+[#_FigureState]
+.状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+s_ready : PL_STORAGE_READY
+s_run : PL_STORAGE_RUNNING
+[*] --> s_ready
+s_ready --> s_run : PlStorageInitialize
+s_run --> s_ready : PlStorageFinalize
+state s_run {
+  s_id_x : PlStorageDataId_XX
+  [*] --> s_id_x : Have status per PlStorageDataId
+  state s_id_x {
+    s_close : CLOSE
+    s_open : OPEN
+    s_tmp : TMP
+    [*] --> s_close
+    s_close --> s_open : PlStorageOpen
+    s_open --> s_close : PlStorageClose
+    s_close --> s_tmp : PlStorageGetTmpDataId
+    s_tmp --> s_close : PlStorageSwitchData
+    state s_tmp {
+      s_tmp_close : CLOSE (TMPID)
+      s_tmp_open : OPEN (TMPID)
+      [*] --> s_tmp_close
+      s_tmp_close --> s_tmp_open : PlStorageOpen
+      s_tmp_open --> s_tmp_close : PlStorageClose
+    }
+  }
+}
+----
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでの API 呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_PlErrCode>> を参照してください。 
+
+NOTE: PlStorageFinalize は Open 中でも TmpID 取得中でも実行できます。TmpID は破棄します。強制 Close するので、通常 ID で書き込み中のデータは不定になります。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,15%,15%,15%,15%,15%,15%"]
+|===
+2.4+| 5+|状態/サブ状態 (OPEN/CLOSE/TMPID)
+.3+|PL_STORAGE_READY
+4+|PL_STORAGE_RUNNING
+2+|CLOSE
+2+|OPEN
+||TMPID||TMPID
+.18+|API 名
+
+|``**PlStorageInitialize**``
+|PL_STORAGE_RUNNING 
+|×
+|×
+|×
+|×
+
+|``**PlStorageFinalize**``
+|× 
+|PL_STORAGE_READY
+|PL_STORAGE_READY
+|PL_STORAGE_READY
+|PL_STORAGE_READY
+
+|``**PlStorageOpen**``
+|× 
+|OPEN
+|OPEN(TMPID)
+|×
+|×
+
+|``**PlStorageClose**``
+|× 
+|×
+|×
+|CLOSE
+|CLOSE (TMPID)
+
+|``**PlStorageSeek**``
+|×
+|×
+|×
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageRead**``
+|×
+|×
+|×
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageWrite**``
+|×
+|×
+|×
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageErase**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|×
+|×
+
+|``**PlStorageDRead**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|×
+|×
+
+|``**PlStorageDWrite**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|×
+|×
+
+|``**PlStorageGetDataInfo**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageSwitchData**``
+|×
+|×
+|CLOSE
+|×
+|×
+
+|``**PlStorageGetTmpDataId**``
+|×
+|CLOSE (TMPID)
+|×
+|×
+|×
+
+|``**PlStorageClean**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageGetCapabilities**``
+|PL_STORAGE_RUNNING
+|CLOSE
+|CLOSE (TMPID)
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageGetIdCapabilities**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|OPEN
+|OPEN (TMPID)
+
+|``**PlStorageFactoryReset**``
+|×
+|CLOSE
+|CLOSE (TMPID)
+|×
+|×
+
+|``**PlStorageDowngrade**``
+|PL_STORAGE_RUNNING
+|CLOSE
+|×
+|×
+|×
+|===
+
+NOTE: T3Pは、CLOSE (TMPID)、OPEN (TMPID)の状態を持ちません。
+
+NOTE: T5は、PlStorageDowngradeは非サポートです。
+
+NOTE: T3Pは、PlStorageDRead、PlStorageDWrite、PlStorageSwitchData、PlStorageGetTmpDataIdは非サポートです。
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> を以下に示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|データの Open/Close
+|データを Open/Close します。
+|<<#_Function1, 3.5.1.>>
+
+|データの Read/Write 位置の指定
+|データを Read/Write する位置を指定します。
+|<<#_Function2, 3.5.2.>>
+
+|データの Read/Write
+|データを Read/Write します。
+|<<#_Function3, 3.5.3.>>
+
+|データの Erase
+|データを Erase します。
+|<<#_Function4, 3.5.4.>>
+
+|データの Read/Write (簡易版)
+|Open,Close を使用せずにデータを Read/Write できます。
+|<<#_Function5, 3.5.5.>>
+
+|データ ID の情報取得
+|指定されたデータ ID の情報を取得します。 (有効サイズ)
+|<<#_Function6, 3.5.6.>>
+
+|データの一時的な Write・置き換え
+|データを一時的な領域へ Write し終えてから本来の領域へ置き換えることができます。
+|<<#_Function7, 3.5.7.>>
+
+|データ領域のクリーニング
+|不要なデータを削除します。
+|<<#_Function8, 3.5.8.>>
+
+|データの Capability 取得
+|利用可能なPlStorageの機能の情報を取得します。
+|<<#_Function9, 3.5.9.>>
+
+|データの強力な Erase
+|データの強力な Erase を行います。
+|<<#_Function10, 3.5.10.>>
+
+|ダウングレード用特殊処理
+|ダウングレード用特殊処理を行います。
+|<<#_Function11, 3.5.11.>>
+
+|===
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== データの Open/Close
+機能概要::
+データを Open/Close します。
+前提条件::
+PlStorageInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlStorageOpen, PlStorageOpen>>, <<#_PlStorageClose, PlStorageClose>> を参照してください。
+詳細挙動::
+id に応じた操作を可能にする handle を提供/解放します。
+エラー時の挙動、復帰方法::
+Open 時のエラーは元に戻します。
+Close 時はエラーになっても管理領域は解放するのでリトライ禁止です。
+検討事項::
+fsync は公開していないので、Restart/FactoryReset 時に書き込み同期待ちが必要になれば内部で実装します。
+毎 Close 時に実行が必要か、Finalize で実行すればよいのかは要検討。
+
+[#_Function2]
+==== データの Read/Write 位置の指定
+機能概要::
+データを Read/Write する位置を指定します。
+前提条件::
+Open して有効な handle を得ていること
+機能詳細::
+詳細は <<#_PlStorageSeek, PlStorageSeek>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageSeek, PlStorageSeek>> を参照してください。
+エラー時の挙動、復帰方法::
+正常系のエラーはありません。
+検討事項::
+pipe ではエラーになるので、pipe 拡張を想定している場合は使わない実装が必要です。
+
+[#_Function3]
+==== データの Read/Write
+機能概要::
+データを Read/Write します。
+前提条件::
+Open して有効な handle を得ていること
+機能詳細::
+詳細は <<#_PlStorageRead, PlStorageRead>>, <<#_PlStorageWrite, PlStorageWrite>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageRead, PlStorageRead>>, <<#_PlStorageWrite, PlStorageWrite>> を参照してください。
+エラー時の挙動、復帰方法::
+内部ライブラリでエラー発生時はエラーを返します。
+検討事項::
+なし
+
+[#_Function4]
+==== データの Erase
+機能概要::
+データを Erase します。
+前提条件::
+PlStorageInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlStorageErase, PlStorageErase>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageErase, PlStorageErase>> を参照してください。
+エラー時の挙動、復帰方法::
+内部ライブラリでエラー発生時はエラーを返します。
+検討事項::
+なし
+
+
+[#_Function5]
+==== データの Read/Write (簡易版) 
+機能概要::
+Open, Close を使用せずにデータを Read/Write できます。
+前提条件::
+PlStorageInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlStorageDRead, PlStorageDRead>>, <<#_PlStorageDWrite, PlStorageDWrite>> を参照してください。
+詳細挙動::
+内部で Open, Read/Write, Close を実行します。
+エラー時の挙動、復帰方法::
+内部ライブラリでエラー発生時はエラーを返します。
+検討事項::
+なし
+
+[#_Function6]
+==== データ ID の情報取得
+機能概要::
+指定されたデータ ID の情報を取得します。 (有効サイズ) 
+前提条件::
+PlStorageInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlStorageGetDataInfo, PlStorageGetDataInfo>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageGetDataInfo, PlStorageGetDataInfo>> を参照してください。
+エラー時の挙動、復帰方法::
+内部ライブラリでエラー発生時はエラーを返します。
+検討事項::
+file のサイズ以外が必要であれば拡張します。
+
+[#_Function7]
+==== データの一時的な Write・置き換え
+機能概要::
+データを一時的な領域へ Write し終えてから本来の領域へ置き換えることができます。
+前提条件::
+PlStorageInitialize が実行済みであること。
+対象のデータ ID が二重化対応であること。
+機能詳細::
+詳細は <<#_PlStorageSwitchData, PlStorageSwitchData>>, <<#_PlStorageGetTmpDataId, PlStorageGetTmpDataId>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageSwitchData, PlStorageSwitchData>>, <<#_PlStorageGetTmpDataId, PlStorageGetTmpDataId>> を参照してください。
+エラー時の挙動、復帰方法::
+PlStorageInitialize 時、テンポラリデータが残っていれば消去します。
+TmpID を使った書き込みでエラーになった場合は上位レイヤーによる削除が必要です。
+検討事項::
+複数の TmpID を同時に使うことを許可するか (容量限界を想定したエラーの準備要否)
+空データの復元方法 (先に本体を rename しておくのだが、その本体がないケースに特殊名を使う等)
+
+[#_Function8]
+==== データ領域のクリーニング
+機能概要::
+不要なデータを削除します。
+前提条件::
+PlStorageInitialize が実行済みであること。
+機能詳細::
+詳細は <<#_PlStorageClean, PlStorageClean>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageClean, PlStorageClean>> を参照してください。
+エラー時の挙動、復帰方法::
+探索できない、削除できない場合はエラーになりますが、削除できるデータだけ削除します。
+エラーログを参照してください。
+検討事項::
+サブディレクトリ追跡（再帰呼び出し）制限は暫定で３段までに設定しています。
+サブディレクトリを自動で作る機能を付加した場合は、この制限値も検討する必要があります。
+
+[#_Function9]
+==== データのCapability取得
+機能概要::
+利用可能な PlStorage の機能の情報を取得します。
+前提条件::
+PlStorageInitialize が実行済みであること。
+機能詳細::
+詳細は <<#PlStorageGetCapabilities, PlStorageGetCapabilities>>, <<#PlStorageGetIdCapabilities, PlStorageGetIdCapabilities>> を参照してください。
+詳細挙動::
+詳細は <<#PlStorageGetCapabilities, PlStorageGetCapabilities>>, <<#PlStorageGetIdCapabilities, PlStorageGetIdCapabilities>> を参照してください。
+エラー時の挙動、復帰方法::
+正常系のエラーはありません。
+
+[#_Function10]
+==== データの強力な Erase
+機能概要::
+データの強力な Erase を行います。
+前提条件::
+PlStorageInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlStorageFactoryReset, PlStorageFactoryReset>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageFactoryReset, PlStorageFactoryReset>> を参照してください。
+エラー時の挙動、復帰方法::
+内部ライブラリでエラー発生時はエラーを返します。
+検討事項::
+なし
+
+[#_Function11]
+==== ダウングレード用特殊処理
+機能概要::
+ダウングレード用特殊処理 を行います。
+前提条件::
+PlStorageInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlStorageFactoryReset, PlStorageFactoryReset>> を参照してください。
+詳細挙動::
+詳細は <<#_PlStorageFactoryReset, PlStorageFactoryReset>> を参照してください。
+エラー時の挙動、復帰方法::
+内部ライブラリでエラー発生時はエラーを返します。
+検討事項::
+なし
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> を以下に示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack 最大使用量
+|384 bytes
+|<<#_MaxUsedStack, 3.7.1.>>
+
+|ヒープ最大使用量
+|15 KB
+|<<#_MaxUsedHeap, 3.7.2.>>
+
+|static データ最大使用量
+|60 bytes
+|<<#_MaxUsedStaticHeap, 3.7.3.>>
+
+|パフォーマンス
+|1 ms
+|<<#_Performance, 3.7.4.>>
+|===
+
+=== コンポーネントの非機能要件説明
+ライブラリを含みますが、正常時の計測結果です。
+
+[#_MaxUsedStack]
+==== Stack 最大使用量
+384 bytes (DRead/DWrite)
+
+[#_MaxUsedHeap]
+==== ヒープ最大使用量
+15KB (256 handle, 32 tmpId 発行)
+
+[#_MaxUsedStaticHeap]
+==== static データ最大使用量
+60 bytes
+
+[#_Performance]
+==== パフォーマンス
+1 ms 以下 (ライブラリ内の遅延を含みません)
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> を以下に示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum PlErrCode
+|APIの実行結果を定義する列挙型です。
+|<<#_PlErrCode, 4.2.1.>>
+
+|enum PlStorageDataId
+|補助記憶装置に存在するアイテムを表す列挙型です。
+|<<#_PlStorageDataId, 4.2.2.>>
+
+|enum PlStorageSeekType
+|PlStorageSeek で使用する位置指定の方式を表す列挙型です。
+|<<#_PlStorageSeekType, 4.2.3.>>
+
+|struct PlStorageDataInfo
+|PlStorageGetDataInfo で取得できるデータ情報を表す構造体です。
+|<<#_PlStorageDataInfo, 4.2.4.>>
+
+|PlStorageTmpDataId
+|一時的なデータ領域を示す ID を表す型です。
+|<<#_PlStorageTmpDataId, 4.2.5.>>
+
+|PlStorageCapabilities
+|利用可能な PlStorage の機能の情報を格納する構造体です。
+|<<#_PlStorageCapabilities, 4.2.6.>>
+
+|PlStorageIdCapabilities
+|データごとに利用可能な PlStorage の機能の情報を格納する構造体です。
+|<<#_PlStorageIdCapabilities, 4.2.7.>>
+
+|PL_STORAGE_OPEN_RDONLY
+|PlStorageOpenで使用するoflagsの定義です。
+|<<#_PL_STORAGE_OPEN_RDONLY, 4.2.8.>>
+
+|PL_STORAGE_OPEN_WRONLY
+|PlStorageOpenで使用するoflagsの定義です。
+|<<#_PL_STORAGE_OPEN_WRONLY, 4.2.9.>>
+
+|PL_STORAGE_OPEN_RDWR
+|PlStorageOpenで使用するoflagsの定義です。
+|<<#_PL_STORAGE_OPEN_RDWR, 4.2.10.>>
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> を以下に示します。
+
+[#_TablePublicAPI]
+.Public API 一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+
+|PlStorageInitialize
+|補助記憶装置に関する初期化処理を行います。
+|<<#_PlStorageInitialize, 4.4.1.>>
+
+|PlStorageFinalize
+|補助記憶装置に関する終了処理を行います。
+|<<#_PlStorageFinalize, 4.4.2.>>
+
+|PlStorageOpen
+|データを Open します。
+|<<#_PlStorageOpen, 4.4.3.>>
+
+|PlStorageClose
+|データを Close します。
+|<<#_PlStorageClose, 4.4.4.>>
+
+|PlStorageSeek
+|データを Read/Write する位置を指定します。
+|<<#_PlStorageSeek, 4.4.5.>>
+
+|PlStorageRead
+|データを Read します。
+|<<#_PlStorageRead, 4.4.6.>>
+
+|PlStorageWrite
+|データを Write します。
+|<<#_PlStorageWrite, 4.4.7.>>
+
+|PlStorageErase
+|データを Erase します。
+|<<#_PlStorageErase, 4.4.8.>>
+
+|PlStorageDRead
+|Open, Close を使用せずにデータを Read できます。
+|<<#_PlStorageDRead, 4.4.9.>>
+
+|PlStorageDWrite
+|Open, Close を使用せずにデータを Write できます。
+|<<#_PlStorageDWrite, 4.4.10.>>
+
+|PlStorageGetDataInfo
+|指定されたデータ ID の情報を取得します。(有効サイズ)
+|<<#_PlStorageGetDataInfo, 4.4.11.>>
+
+|PlStorageSwitchData
+|一時的なデータ領域の内容を、指定されたデータ ID の内容へ割り当てます。
+|<<#_PlStorageSwitchData, 4.4.12.>>
+
+|PlStorageGetTmpDataId
+|指定されたデータ ID と対になる tmp 領域の ID を返します。tmp 領域が存在しない ID を指定された場合、0 を返します。
+|<<#_PlStorageGetTmpDataId, 4.4.13.>>
+
+|PlStorageClean
+|不要なデータを削除します。
+|<<#_PlStorageClean, 4.4.14.>>
+
+|PlStorageGetCapabilities
+|利用可能な PlStorage の機能の情報を取得します。
+|<<#_PlStorageGetCapabilities, 4.4.15.>>
+
+|PlStorageGetIdCapabilities
+|データごとに利用可能な PlStorage の機能の情報を取得します。
+|<<#_PlStorageGetIdCapabilities, 4.4.16.>>
+
+|PlStorageFactoryReset
+|データの強力な Erase を行います。
+|<<#_PlStorageFactoryReset, 4.4.17.>>
+
+|PlStorageDowngrade
+|ダウングレード用特殊処理を行います。
+|<<#_PlStorageDowngrade, 4.4.18.>>
+
+|===
+
+=== データ型定義
+[#_PlErrCode]
+==== PlErrCode
+API の実行結果を定義する列挙型です。
+(T.B.D.)
+
+[#_PlStorageDataId]
+==== PlStorageDataId
+補助記憶装置に存在するアイテムを表す列挙型です。
+
+* 永続化の単位としての定義なので <<#_FileSystemLibrary, FileSystemLibrary>> 、 <<#_ContainerLibrary, ContainerLibrary>> のテーブル定義を同時に保守すれば変更も拡張も自由に可能です。
+* ID は Parameter Storage Manager と同期していますので、link:https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/esf/parameter_storage_manager/ParameterStorageManager_ja.adoc#_EsfParameterStorageManagerItemID[EsfParameterStorageManagerItemID] を参照してください。
+
+[#_PlStorageSeekType]
+==== PlStorageSeekType
+PlStorageSeek で使用する位置指定の方式を表す列挙型です。
+
+* *書式*
+[source, C]
+....
+typedef enum {
+    PlStorageSeekSet,
+    PlStorageSeekCur,
+    PlStorageSeekEnd,
+    PlStorageSeekMax
+} PlStorageSeekType;
+....
+
+* *値*
+
+[#_PlStorageSeekTypeValue]
+.PlStorageSeekType の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|PlStorageSeekSet
+|Read、Write の起点がデータの先頭であることを示します。
+|PlStorageSeekCur
+|Read、Write の起点がデータの現在位置であることを示します。
+|PlStorageSeekEnd
+|Read、Write の起点がデータの終端であることを示します。
+|PlStorageSeekMax
+|Enum 最大数
+|===
+
+[#_PlStorageDataInfo]
+==== PlStorageDataInfo
+PlStorageGetDataInfo で取得できるデータ情報を表す構造体です。
+
+* *書式*
+[source, C]
+....
+typedef struct {
+    uint32_t written_size;
+} PlStorageDataInfo;
+....
+
+* *値*
+
+[#_PlStorageDataInfoValue]
+.PlStorageDataInfo の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|uint32_t written_size
+|書き込まれたデータサイズ。 +
+PlStorageSeek で本サイズよりも大きい番地を指定してから PlStorageRead を行った場合、エラーにはならずデータなしを返します。 +
+PlStorageSeek で本サイズよりも大きい番地を指定してから PlStorageWrite を行った場合、未書き込みの領域のデータは不定になります。
+|===
+
+* written_size 仕様
+書き込まれたデータサイズです。
+seek で書き込み開始アドレスを飛ばして書いても最大の書き込みアドレスがサイズになります。
+
+[#_PlStorageTmpDataId]
+==== PlStorageTmpDataId
+一時的なデータ領域を示す ID を表す型です。
+
+* *書式*
+
+アーキテクチャによって可変。
+
+例：
+[source, C]
+....
+typedef uint32_t PlStorageTmpDataId
+typedef void* PlStorageHandle
+....
+
+[#_PlStorageCapabilities]
+==== PlStorageCapabilities
+利用可能な PlStorage の機能の情報を表す構造体です。
+
+* *書式*
+[source, C]
+....
+typedef struct {
+  uint32_t enable_tmp_id : 1;
+} PlStorageCapabilities;
+....
+
+* *値*
+
+[#_PlStorageCapabilitiesValue]
+.PlStorageCapabilities の値の説明
+[width="100%", cols="30%,70%a",options="header"]
+|===
+|メンバ名  |説明
+|uint32_t enable_tmp_id : 1
+|TMPID利用可能フラグ。 +
+データの一時的な Write・置き換え API が利用可能な場合は1です。利用不可の場合の値は0です。
+
+* T5：1を返します。
+* T3P：0を返します。
+
+|===
+
+
+[#_PlStorageIdCapabilities]
+==== PlStorageIdCapabilities
+データごとに利用可能な PlStorage の機能の情報を表す構造体です。
+
+* *書式*
+[source, C]
+....
+typedef struct {
+  uint32_t is_read_only : 1;
+  uint32_t enable_seek : 1;
+} PlStorageIdCapabilities;
+....
+
+* *値*
+
+[#_PlStorageIdCapabilitiesValue]
+.PlStorageIdCapabilities の値の説明
+[width="100%", cols="30%,70%a",options="header"]
+|===
+|メンバ名  |説明
+|uint32_t is_read_only : 1;
+|ReadOnlyフラグ。 +
+データがReadOnlyの場合、1を返します。
+|uint32_t enable_seek : 1;
+|Seek利用可能フラグ。 +
+データがSeek利用可能の場合、1を返します。
+
+* T5：1を返します。
+* T3P：ファイルの場合1を返します。
+
+|===
+
+[#_PL_STORAGE_OPEN_RDONLY]
+==== PL_STORAGE_OPEN_RDONLY
+PlStorageOpenで使用するoflagsの定義です。 +
+ReadOnlyでOpenします。
+
+* *書式*
+
+[source, C]
+....
+#define PL_STORAGE_OPEN_RDONLY (O_RDONLY)
+....
+
+[#_PL_STORAGE_OPEN_WRONLY]
+==== PL_STORAGE_OPEN_WRONLY
+PlStorageOpenで使用するoflagsの定義です。 +
+WriteOnlyでOpenします。
+
+* *書式*
+
+[source, C]
+....
+#define PL_STORAGE_OPEN_WRONLY (O_WRONLY | O_CREAT | O_TRUNC)
+....
+
+[#_PL_STORAGE_OPEN_RDWR]
+==== PL_STORAGE_OPEN_RDWR
+PlStorageOpenで使用するoflagsの定義です。 +
+ReadWriteでOpenします。
+
+* *書式*
+
+[source, C]
+....
+#define PL_STORAGE_OPEN_RDWR (O_RDWR | O_CREAT)
+....
+
+=== 各 API の説明
+
+[#_PlStorageInitiaize]
+==== PlStorageInitialize
+
+* *機能* +
+PL Storage を初期化します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageInitialize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL Storage に関する初期化処理を行います。
+
+[#_PlStorageInitalize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorageInitialize、または PlStorageFinalize が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|mount 処理の内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageFinaize]
+==== PlStorageFinalize
+
+* *機能* +
+PL Storage に関する終了処理を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+PL Storage に関する終了処理を行います。
+
+[#_PlStorageInitalize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorageInitialize、または PlStorageFinalize が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|mount 処理の内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageOpen]
+==== PlStorageOpen
+
+* *機能* +
+データを Open します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageOpen(PlStorageDataId id, int oflags, PlStorageHandle *handle)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId**:: 
+Open したいデータ。
+
+**[IN] int oflags**:: 
+オプションの指定。次のいずれかを指定します。
+*** <<#_PL_STORAGE_OPEN_RDONLY, 4.2.8. PL_STORAGE_OPEN_RDONLY>>
+*** <<#_PL_STORAGE_OPEN_WRONLY, 4.2.9. PL_STORAGE_OPEN_WRONLY>>
+*** <<#_PL_STORAGE_OPEN_RDWR, 4.2.10. PL_STORAGE_OPEN_RDWR>>
+
+**[OUT] void* handle**:: 
+Seek、Read、Write に用いるハンドラ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 補助記憶装置のデータを Open します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** 成功した場合、handle にアドレスがセットされます。
+** 失敗した場合、handle は呼び出し前の値から変化しません。
+** 本 API で取得したハンドルを引数に、PlStorageSeek、PlStorageRead、PlStorageWrite を使用可能です。
+** 複数のデータを同時に Open することを禁止します。正常終了する可能性はありますが、動作は未定義です。
+** 同じデータを複数 Open することを禁止します。正常終了する可能性はありますが、動作は未定義です。
+** 本 API 実行時の Seek 位置は 0 です。
+** PlStorageFinalize 時に、本 API で Open されたまま Close されていないハンドルがある場合、内部で自動で Close されます。
+
+[#_PlStorageOpen_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageOpen_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrMemory (仮)
+|メモリ確保失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNotFound (仮)
+|データはありません (ReadOnly or dir 無時)
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|書込権限無し (ROMFS+R/W) 
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+
+|===
+
+[#_PlStorageClose]
+==== PlStorageClose
+* *機能* +
+データを Close します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageClose(const PlStorageHandle handle)
+....
+
+* *引数の説明* +
+**[IN] const PlStorageHandle handle**:: 
+Close したいデータのハンドラ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PlStorageOpen で Open した補助記憶装置のデータを Close します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+
+[#_PlStorageClose_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageClose_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageSeek]
+==== PlStorageSeek
+* *機能* +
+データを Read/Write する位置を指定します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageSeek(const PlStorageHandle handle, int32_t offset, PlStorageSeekType type, int32_t *cur_pos)
+....
+
+* *引数の説明* +
+**[IN] const PlStorageHandle handle**:: 
+Seek したいデータのハンドラ。
+
+**[IN] int32_t offset**:: 
+移動量。
+
+**[IN] PlStorageSeekType type**:: 
+移動の原点を表す値。
+
+**[OUT] int32_t *cur_pos**:: 
+現在のシーク位置が格納されます。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データを Read/Write する位置を指定します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** リストの場合、offset は 0 のみサポートします。
+** type は PlStorageSeekSet のみサポートします。
+** 本 API が成功した場合、現在のシーク位置が cur_pos に格納されます。
+** 本 API が失敗した場合、シーク位置は本 API の実行前の状態に戻ります。
+** 対象データの有効範囲外 (最大サイズ超) を指定したとき、本 API はエラーを返しません。 (Read、Write 時にエラーになります) 
+** PlStorageOpen 後の初期シーク位置は不定になります。
+
+[#_PlStorageSeek_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageSeek_error]
+.エラー情報
+[options="header", cols="1,4a,1,2,1"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|* type に PlStorageSeekSet 以外を指定した
+* リストの場合、offset に 0 以外を指定した
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+
+|===
+
+[#_PlStorageRead]
+==== PlStorageRead
+* *機能* +
+データを Read します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageRead(const PlStorageHandle handle, void *out_buf, uint32_t read_size, uint32_t *out_size)
+....
+
+* *引数の説明* +
+**[IN] const PlStorageHandle handle**:: 
+Read したいデータのハンドラ。
+
+**[OUT] void *out_buf**:: 
+Read 結果の格納先。
+
+**[IN] uint32_t read_size**:: 
+Read したいサイズ。
+
+**[OUT] uint32_t *out_size**:: 
+Read したサイズ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データを Read します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** リストの場合、read_size は written_size 以上の値を指定してください。
+** 本 API が成功した場合、シーク位置は以下の通りになります。
+*** リスト： 0 に戻ります。
+*** ファイル： Read したサイズ分だけ進みます。
+** 本 API が失敗した場合、シーク位置は本 API の実行前の状態に戻ります。
+** written_size 外をシーク位置 + read_size で指定した場合エラーになります。
+
+[#_PlStorageRead_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageRead_error]
+.エラー情報
+[options="header", cols="1,4a,1,2,1"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|* PL_STORAGE_OPEN_WRONLY を指定して Open したハンドルを使用した
+* リストの場合、read_size に written_size 未満の値を指定した
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageWrite]
+==== PlStorageWrite
+* *機能* +
+データを Write します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageWrite(const PlStorageHandle handle, const void *src_buf, uint32_t write_size, uint32_t *out_size)
+....
+
+* *引数の説明* +
+**[IN] const PlStorageHandle handle**:: 
+Write したいデータのハンドラ。
+
+**[IN] const void *src_buf**:: 
+Write したいバッファ。
+
+**[IN] uint32_t write_size**:: 
+Write したいサイズ。
+
+**[OUT] uint32_t *out_size**:: 
+Write したサイズ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データを Write します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** 本 API が成功した場合、シーク位置は以下の通りになります。
+*** リスト： 0 に戻ります。
+*** ファイル： Write したサイズ分だけ進みます。
+** 本 API が失敗した場合、シーク位置は本 API の実行前の状態に戻ります。
+** データの制限容量を超過した場合、本 API は失敗します。
+
+[#_PlStorageWrite_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageWrite_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrTooBig (仮)
+|サイズ過多
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|書込権限無し (ReadOnly) 
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+
+|===
+
+[#_PlStorageErase]
+==== PlStorageErase
+* *機能* +
+データをEraseします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageErase(PlStorageDataId id)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId id**:: 
+Erase したいデータ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データを Erase します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+
+[#_PlStorageErase_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageErase_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNotFound (仮)
+|データはありません
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|削除権限無し (ReadOnly) 
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageDRead]
+==== PlStorageDRead
+* *機能* +
+Open, Close を使用せずにデータを Read できます。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageDRead(PlStorageDataId id, void *out_buf, uint32_t read_size, uint32_t *out_size)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId id**:: 
+Read したいデータ。
+
+**[OUT] void *out_buf**:: 
+Read 結果の格納先。
+
+**[IN] uint32_t read_size**:: 
+Read したいサイズ。
+
+**[OUT] uint32_t *out_size**:: 
+Read したサイズ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データを Read します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** 本 API はシーク位置がデータ先頭の状態で実行されます。
+** データの有効範囲外を参照する場合、本 API は失敗します。
+
+[#_PlStorageDRead_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageDRead_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNotFound (仮)
+|データはありません(ReadOnly時)
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|書込権限無し (ROMFS+R/W Open) 
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageDWrite]
+==== PlStorageDWrite
+* *機能* +
+Open, Close を使用せずにデータを Write できます。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageDWrite(PlStorageDataId id, const void *src_buf, uint32_t write_size, uint32_t *out_size)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId id**:: 
+Write したいデータ。
+
+**[IN] const void *src_buf**:: 
+Write したいバッファ。
+
+**[IN] uint32_t write_size**:: 
+Write したいサイズ。
+
+**[OUT] uint32_t *out_size**:: 
+Write したサイズ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データを Write します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** 本 API はシーク位置がデータ先頭の状態で実行されます。
+** データの有効範囲外を参照する場合、本 API は失敗します。
+
+[#_PlStorageDWrite_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageDWrite_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|書込権限無し (ReadOnly, ROMFS+R/W Open) 
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageGetDataInfo]
+==== PlStorageGetDataInfo
+指定されたデータ ID の情報を取得します。(有効サイズ)
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageGetDataInfo(PlStorageDataId id, PlStorageDataInfo *info)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId id**:: 
+対象のデータ ID。
+
+**[OUT] PlStorageDataInfo *info**:: 
+データ ID の情報。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+指定されたデータ ID の情報 (有効サイズ) を取得します。
+本 API は、PlStorageInitialize の実行後に使用可能です。
+
+[#_PlStorageGetDataInfo_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageGetDataInfo_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNotFound (仮)
+|データはありません
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageSwitchData]
+==== PlStorageSwitchData
+一時的なデータ領域の内容を、指定されたデータ ID の内容へ割り当てます。
+本 API は、巨大なデータを書き込みたいときに、実際に運用されているデータを汚さずに更新したいときに有効です。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageSwitchData(PlStorageTmpDataId src_id, PlStorageDataId dst_id)
+....
+
+* *引数の説明* +
+**[IN] PlStorageTmpDataId src_id**:: 
+一時的なデータ領域を指すデータ ID。
+
+**[IN] PlStorageDataId dst_id**:: 
+割り当て先のデータ ID。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 一時的なデータ領域の内容を、指定されたデータ ID の内容へ割り当てます。
+** src_id は PlStorageGetTmpDataId を使用して取得してください。
+** dst_id と対になる src_id 以外を指定された場合、エラーを返します。
+** 本 API で指定可能な ID は、PL Configでduplicate_save > supported=true (仮) の ID のみです。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** tmp 領域は、PlStorageInitialize の実行時に残っていれば消去されます。
+** 具体的な使用方法は以下の通りです
+1. PlStorageGetTmpDataId で tmp 領域の ID を取得します。
+2. tmp 領域は src_id のデータを保持していませんので、データの一部書き換えが必要な場合は src_id からデータを Read する必要があります。
+3. tmp 領域に対して PlStorageOpen, PlStorageWrite でデータを書き込みます。
+4. tmp 領域の handle を PlStorageClose します。
+5. tmp 領域の書き込み中に (エラーコード) が返ってきたときは PlStorageClose 後に tmp 領域の ID を指定して PlStorageErase してください。
+6. PlStorageSwitchData で tmp 領域の内容を運用対象の領域に設定します。
+
+.PlStorageSwitchData 例
+image::./images/storage_switchdata.png[scaledwidth="100%",align="center"]
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageGetTmpDataId]
+==== PlStorageGetTmpDataId
+指定されたデータ ID と対になる tmp 領域の ID を返します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageGetTmpDataId(PlStorageDataId src_id, PlStorageTmpDataId *tmp_id)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId src_id**:: 
+tmp 領域の ID を知りたい ID。
+
+**[OUT] PlStorageTmpDataId *tmp_id**:: 
+src_id に対応する tmp 領域の ID。
+
+** src_id と対となる tmp 領域の ID が存在する場合：tmp_id には tmp 領域の ID がセットされます。
+** src_id と対となる tmp 領域の ID が存在しない場合：tmp_id は本 API 呼び出し前と同じ状態になります。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたデータ ID と対になるtmp領域の ID を返します。
+** tmp 領域が存在しない ID を指定された場合、エラーを返します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** 
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrAlready (仮)
+|すでにTmpID発行済でOpenされている
+|-
+|影響なし
+|不要
+
+|kPlErrMemory (仮)
+|メモリ確保失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー発生(データ削除失敗)
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageClean]
+==== PlStorageClean
+
+* *機能* +
+不要データを削除します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageClean(void)
+....
+
+* *引数の説明* +
+ありません。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 補助記憶装置の不要データを削除します。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** 途中で失敗しても全データ領域を探索して削除できるデータは全部削除します。
+** Open中、TmpID作成中でも実行可能です。
+
+[#_PlStorageClean_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageClean_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrMemory (仮)
+|メモリ確保失敗、ディレクトリが４段以上に及ぶ場合
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+
+|===
+
+[#_PlStorageGetCapabilities]
+==== PlStorageGetCapabilities
+
+* *機能* +
+利用可能な PlStorage の機能の情報を取得します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageGetCapabilities(PlStorageCapabilities *capabilities)
+....
+
+* *引数の説明* +
+**[OUT] PlStorageCapabilities *capabilities**:: 
+利用可能な PlStorage の機能の情報を格納する構造体です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 利用可能な機能の情報を取得します。
+** 利用可能な機能はカメラ毎に異なります。
+** 本 API は、PlStorageInitialize を実行しなくても使用可能です。
+
+[#_PlStorageGetCapabilities_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlStorageGetCapabilities_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageGetIdCapabilities]
+==== PlStorageGetIdCapabilities
+
+* *機能* +
+データごとに利用可能な PlStorage の機能の情報を取得します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageGetIdCapabilities(PlStorageDataId id, PlStorageIdCapabilities *id_capabilities)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId id**:: 
+機能の情報を取得したいデータ ID です。
+
+**[OUT] PlStorageIdCapabilities *id_capabilities**:: 
+データごとに利用可能な PlStorage の機能の情報を格納する構造体です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 利用可能な機能の情報を取得します。
+** 利用可能な機能はカメラ毎、データID毎に異なります。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+
+[#_PlStorageGetIdCapabilities_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングしない
+|===
+
+[#_PlStorageGetIdCapabilities_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageFactoryReset]
+==== PlStorageFactoryReset
+* *機能* +
+データの強力な Erase を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageFactoryReset(PlStorageDataId id)
+....
+
+* *引数の説明* +
+**[IN] PlStorageDataId id**:: 
+強力な Erase をしたいデータ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** データの強力な Erase を行います。
+** 本 API は、PlStorageInitialize の実行後に使用可能です。
+** Flash を工場出荷状態に戻したいユースケースでの使用を想定しています。
+** <<#_PlStorageErase, PlStorageErase>> との違いは下記の通りです。
+*** PlStorageErase は上位からは消去したように見えるだけで Flash に情報が残っています。
+*** PlStorageFactoryReset は Flash に情報が残らないように消去します。
+
+[#_PlStorageFactoryReset_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageFactoryReset_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlStorageInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNotFound (仮)
+|データはありません
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|削除権限無し (ReadOnly) 
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlStorageDowngrade]
+==== PlStorageDowngrade
+* *機能* +
+ダウングレード用特殊処理を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlStorageDowngrade(void)
+....
+
+* *引数の説明* +
+ありません。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** ダウングレード用特殊処理 を行います。
+** 本 API は、PlStorageInitialize を実行しなくても使用可能です。
+** T5 では非サポートです。
+** T3P をダウングレードするユースケースでの使用を想定しています。
+
+[#_PlStorageDowngrade_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlStorage API が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlStorageDowngrade_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrFailed (仮)
+|ロック失敗
+|-
+|影響なし
+|不要
+
+|kPlErrNotFound (仮)
+|データはありません
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation (仮)
+|削除権限無し (ReadOnly) 
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|内部関数でエラー
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported (仮)
+|非サポート
+|-
+|影響なし
+|不要
+|===
+
+== API 使用時の呼び出し例
+=== Read 例
+.PlStorageRead (例)
+[{mermaid_block}]
+----
+sequenceDiagram
+participant psm as Upper Layer
+participant psmpl as PL Storage
+psm ->> psmpl: PlStorageInitialize
+psm ->> psmpl: PlStorageOpen
+psmpl -->> psm: handle
+psm ->> psmpl: PlStorageSeek
+psm ->> psmpl: PlStorageRead
+psmpl -->> psm: data
+psm ->> psm: process(data)
+psm ->> psmpl: PlStorageClose
+psm ->> psmpl: PlStorageFinalize
+----
+
+=== DRead 例
+.PlStorageDRead (例)
+[{mermaid_block}]
+----
+sequenceDiagram
+participant psm as Upper Layer
+participant psmpl as PL Storage
+psm ->> psmpl: PlStorageInitialize
+psm ->> psmpl: PlStorageDRead
+psmpl -->> psm: data
+psm ->> psm: process(data)
+psm ->> psmpl: PlStorageFinalize
+----
+
+=== GetDataInfo 例
+.PlStorageGetDataInfo (例)
+[{mermaid_block}]
+----
+sequenceDiagram
+participant psm as Upper Layer
+participant psmpl as PL Storage
+psm ->> psmpl: PlStorageInitialize
+psm ->> psmpl: PlStorageGetDataInfo
+psmpl -->> psm: info
+psm ->> psm: malloc(info.written_size)
+psm ->> psmpl: PlStorageFinalize
+----
+
+== 特記事項やコンポーネントごとの特有の説明事項
+[#_FileSystemLibrary]
+=== FileSystemLibrary
+Filesystem に永続データを保存するライブラリです。
+
+==== テーブル定義
+* マウント処理、PlStorageDataId に対する保存データはテーブル定義になっています。
+* PlStorageDataId を追加した場合はテーブルの追加も必要です。
+* 上位レイヤーの永続化や初期設定の必要に応じて書き変えて使うことを想定しています。
+
+===== struct PlStorageMountDefs
+マウント情報を表す構造体です。
+実体は s_mount_defs で定義します。
+
+* *書式*
+[source, C]
+....
+struct PlStorageMountDefs {
+  const char* source;
+  const char* target;
+  const char* type;
+  const unsigned int do_clean : 1;
+};
+....
+
+* *値*
+
+[#PlStorageMountDefsValue]
+.PlStorageMountDefs の値の説明
+[width="100%", cols="30%,70%a",options="header"]
+|===
+|メンバ名  |説明
+|source
+|* デバイスファイルのパスです。
+* NULL を設定することでテーブル終端を示します。
+|target
+|* マウントポイントのパスです。
+|type
+|* ファイルシステムの種類です。 (現状 littlefs のみ動作確認済み)
+|do_clean
+|* Clean 対象か否かを示します。 (1:実行する、0:実行しない)
+|===
+
+===== PlStorageFilesystemDataIdTbl
+保存データの情報を表す構造体です。
+これは構造定義で、PlStorageDataId との関連付けは s_id_tbl で定義します。
+
+* *書式*
+[source, C]
+....
+typedef struct {
+  char *path;
+  int access;
+  uint32_t max_size;
+  int tmp_id;
+  unsigned int disable_chunk : 1;
+} PlStorageFilesystemDataIdTbl;
+....
+
+* *値*
+
+[#PlStorageFilesystemDataIdTblValue]
+.PlStorageFilesystemDataIdTbl の値の説明
+[width="100%", cols="30%,70%a",options="header"]
+|===
+|メンバ名  |説明
+|path
+|* 保存データのパスです。
+* NULL でこの id は無効です。
+|access
+|* データのアクセス権を示します。以下のどちらかを指定します。
+** 読み取り専用の場合 : O_RDONLY
+** 読み書き可能の場合 : O_RDWR
+|max_size
+|* 保存データの制限サイズです。
+* 0 を指定すると無制限 (容量限界まで) になります。
+|tmp_id
+|* データの一時的な Write・置き換え API の利用可否を示します。
+** 利用可能な場合 : 1
+** 利用不可の場合 : 0
+|disable_chunk
+|* offset アクセスできないデータを示します。以下のどちらかを指定します。
+** リスト : 1
+** ファイル : 0
+|===
+
+==== 挙動
+pl_storage.h に PlStorageDataId の enum 定義があります。
+pl_filesystem_tbl.c に、マウント定義 (s_mount_defs)、ID 定義 (s_id_tbl) があります。
+初期化時にドライバをディレクトリにマウントし、終了時にアンマウントします。
+ID 定義によってデータと関連付け、このライブラリでは filesystem としてアクセスします。
+
+==== テーブル定義例
+具体例を記載します。
+
+* *書式*
+
+===== pl_filesystem_tbl.h
+[source, C]
+....
+static const struct PlStorageMountDefs s_mount_defs[] = {
+    {"/dev/esp/partition/camera_data_encr", "/camera_data_encr", "littlefs", 1},
+    {"/dev/esp/partition/camera_data_norm", "/camera_data_norm", "littlefs", 1},
+    {"/dev/esp/partition/fa_data2",         "/fa_data2",         "littlefs", 0},
+    {NULL, NULL, NULL, 0},
+};
+
+static const PlStorageFilesystemDataIdTbl s_id_tbl[PlStorageDataMax] = {
+    [PlStorageDataDpsURL] =
+        {"/camera_data_norm/DpsURL", O_RDWR,   0, 0, 1},
+    [PlStorageDataPkiRootCerts] =
+        {"/fa_data2/PkiRootCerts",   O_RDONLY, 0, 0, 0},
+    [PlStorageDataSensorAIModelFlashAddress] = 
+        {NULL,                       O_RDWR,   0, 1, 1},
+};
+....
+
+* s_mount_defs 仕様
+** 上から順に初期化時 (PlStorageInitialize) にマウントし、終了時 (PlStorageFinalize) にアンマウントします。
+** マウント時に失敗した場合、autoformat を付けて再マウントします。この時、データは消去されます。
+** マウント／アンマウントに失敗してもログを出すだけで次のマウント／アンマウントを継続します。
+
+* s_id_tbl 仕様
+** 上から順に PlStorageDataId に対応したデータを規定します。
+** O_RDONLY を指定すると PlStorageErase (削除) もエラーになります。
+** max_size は書き込み制限値で、security (Flash) との互換性を保つための値です。通常は無制限 (0) で問題ありません。
+** tmp_id が 0 の時は PlStorageGetTmpDataId でエラーになります。O_RDONLY のデータは TmpID を作ってもエラーになるので 0 にしてください。
+
+[#_ContainerLibrary]
+=== ContainerLibrary
+Security Moduleが提供するFlashメモリのデータ管理機能で永続データを保存するライブラリです。
+
+==== テーブル定義
+データ IDとコンテナの紐づけはテーブル定義になっています。
+データ IDを追加した場合はテーブルの追加も必要です。
+
+===== sec_container_def.h
+コンテナ ID の define 定義があります。
+Security Moduleが管理しているため、
+コンテナ定義自体を変更する場合は変更依頼が必要です。
+
+===== pl_storage_list_data_id.h
+リストデータ ID の enum 定義があります。
+上位レイヤーの必要に応じて書き変えて使うことを想定しています。
+
+===== pl_storage_container_map.h
+データ ID、コンテナ ID、リストデータ IDを紐づけるテーブルがあります。
+s_container_map で定義します。
+上位レイヤーの必要に応じて書き変えて使うことを想定しています。
+
+[#s_container_map]
+.s_container_map の値の説明
+[width="100%", cols="1,5a",options="header"]
+|===
+|メンバ名  |説明
+|access
+|データのアクセス権を示します。以下のどちらかを指定します。
+
+* 読み取り専用の場合：O_RDONLY
+* 読み書き可能の場合：O_RDWR
+
+|container
+|コンテナと紐づけます。ファイルとリストで書き方が異なります。
+
+* ファイルの場合：FILE(コンテナ IDから"_ID"を除いた部分)
+* リストの場合：LIST(コンテナ IDから"_ID"を除いた部分)
+
+|file_no もしくは list_data_id
+|コンテナと紐づけます。ファイルとリストで書き方が異なります。
+
+* ファイルの場合：コンテナ ID
+* リストの場合：リストデータ ID
+
+|===
+
+==== テーブル定義例
+具体例を記載します。ソースコードは説明に必要な部分だけ抜粋しています。
+
+===== sec_container_def.h
+[source, C]
+....
+// ----------------------------------------
+// PARTITION: SEC
+// ----------------------------------------
+----
+// Container ID (List)
+#define SEC_CTR_SEC_LIST_KS1_ID                           (0)
+----
+// File ID
+#define SEC_CTR_SEC_FILE_AUTH_INFO0_ID                    (0x0100)
+----
+....
+
+===== pl_storage_list_data_id.h
+[source, C]
+....
+// ----------------------------------------
+// PARTITION: SEC
+// ----------------------------------------
+// SEC_CTR_SEC_LIST_KS1_ID
+typedef enum {
+  kDataIdSecKs1 = 0,
+  kSecKs1ListDataEntryIDNum
+} SecKs1ListDataEntryID;
+....
+
+===== pl_storage_container_map.h
+[source, C]
+....
+#include "pl_storage_list_data_id.h"
+#include "sec_container_def.h"
+
+static const PlStorageContainerMap s_container_map[PlStorageDataMax] = {
+    [PlStorageDataAuthInfo0] =
+        {O_RDONLY,
+         FILE(SEC_CTR_SEC_FILE_AUTH_INFO0),
+         {SEC_CTR_SEC_FILE_AUTH_INFO0_ID}},
+    [PlStorageDataKs1] =
+        {O_RDWR,
+         LIST(SEC_CTR_SEC_LIST_KS1),
+         {kDataIdSecKs1}},
+    [PlStorageDataKs2] =
+        {O_RDONLY},
+};
+....
+
+* ファイル例：データ ID「PlStorageDataAuthInfo0」をコンテナ ID「SEC_CTR_SEC_FILE_AUTH_INFO0_ID」に紐づけ
+** s_container_mapのaccessにデータのアクセス権を記載してください。
+*** 例では「O_RDONLY」と記載しています。
+** s_container_mapのcontainerにFILE(コンテナ IDから"_ID"を除いた部分)を記載してください。
+*** 例では「FILE(SEC_CTR_SEC_FILE_AUTH_INFO0)」と記載しています。
+** s_container_mapのfine_noにコンテナ IDを記載してください。
+*** 例では「SEC_CTR_SEC_FILE_AUTH_INFO0_ID」と記載しています。
+
+* リスト例：データ ID「PlStorageDataKs1」をコンテナ ID「SEC_CTR_SEC_LIST_KS1_ID」に紐づけ
+** pl_storage_list_data_id.hにリストデータ IDの enum 定義を記載してください。
+*** 例では「SecKs1ListDataEntryID」を定義して「kDataIdSecKs1」を紐づけします。
+** s_container_mapのaccessにデータのアクセス権を記載してください。
+*** 例では「O_RDWR」と記載しています。
+** s_container_mapのcontainerにLIST(コンテナ IDから"_ID"を除いた部分)を記載してください。
+*** 例では「LIST(SEC_CTR_SEC_LIST_KS1)」と記載しています。
+** s_container_mapのlist_data_idにリストデータ IDを記載してください。
+*** 例では「kDataIdSecKs1」と記載しています。
+
+* 意図的に紐づけしない例：データ ID「PlStorageDataKs2」をコンテナに紐づけしない
+** s_container_mapのaccessにデータのアクセス権のみ記載してください。
+*** 例では「O_RDONLY」と記載しています。
+
+==== データ IDとコンテナの紐づけをしない場合
+各 API は未定義の動作となります。
+
+* 紐づけしないデータ IDに対する固有の動作を定義したい場合は、ContainerLibraryで個別対応いたします。担当までご連絡ください。
+
+== 使用している OSS の一覧
+なし
+
+== 参考文献
+なし
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+|0.0.2
+|2024/6/10 指摘対応
+|0.0.3
+|- 全体 : 英単語の前後に半角空白を挿入 (読みやすくするため) +
+- HAL の記述を PL に変更 +
+- 用語 : HAL、OSAL、private API を削除、PL を追加 +
+- 依存ブロック : Osal Msg を削除 +
+- PL の記述を PL WDT に変更
+- READY/RUNNING を PL_STORAGE_READY/PL_STORAGE_RUNNING に変更 +
+- データ型に PlErrCode を追加 +
+- PlStorageInitialize/PlStorageFinalize API を Public に変更し、API 一覧の先頭に記述 +
+- 「PlStorageDataId の値の説明」の説明文の「です。」を削除 +
+- PlStorageInitialize/PlStorageFinalize API に kPlErrInternal を追加 +
+- 各 API の T.B.D. を削除 +
+- 図 (*.png) を英語表記に変更
+|0.0.4
+|ContainerLibraryの説明を記載
+|0.0.5
+|* シーケンス概要、状態遷移図を Mermaid 記法に変更
+* コンポーネントの説明を追加
+** データ領域のクリーニング
+** データの Capability 取得
+** データの強力な Erase
+** ダウングレード用特殊処理
+* データ型定義を追加
+** PlStorageCapabilities
+** PlStorageIdCapabilities
+** PL_STORAGE_OPEN_RDONLY
+** PL_STORAGE_OPEN_WRONLY
+** PL_STORAGE_OPEN_RDWR
+* API の説明を追加
+** PlStorageGetCapabilities
+** PlStorageGetIdCapabilities
+** PlStorageFactoryReset
+** PlStorageDowngrade
+* PlStorageOpen に引数 oflags を追加
+|0.0.6
+|* API 使用時の呼び出し例を Mermaid 記法に変更
+* API の説明を変更
+** PlStorageOpen : 複数のデータを同時に Open する場合について
+** PlStorageOpen : 同じデータを複数 Open する場合について
+** PlStorageSeek : offset と type の制限について
+** PlStorageRead : read_size の制限と API が成功した場合のシーク位置について
+** PlStorageWrite : API が成功した場合のシーク位置について
+** PlStorageDRead : 非サポートを戻り値に追加
+** PlStorageDWrite : 非サポートを戻り値に追加
+** PlStorageSwitchData : 非サポートを戻り値に追加
+** PlStorageGetTmpDataId : 非サポートを戻り値に追加
+* FileSystemLibrary の説明を変更
+** access : データのアクセス権を示すよう変更
+** tmp_id : データの一時的な Write・置き換え API の利用可否を示すよう変更
+** disable_chunk : 説明を追加
+|===

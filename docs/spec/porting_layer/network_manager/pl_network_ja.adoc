@@ -1,0 +1,4418 @@
+= PL Network Manager機能仕様書
+:sectnums:
+:sectnumlevels: 4
+:chapter-label:
+:revnumber: 0.0.4
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br/>]]
+
+== 目的と適用範囲
+
+本書ではAITRIOS PLのレイヤーの一つである、PL Network Managerの仕様について記載します。 +
+PL Network Managerの目的は、使用できるNetwork I/Fなど基板毎に出てくる差分を吸収することです。
+
+POSIX Socketが提供する機能は上位側で直接Socketを使用し制御されることを想定しており、Socketとして制御できるよりも前の状態や、Socket IFではできない制御部分が本モジュールの対象となります。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[width="100%", cols="35%,65%",options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting Layer. +
+カメラ差分を吸収する層。
+
+|ESF
+|Edge Software Framework.
+
+|I/F
+|Interface. +
+上位レイヤとのやりとりを行うソフトウェアインターフェイスが定義された層。
+
+|impl
+|implements. +
+ソフトウェアインターフェイスの機能・動作を実装する層。
+
+|ネットワークI/F
+|ネットワーク通信に必要なインターフェイスです。 +
+e.g. イーサネット("eth0")
+
+|Ether
+|イーサネット(Ethernet)はLANケーブル(有線)でネットワーク接続し、信号のやり取りをする際に使われている通信規格です。
+
+|Wi-Fi
+|Wi-Fi(Wireless Fidelity)は無線でネットワーク接続し、信号のやり取りをする際に使われている通信規格です。
+
+|Wi-Fi STA
+|ステーションモード(Station mode)はWi-Fi機器の動作モードの一つで、Wi-Fi端末(無線LAN子機)としてWi-Fiアクセスポイント(無線LANルータなど)に接続するモードです。
+
+|Wi-Fi AP
+|アクセスポイントモード(Access Point mode)はWi-Fiルータの動作モードの一つで、ルータ機能を停止してWi-Fiアクセスポイントとしてのみ振る舞うモードです。
+
+|===
+
+<<<
+
+== コンポーネントの説明
+PL Networkコンポーネントは、カメラ差分を意識せずに使えるPL I/Fに対する本体部分であり、ネットワーク機能に関するカメラ差分を吸収することが目的となります。
+また、ターゲットとするカメラに合わせて追加・変更が可能です。
+
+=== コンポーネントの概要
+以下に本コンポーネントを中心としたソフトウェア構成図を示します。
+
+.概要図
+[{mermaid_block}, title=概要図]
+----
+block-beta
+  columns 12
+
+  system_app["System App"]:6
+  vns_app["VnS App"]:6
+
+  block:ESF:12
+    columns 8
+    esf_t("ESF"):8
+    esf_network["Network"]
+    esf_led["LED"]
+    esf_button["Button"]
+    esf_power["Power"]
+    esf_system["System"]
+    esf_log["Log"]
+    esf_memory["Memory"]
+    esf_other["...."]
+  end
+
+  block:pl:12
+    columns 8
+    pl_t("PL I/F"):8
+    pl_network["Network"]
+    pl_led["LED"]
+    pl_button["Button"]
+    pl_power["Power"]
+    pl_storage["Storage"]
+    pl_fw["Firmware"]
+    pl_memory["Memory"]
+    pl_other["...."]
+  end
+
+  block:pl_impl:6
+    columns 4
+    pl_impl_t("PL impl(T5)"):4
+    pl_network_impl["Network"]
+    pl_led_impl["LED"]
+    pl_button_impl["Button"]
+    pl_other_impl["...."]
+  end
+
+  block:pl_impl_t3p:6
+    columns 4
+    pl_impl_t3p_t("PL impl(T3P)"):4
+    pl_network_impl_t3p["Network"]
+    pl_led_impl_t3p["LED"]
+    pl_button_impl_t3p["Button"]
+    pl_other_impl_t3p["...."]
+  end
+
+  block:hal:6
+    columns 4
+    hal_t("HAL"):4
+    hal_ioexp["IOExpLib"]
+    hal_driver["Driver"]
+    hal_i2c["I2C"]
+    hal_other["...."]
+  end
+
+  block:utility:6
+    columns 4
+    utility_t("Utility"):4
+    utility_msg["MSG"]
+    utility_timer["Timer"]
+    utility_log["Log"]
+    utility_other["...."]
+  end
+
+  block:os:12
+   columns 6
+    os_t("OS/HW"):6
+    os_nuttx_esp32s3["Nuttx ESP32S3"]
+    os_nuttx_esp32["Nuttx ESP32"]
+    os_freertos["FreeRTOS"]
+    space:2
+    os_vendoros["Vendor OS"]
+  end
+
+  %% APP
+  style system_app fill:#15a,color:#fff,stroke:#000
+  style vns_app fill:#15a,color:#fff,stroke:#000
+  %% ESF
+  style ESF fill:#ada,stroke:#000
+  classDef esf_block fill:#efe,stroke:#000
+  class esf_network,esf_led,esf_button,esf_power,esf_system,esf_log,esf_memory,esf_other esf_block
+  %% PL I/F
+  style pl fill:#fe9,stroke:#f00,stroke-width:2px
+  style pl_network fill:#fe5,stroke:#f00,stroke-width:4px
+  classDef pl_block fill:#ffc,stroke:#000
+  class pl_led,pl_button,pl_storage,pl_power,pl_memory,pl_fw,pl_other pl_block
+  %% PL impl
+  style pl_impl fill:#fc5,stroke:#f00,stroke-width:2px
+  style pl_impl_t3p fill:#fc5,stroke:#f00,stroke-width:2px
+  style pl_network_impl fill:#fe5,stroke:#f00,stroke-width:4px
+  style pl_network_impl_t3p fill:#fe5,stroke:#f00,stroke-width:4px
+  class pl_led_impl,pl_button_impl,pl_storage_impl,pl_other_impl,pl_led_impl_t3p,pl_button_impl_t3p,pl_other_impl_t3p pl_block
+  %% HAL
+  style hal fill:#fc9,stroke:#000
+  classDef hal_block fill:#ffc,stroke:#000
+  class hal_ioexp,hal_driver,hal_i2c,hal_other hal_block
+  %% Utility
+  style utility fill:#FDE,stroke:#000
+  classDef utility_block fill:#ede,stroke:#000
+  class utility_msg,utility_timer,utility_log,utility_other utility_block
+  %% OS
+  style os fill:#aaa,stroke:#000
+  style os_nuttx_esp32s3 fill:#fff,stroke:#000
+  style os_nuttx_esp32 fill:#fff,stroke:#000
+  %% dot
+  classDef dot_block fill:#fff,stroke:#000,stroke-dasharray: 5 5
+  class os_freertos,os_vendoros dot_block
+  %% Title
+  classDef title_block stroke:transparent,fill:transparent
+  class esf_t,pl_t,pl_impl_t,pl_impl_t3p_t,hal_t,osal_t,utility_t,os_t title_block
+----
+
+<<<
+
+=== コンポーネントの詳細説明
+PL Network Managerコンポーネントは以下のコンポーネントから構成されます。 +
+
+==== PL Network Manager(I/F) +
+* *PL Network* +
+システムがもつネットワークI/Fの制御を行うコンポーネントです。 +
+指定されたネットワークI/F種別により、各ネットワークI/Fコンポーネントに対して制御の振り分けを行います。 +
+詳細は<<#_Functions,コンポーネントの機能一覧>>を参照してください。
++
+<<#_TableNetworkInterfaces>>にサポートしているネットワークI/Fを記します。 +
++
+[#_TableNetworkInterfaces]
+.サポートするネットワークI/F
+[width="100%",options="header"]
+|===
+|No |ネットワークI/F
+|1
+|Ethernet
+
+|2
+|Wi-Fi
+|===
+
+* *PL Ether* +
+Ethenert接続されるネットワークI/Fの制御を行うコンポーネントです。 +
++
+* *PL Wi-Fi* +
+Wi-Fi接続されるネットワークI/Fの制御を行うコンポーネントです。 +
++
+IMPORTANT: システムが持つネットワークI/F(Bluetooth, LTEなど)が増える場合、対象ネットワークI/Fのコンポーネントを追加してください。
+
+==== PL Network Manager(impl) +
+カメラ毎のOS/HWに依存したネットワーク制御を行うコンポーネントです。
+
+* *T5* +
+** *PL Ether(impl)* +
+*** *LAN9250* +
+外部接続されるLAN9250デバイス(Ether IC)のHW設定(I/Oポート設定、通信デバイスドライバ設定など)を行うコンポーネントです。 +
+<<#_TableNetdevLan9250>>に設定対象のHW一覧を記します。
++
+[#_TableNetdevLan9250]
+.HW設定(LAN9250)
+[width="100%",options="header"]
+|===
+|No |HW名 |HW種別 |詳細
+|1
+|ETH_SPI
+|SPI
+|LAN9250デバイスとのSPI通信で使用するデバイスドライバの設定を行います。
+
+|2
+|ETH_RST
+|I/O
+|LAN9250デバイスへのHWリセット信号の設定を行います。
+
+|3
+|ETH_IRQ
+|I/O
+|LAN9250デバイスからの割り込み信号の設定を行います。
+
+|4
+|ETH_PWR_EN
+|I/O
+|LAN9250デバイスへの電源供給許可スイッチ信号の設定を行います。
+|===
+
+** *PL Wi-Fi(imp)* +
+*** *Wi-Fi(STA)* +
+ステーションモード接続時におけるWi-Fiネットワーク制御を行うコンポーネントです。
+
+*** *Wi-Fi(AP)* +
+アクセスポイントモード接続時におけるWi-Fiネットワーク制御を行うコンポーネントです。
+
+.コンポーネント図(T5)
+[{mermaid_block}, title=コンポーネント図(T5)]
+----
+flowchart TB
+  subgraph master["　"]
+    direction TB
+    app["Upper Layer"]
+    subgraph pl_if["Porting Layer I/F"]
+      subgraph pl_network_if["PL Network Manager(I/F)"]
+        direction BT
+        pl_network["PL Network"]:::active_block
+        pl_ether["PL Ether"]:::active_block
+        pl_wifi["PL Wi-Fi"]:::active_block
+        pl_network_msg[(Message Queue)]:::active_block
+      end
+    end
+    subgraph pl_impl["Porting Layer impl(T5)"]
+        subgraph pl_network_impl["PL Network Manager(impl)"]
+          subgraph pl_ether_impl["PL Ether(impl)"]
+            pl_ether_lan9250["LAN9250"]:::active_block
+          end
+          subgraph pl_wifi_impl["PL Wi-Fi(impl)"]
+            direction BT
+            pl_wifi_sta_impl["Wi-Fi{mermaid_br}(STA)"]:::active_block
+            pl_wifi_ap_impl["Wi-Fi{mermaid_br}(AP)"]:::active_block
+          end
+        end
+    end
+    hal["HAL"]
+    os["OS"]
+  end
+
+  app -->|"PL Network外部公開APIコール{mermaid_br}PlNetwork***()"| pl_network
+  pl_network -->|"Ether{mermaid_br}ネットワーク制御"| pl_ether
+  pl_ether -->|"Ether{mermaid_br}ネットワークイベント"| pl_network
+  pl_network -->|"Wi-Fi{mermaid_br}ネットワーク制御"| pl_wifi
+  pl_wifi -->|"Wi-Fi{mermaid_br}ネットワークイベント"| pl_network
+  pl_network -->|"ネットワークI/F制御{mermaid_br}(ifup, ifdown...)"| os
+  %% Etherデバイス
+  pl_ether --> pl_ether_impl
+  pl_ether_impl -->|"IOExpポート制御"| hal --> os
+  pl_ether_impl -->|"Ethernetドライバ制御"| os
+  %% Wi-Fiデバイス制御
+  pl_wifi --> pl_wifi_impl
+  pl_wifi_impl -->|"Wi-Fiドライバ制御"| os
+  %% ネットワークイベントメッセージ
+  pl_network -->|"ネットワークイベント{mermaid_br}メッセージ送信"| pl_network_msg
+  pl_network_msg -->|"ネットワークイベント{mermaid_br}メッセージ受信"| pl_network
+  pl_network -->|"ネットワークイベントハンドラ{mermaid_br}(kPlNetworkEvent***)"| app
+
+  style master fill:transparent,stroke:transparent
+  style app fill:#ada,stroke:#000
+  %% PL(I/F)
+  style pl_if fill:#fe9,stroke:#000
+  style pl_network_if fill:#fc5,stroke:#f00,stroke-width:2px
+  %% PL(impl)
+  style pl_impl fill:#fc5,stroke:#000
+  style pl_network_impl fill:#fa2,stroke:#f00,stroke-width:2px
+  style pl_ether_impl stroke:#f00,stroke-width:2px
+  style pl_wifi_impl stroke:#f00,stroke-width:2px
+  classDef active_block fill:#fe5,stroke:#f00,stroke-width:4px
+  %% HAL
+  style hal fill:#fc9,stroke:#000
+  %% OS
+  style os fill:#aaa,stroke:#000
+----
+
+* *T3P* +
+** *PL Ether(impl)* +
+ESP32ボード上に搭載された内蔵デバイスを使用する為、本コンポーネントにおける固有制御はありません。
+
+** *PL Wi-Fi(impl)* +
+Wi-Fi機能非対応の為、本コンポーネントにおける固有制御はありません。
+
+.コンポーネント図(T3P)
+[{mermaid_block}, title=コンポーネント図(T3P)]
+----
+flowchart TB
+  subgraph master["　"]
+    direction TB
+    app["Upper Layer"]
+    subgraph pl_if["Porting Layer I/F"]
+      subgraph pl_network_if["PL Network Manager(I/F)"]
+        direction BT
+        pl_network["PL Network"]:::active_block
+        pl_ether["PL Ether"]:::active_block
+        pl_wifi["PL Wi-Fi"]:::active_block
+        pl_network_msg[(Message Queue)]:::active_block
+      end
+    end
+    subgraph pl_impl["Porting Layer impl(T3P)"]
+        subgraph pl_network_impl["PL Network Manager(impl)"]
+          pl_ether_impl["PL Ether(impl)"]:::dot_block
+          pl_wifi_impl["PL Wi-Fi(impl)"]:::dot_block
+        end
+    end
+    os["OS"]
+  end
+
+  app -->|"PL Network外部公開APIコール{mermaid_br}PlNetwork***()"| pl_network
+  pl_network -->|"Ether{mermaid_br}ネットワーク制御"| pl_ether
+  pl_ether -->|"Ether{mermaid_br}ネットワークイベント"| pl_network
+  pl_network -->|"Wi-Fi{mermaid_br}ネットワーク制御"| pl_wifi
+  pl_wifi -->|"Wi-Fi{mermaid_br}ネットワークイベント"| pl_network
+  pl_network -->|"ネットワークI/F制御{mermaid_br}(ifup, ifdown...)"| os
+  %% Etherデバイス
+  pl_ether -.-> pl_ether_impl
+  pl_ether_impl -.-> os
+  %% Wi-Fiデバイス制御
+  pl_wifi -.-> pl_wifi_impl
+  pl_wifi_impl -.-> os
+  %% ネットワークイベントメッセージ
+  pl_network -->|"ネットワークイベント{mermaid_br}メッセージ送信"| pl_network_msg
+  pl_network_msg -->|"ネットワークイベント{mermaid_br}メッセージ受信"| pl_network
+  pl_network -->|"ネットワークイベントハンドラ{mermaid_br}(kPlNetworkEvent***)"| app
+
+  style master fill:transparent,stroke:transparent
+  style app fill:#ada,stroke:#000
+  %% PL(I/F)
+  style pl_if fill:#fe9,stroke:#000
+  style pl_network_if fill:#fc5,stroke:#f00,stroke-width:2px
+  %% PL(impl)
+  style pl_impl fill:#fc5,stroke:#000
+  style pl_network_impl fill:#fa2,stroke:#f00,stroke-width:2px
+  classDef active_block fill:#fe5,stroke:#f00,stroke-width:2px
+  classDef dot_block fill:#ffc,stroke:#f00,stroke-width:2px,stroke-dasharray: 5 5
+  %% OS
+  style os fill:#aaa,stroke:#000
+----
+
+==== 依存コンポーネント
+PL Network Managerコンポーネントと関連のあるコンポーネント一覧を<<#_TableComponents>>に記します。
+
+[#_TableComponents]
+.依存コンポーネント一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|コンポーネント名 |利用用途 
+|link:./hal_ioexp_ja.adoc[HAL IOExpLib]
+|外部接続デバイスのI/OポートがIOエキスパンダと接続される場合、ポート制御するために使用されます。
+|===
+
+<<<
+
+=== 状態遷移
+==== 内部状態
+PL Network Managerコンポーネントの内部状態を<<#_TableStateInternal>>に示します。
+
+[#_TableStateInternal]
+.状態一覧(内部状態)
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|Ready
+|初期状態。
+
+|Running
+|実行可能状態。
+|===
+
+PL Network Managerコンポーネントでは各APIを呼び出すことで<<#_FigureStateInternal>>に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureStateInternal]
+[{mermaid_block}, title=状態遷移図(内部状態)]
+----
+stateDiagram-v2
+    [*] --> Ready
+    Ready --> Running : PlNetworkInitialize
+    Running --> Ready : PlNetworkFinalize
+    Running --> Running : PlNetwork***{mermaid_br}その他API
+----
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransitionInternal>>に示します。 +
+表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+``×``はAPI受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。 +
+
+[#_TableStateTransitionInternal]
+.状態遷移表(内部状態)
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|状態 
+^|Ready ^|Running 
+.6+^|API名
+
+|``**<<#_PlNetworkInitialize,PlNetworkInitialize>>**``
+^|``Running``
+^|×
+
+|``**<<#_PlNetworkFinalize,PlNetworkFinalize>>**``
+^|×
+^|``Ready``
+
+|``**<<#_PlNetworkGetSystemInfo,PlNetworkGetSystemInfo>>**``
+^|×
+^|○
+
+|``**<<#_PlNetworkGetNetStat,PlNetworkGetNetStat>>**``
+^|×
+^|○
+
+|``**<<#_PlNetworkStructInitialize,PlNetworkStructInitialize>>**``
+^|×
+^|○
+
+|その他API
+^|×
+^|○
+|===
+
+==== ネットワークI/F毎の状態遷移
+ネットワークI/Fの取り得る接続状態を<<#_TableStateNetwork>>に示します。
+
+[#_TableStateNetwork]
+.状態一覧(ネットワーク)
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|Stopped
+|ネットワーク停止状態。
+
+|Started
+|ネットワーク実行状態。
+|===
+
+ネットワーク状態に応じて各コンポーネント内部で<<#_FigureStateNetwork>>に示す状態遷移を行います。 +
+各ネットワークI/F毎に状態を管理します。
+
+[#_FigureStateNetwork]
+[{mermaid_block}, title=状態遷移図(ネットワーク)]
+----
+stateDiagram-v2
+    [*] --> Stopped : PlNetworkInitialize
+    Stopped --> Started : PlNetworkStart
+    Started --> Stopped : PlNetworkStop
+    Stopped --> Stopped : PlNetwork***{mermaid_br}その他API
+    Started --> Started : PlNetwork***{mermaid_br}その他API
+----
+
+各状態でのAPI可否と状態遷移先を<<#_TableStateTransitionNetwork>>に示します。 +
+表中の状態名はAPI実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+``×``はAPI呼び出し不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。 +
+``○``はAPI呼び出し可能ですが、状態遷移は起きません。 +
+
+[#_TableStateTransitionNetwork]
+.状態遷移表(ネットワーク)
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+^|状態 
+^|Stopped ^|Started 
+.7+|API名
+
+|``**<<#_PlNetworkSetConfig,PlNetworkSetConfig>>**``
+^|○
+^|×
+
+|``**<<#_PlNetworkGetConfig,PlNetworkGetConfig>>**``
+^|○
+^|○
+
+|``**<<#_PlNetworkGetStatus,PlNetworkGetStatus>>**``
+^|○
+^|○
+
+|``**<<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler>>**``
+^|○
+^|×
+
+|``**<<#_PlNetworkUnregisterEventHandler,PlNetworkUnregisterEventHandler>>**``
+^|○
+^|×
+
+|``**<<#_PlNetworkStart,PlNetworkStart>>**``
+^|``Started``
+^|×
+
+|``**<<#_PlNetworkStop,PlNetworkStop>>**``
+^|×
+^|``Stopped``
+|===
+
+<<<
+
+==== ネットワークイベントによる状態遷移
+PL Network Managerコンポーネントではネットワーク接続状態変化に応じたネットワークイベントを発行します。 +
+各ネットワークイベントは<<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler>>で登録されたイベントハンドラで上位側へ通知されます。 +
+
+TIP: ネットワークイベントに応じて上位側でLED制御などを行うことができます。
+
+* *PL Ether* +
+Etnernetネットワークにおけるネットワークイベントは<<#_FigureStateEventEther>>に示す状態遷移を行います。 +
+ネットワークイベントのサポート状況は<<#_SupportedNetworkEventEther,各カメラのネットワーク状態サポート状況>>参照。
+
+[#_FigureStateEventEther]
+[{mermaid_block}, title=状態遷移図(Ether)]
+----
+stateDiagram-v2
+    [*] --> kPlNetworkEventIfUp
+    kPlNetworkEventIfUp --> kPlNetworkEventIfDown : PlNetworkStop
+    kPlNetworkEventIfUp --> Active
+    state Active {
+      kPlNetworkEventLinkDown --> kPlNetworkEventLinkUp : Link Up
+      kPlNetworkEventLinkUp --> kPlNetworkEventLinkDown : Link Down
+    }
+    Active --> kPlNetworkEventIfDown : PlNetworkStop
+    kPlNetworkEventIfDown --> kPlNetworkEventIfUp : PlNetworkStart
+----
+
+CAUTION: ネットワーク開始時は``kPlNetworkEventIfUp``→``kPlNetworkEventLinkUp``、ネットワーク停止時は``kPlNetworkEventLinkDown``→``kPlNetworkEventIfDown``の順にネットワークイベントが発生する想定で図示しているが、Ethernetドライバ側の実装によりイベント発生順が入れ替わる可能性があります。 
+
+* *PL Wi-Fi* +
+Wi-Fiネットワークにおけるネットワークイベントは<<#_FigureStateEventWifiSta>>および<<#_FigureStateEventWifiSAp>>に示す状態遷移を行います。 +
+ネットワークイベントのサポート状況は<<#_SupportedNetworkEventWifi,各カメラのネットワーク状態サポート状況>>参照。
+
+[#_FigureStateEventWifiSta]
+[{mermaid_block}, title=状態遷移図(Wi-Fi(STA))]
+----
+stateDiagram-v2
+    [*] --> kPlNetworkEventWifiStaStart
+    kPlNetworkEventWifiStaStart --> kPlNetworkEventWifiStaStop : PlNetworkStop
+    kPlNetworkEventWifiStaStart --> Active
+    state Active {
+      kPlNetworkEventWifiStaDisconnected --> kPlNetworkEventWifiStaConnected : Connected
+      kPlNetworkEventWifiStaConnected --> kPlNetworkEventWifiStaDisconnected : Disconnected
+      kPlNetworkEventWifiStaAuthmodeChange
+      kPlNetworkEventWifiStaRssiLow
+      kPlNetworkEventWifiStaBeaconTimeout
+    }
+    Active --> kPlNetworkEventWifiStaStop : PlNetworkStop
+    kPlNetworkEventWifiStaStop --> kPlNetworkEventWifiStaStart : PlNetworkStart
+----
+
+[#_FigureStateEventWifiSAp]
+[{mermaid_block}, title=状態遷移図(Wi-Fi(AP))]
+----
+stateDiagram-v2
+    [*] --> kPlNetworkEventWifiApStart
+    kPlNetworkEventWifiApStart --> kPlNetworkEventWifiApStop : PlNetworkStop
+    kPlNetworkEventWifiApStart --> Active
+    state Active {
+      kPlNetworkEventWifiApDisconnected --> kPlNetworkEventWifiApConnected : Connected
+      kPlNetworkEventWifiApConnected --> kPlNetworkEventWifiApDisconnected : Disconnected
+      kPlNetworkEventWifiApProbeReqRecved
+    }
+    Active --> kPlNetworkEventWifiApStop : PlNetworkStop
+    kPlNetworkEventWifiApStop --> kPlNetworkEventWifiApStart : PlNetworkStart
+----
+
+<<<
+
+[#_Functions]
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|ネットワークの初期化
+|ネットワークの初期化処理を行います。 +
+|<<#_Function1>>
+
+|ネットワークの終了
+|ネットワークの終了処理を行います。 +
+|<<#_Function2>>
+
+|システムが持つネットワーク情報の取得
+|使用可能なネットワークI/F一覧など、システムが持つネットワーク情報を取得します。
+|<<#_Function3>>
+
+|ネットワークの設定/取得
+|指定されたネットワークI/Fの設定/取得を行います。 +
+|<<#_Function4>>
+
+|ネットワーク状態の取得
+|指定されたネットワークI/Fの状態を取得します。 +
+|<<#_Function5>>
+
+|システム全体のネットワーク状態の取得
+|システム全体のネットワーク状態を取得します。（netstat相当）
+|<<#_Function6>>
+
+|イベントハンドラの登録/解除
+|指定されたネットワークI/Fに対するイベントハンドラを登録/解除します。
+|<<#_Function7>>
+
+|ネットワークの開始
+|指定されたネットワークI/Fを有効にします。（ifup相当）
+|<<#_Function8>>
+
+|ネットワークの停止
+|指定されたネットワークI/Fを無効にします。（ifdown相当）
+|<<#_Function9>>
+
+|各種構造体の初期化
+|PL Network固有の構造体を初期化します。
+|<<#_Function10>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== ネットワークの初期化
+機能概要::
+ネットワークの初期化処理を行います。
+前提条件::
+HalIoexpInitializeが実行済みであること。 +
+HalDriverInitializeが実行済みであること。 +
+HalI2cInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkInitialize, PlNetworkInitialize>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkInitialize, PlNetworkInitialize>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkInitialize, PlNetworkInitialize>>を参照してください。
+検討事項::
+なし
+
+[#_Function2]
+==== ネットワークの終了
+機能概要::
+ネットワークの終了処理を行います。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkFinalize, PlNetworkFinalize>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkFinalize, PlNetworkFinalize>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkFinalize, PlNetworkFinalize>>を参照してください。
+検討事項::
+なし
+
+[#_Function3]
+==== システムが持つネットワーク情報の取得
+機能概要::
+使用可能なネットワークI/F一覧など、システムが持つネットワーク情報を取得します。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkGetSystemInfo, PlNetworkGetSystemInfo>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkGetSystemInfo, PlNetworkGetSystemInfo>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkGetSystemInfo, PlNetworkGetSystemInfo>>を参照してください。
+検討事項::
+なし
+
+[#_Function4]
+==== ネットワークの設定/取得
+機能概要::
+指定されたネットワークI/Fの設定/取得します。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+設定の詳細は<<#_PlNetworkSetConfig, PlNetworkSetConfig>>を参照してください。 +
+取得の詳細は<<#_PlNetworkGetConfig, PlNetworkGetConfig>>を参照してください。
+詳細挙動::
+設定の詳細は<<#_PlNetworkSetConfig, PlNetworkSetConfig>>を参照してください。 +
+取得の詳細は<<#_PlNetworkGetConfig, PlNetworkGetConfig>>を参照してください。
+エラー時の挙動、復帰方法::
+設定の詳細は<<#_PlNetworkSetConfig, PlNetworkSetConfig>>を参照してください。 +
+取得の詳細は<<#_PlNetworkGetConfig, PlNetworkGetConfig>>を参照してください。
+検討事項::
+なし
+
+[#_Function5]
+==== ネットワーク状態の取得
+機能概要::
+指定されたネットワークI/Fの状態を取得します。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkGetStatus, PlNetworkGetStatus>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkGetStatus, PlNetworkGetStatus>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkGetStatus, PlNetworkGetStatus>>を参照してください。
+検討事項::
+なし
+
+[#_Function6]
+==== システム全体のネットワーク状態の取得
+機能概要::
+システム全体のネットワーク状態を文字列で取得します。（netstat相当）
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkGetNetStat, PlNetworkGetNetStat>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkGetNetStat, PlNetworkGetNetStat>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkGetNetStat, PlNetworkGetNetStat>>を参照してください。
+検討事項::
+なし
+
+[#_Function7]
+==== イベントハンドラの登録/解除
+機能概要::
+指定されたネットワークI/Fに対するイベントハンドラを登録/解除します。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+登録の詳細は<<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler>>を参照してください。 +
+解除の詳細は<<#_PlNetworkUnregisterEventHandler, PlNetworkUnregisterEventHandler>>を参照してください。
+詳細挙動::
+登録の詳細は<<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler>>を参照してください。 +
+解除の詳細は<<#_PlNetworkUnregisterEventHandler, PlNetworkUnregisterEventHandler>>を参照してください。
+エラー時の挙動、復帰方法::
+登録の詳細は<<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler>>を参照してください。 +
+解除の詳細は<<#_PlNetworkUnregisterEventHandler, PlNetworkUnregisterEventHandler>>を参照してください。
+検討事項::
+なし
+
+[#_Function8]
+==== ネットワークの開始
+機能概要::
+指定されたネットワークI/Fを有効にします。（ifup相当）
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkStart, PlNetworkStart>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkStart, PlNetworkStart>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkStart, PlNetworkStart>>を参照してください。
+検討事項::
+なし
+
+[#_Function9]
+==== ネットワークの停止
+機能概要::
+指定されたネットワークI/Fを無効にします。（ifdown相当）
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkStop, PlNetworkStop>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkStop, PlNetworkStop>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkStop, PlNetworkStop>>を参照してください。
+検討事項::
+なし
+
+[#_Function10]
+==== 各種構造体の初期化
+機能概要::
+構造体を初期化します。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+詳細は<<#_PlNetworkStructInitialize, PlNetworkStructInitialize>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkStructInitialize, PlNetworkStructInitialize>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkStructInitialize, PlNetworkStructInitialize>>を参照してください。
+検討事項::
+なし
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|PL Networkコンポーネント内で使用されるスタック最大使用量。
+|<<#_NonFunctionStack>>
+
+|通常ヒープ最大使用量
+|PL Networkコンポーネント内で使用される通常ヒープ最大使用量。
+|<<#_NonFunctionHeap>>
+
+|staticデータ領域最大使用量
+|PL Networkコンポーネント内で使用されるstaticデータ領域最大使用量。
+|<<#_NonFunctionStatic>>
+
+|パフォーマンス
+|PL Networkコンポーネントに求められる性能要件。(実行時間など）
+|<<#_NonFunctionPerformance>>
+|===
+
+=== コンポーネントの非機能要件説明
+[#_NonFunctionStack]
+==== Stack最大使用量
+<<#_TableNonFunctionStack>>にStack使用量の一覧を示します。
+
+[#_TableNonFunctionStack]
+.Stack一覧
+[width="100%",options="header"]
+|===
+|使用用途 |サイズ
+|ネットワークイベントスレッド
+|4096Byte
+
+|Ethernetネットワーク監視スレッド
+|4096Byte
+|===
+
+[#_NonFunctionHeap]
+==== 通常ヒープ最大使用量
+<<#_TableNonFunctionHeap>>に通常ヒープ使用量の一覧を示します。
+
+[#_TableNonFunctionHeap]
+.ヒープメモリ一覧
+[width="100%",options="header"]
+|===
+|使用用途 |サイズ
+|ネットワークI/Fリスト情報
+|88byte * ネットワークI/F総数(*)
+
+|Etherネットワーク情報
+|136byte
+
+|Wi-Fiネットワーク情報
+|88byte
+
+|ネットワークイベントメッセージバッファ
+|384byte
+|===
+
+(*)T5の場合、ネットワークI/F総数は2なので176byte
+
+[#_NonFunctionStatic]
+==== staticデータ領域最大使用量
+<<#_TableNonFunctionStatic>>にstaticデータ領域の一覧を示します。
+
+[#_TableNonFunctionStatic]
+.staticメモリ一覧
+[width="100%",options="header"]
+|===
+|使用用途 |サイズ
+|システムネットワーク情報
+|132yte
+
+|ネットワークI/F総数
+|4Byte
+
+|PL Network内部状態
+|4Byte
+
+|イベント監視スレッドID
+|4Byte
+
+|ミューテクス資源
+|24Byte
+
+|ネットワークイベントメッセージリスト情報
+|16Byte
+|===
+
+[#_NonFunctionPerformance]
+==== パフォーマンス
+T.B.D.
+
+=== コンポーネントの制約・注意事項
+==== 制約
+* 複数ネットワークイベントハンドラ登録 +
+複数のネットワークイベントハンドラ登録には未対応です。 +
+1つのネットワークにつき1つのネットワークイベントハンドラを登録してください。 
+
+* Wi-Fi 暗号化方式 +
+暗号化方式の設定には未対応です。 +
+WPA2-PSKがセットされます。
+
+* Wi-Fi 帯域幅 +
+帯域幅の設定には未対応です。 +
+HT20(20MHz帯域幅)がセットされます。
+
+* Wi-Fi APモード +
+APモードには未対応です。 +
+STAモードを使用してください。
+
+==== 注意事項
+* ネットワークイベントハンドラ実行 +
+ネットワークイベントハンドラはPL Network内のスレッドから実行されます。 +
+複数のイベントを同時にキャッチすることはできないので注意してください。 +
+また、一つのハンドラが長い時間占有すると、後ろに控えているイベントハンドラの実行もその分遅れるため注意してください。
+
+* リンク状態 +
+対象ネットワークI/Fがダウン状態でネットワーク状態取得API(<<#_PlNetworkGetStatus, PlNetworkGetStatus>>)をコールした場合、リンク状態が正しく取得されないことがあります。
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== ビルド時のConfig値一覧
+<<#_TABLE_PL_CONFIG>>にビルド時に使用されるConfig値の一覧を示します。
+
+[#_TABLE_PL_CONFIG]
+.Config一覧
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|Config名	|デフォルト値   |概要
+|CONFIG_PL_NETWORK_HAVE_ETHER
+|n
+|システムがEtherを使用可能かどうかを表すBool値。
+
+y: 使用可能。 n: 使用不可。
+|CONFIG_PL_NETWORK_HAVE_WIFI
+|n
+|システムがWi-Fiを使用可能かどうかを表すBool値。
+
+y: 使用可能。 n: 使用不可。
+|===
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum PlErrCode
+|APIの実行結果を定義する列挙型です。
+|<<#_PlErrCode>>
+
+|enum PlNetworkType
+|Network I/Fの種別を表す列挙型です。
+|<<#_PlNetworkType>>
+
+|enum PlNetworkWifiMode
+|Wi-Fiの接続方式を表す列挙型です。
+|<<#_PlNetworkWifiMode>>
+
+|enum PlNetworkEvent
+|Networkイベントを表す列挙型です。
+|<<#_PlNetworkEvent>>
+
+|enum PlNetworkStructType
+|構造体の種別を表す列挙型です。
+|<<#_PlNetworkStructType>>
+
+|struct PlNetworkSystemInfo
+|システムが持つネットワーク情報を表す構造体です。
+|<<#_PlNetworkSystemInfo>>
+
+|struct PlNetworkConfig
+|PlNetworkSet/GetConfig時に使用するパラメータです。 +
+メンバに各I/F用の構造体を持ちます。 +
+（struct PlNetworkWifiConfigなど）
+|<<#_PlNetworkConfig>>
+
+|struct PlNetworkWifiConfig
+|Wi-Fi用の設定パラメータを表す構造体です。
+|<<#_PlNetworkWifiConfig>>
+
+|struct PlNetworkStatus
+|PlNetworkGetStatusで使用するパラメータです。 +
+メンバに各I/Fの状態を表す構造体を持ちます。
+|<<#_PlNetworkStatus>>
+
+|struct PlNetworkWifiStatus
+|Wi-Fiの状態を表す構造体です。
+|<<#_PlNetworkWifiStatus>>
+
+|PlNetworkEventHandler
+|Networkのイベントハンドラを表す関数ポインタです。
+|<<#_PlNetworkEventHandler>>
+|===
+
+[#L_API_LIST]
+==== API一覧
+<<#_TableAPI>>にAPのI一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|API名 |概要 |節番号
+|PlNetworkInitialize
+|ネットワークに関する初期化処理を行います。
+|<<#_PlNetworkInitialize>>
+
+|PlNetworkFinalize
+|ネットワークに関する終了処理を行います。
+|<<#_PlNetworkFinalize>>
+
+|PlNetworkGetSystemInfo
+|使用可能なネットワークI/F一覧など、システムが持つネットワーク情報を取得します。
+|<<#_PlNetworkGetSystemInfo>>
+
+|PlNetworkSetConfig
+|指定されたネットワークI/Fへ設定を行います。
+|<<#_PlNetworkSetConfig>>
+
+|PlNetworkGetConfig
+|指定されたネットワークI/Fの設定情報を取得します。
+|<<#_PlNetworkGetConfig>>
+
+|PlNetworkGetStatus
+|指定されたネットワークI/Fの状態を取得します。
+|<<#_PlNetworkGetStatus>>
+
+|PlNetworkGetNetStat
+|システム全体のネットワーク状態を文字列で取得します。（netstat相当）
+|<<#_PlNetworkGetNetStat>>
+
+|PlNetworkRegisterEventHandler
+|指定されたネットワークI/Fのイベントを検知するコールバックを登録します。
+|<<#_PlNetworkRegisterEventHandler>>
+
+|PlNetworkUnregisterEventHandler
+|指定されたネットワークI/Fのイベントを検知するコールバックの登録を解除します。
+|<<#_PlNetworkUnregisterEventHandler>>
+
+|PlNetworkStart
+|指定されたネットワークI/Fを有効にします。（ifup相当）
+|<<#_PlNetworkStart>>
+
+|PlNetworkStop
+|指定されたネットワークI/Fを無効にします。（ifdown相当）
+|<<#_PlNetworkStop>>
+
+|PlNetworkStructInitialize
+|指定された構造体を初期化します。
+|<<#_PlNetworkStructInitialize>>
+|===
+
+<<<
+
+==== マクロ一覧
+<<#_TableMacro>>にマクロ一覧を示します。
+
+[#_TableMacro]
+.マクロ一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|マクロ名 |概要 |節番号
+|PL_NETWORK_SYSTEM_INFO_INITIALIZER
+|struct PlNetworkSystemInfo の初期化を行います。
+|<<#_PL_NETWORK_SYSTEM_INFO_INITIALIZER, 4.4.1>>
+
+|PL_NETWORK_WIFI_CONFIG_INITIALIZER
+|struct PlNetworkWifiConfig の初期化を行います。
+|<<#_PL_NETWORK_WIFI_CONFIG_INITIALIZER, 4.4.2>>
+
+|PL_NETWORK_WIFI_STATUS_INITIALIZER
+|struct PlNetworkWifiStatus の初期化を行います。
+|<<#_PL_NETWORK_WIFI_STATUS_INITIALIZER, 4.4.3>>
+|===
+
+=== データ型定義
+[#_PlErrCode]
+==== PlErrCode
+API の実行結果を定義する列挙型です。 (T.B.D.)
+
+[#_PlNetworkType]
+==== PlNetworkType
+Network I/Fの種別を表す列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkTypeEther,
+    kPlNetworkTypeWifi,
+    kPlNetworkTypeUnkown,
+    kPlNetworkTypeMax
+} PlNetworkType;
+....
+
+* *値*
+
+.PlNetworkTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlNetworkTypeEther
+|Ethernet
+|kPlNetworkTypeWifi
+|Wi-Fi
+|kPlNetworkTypeUnkown
+|未定義のネットワークI/F
+|kPlNetworkTypeMax
+|Enum最大数
+|===
+
+[#_PlNetworkWifiMode]
+==== PlNetworkWifiMode
+Wi-Fiの接続方式を表す列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkWifiModeSta,
+    kPlNetworkWifiModeAp,
+    kPlNetworkWifiModeUnkown,
+    kPlNetworkWifiModeMax
+} PlNetworkWifiMode;
+....
+
+* *値*
+
+.PlNetworkWifiModeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlNetworkWifiModeSta
+|Station mode
+|kPlNetworkWifiModeAp
+|AP mode
+|kPlNetworkWifiModeUnkown
+|未定義のwi-Fiモード
+|kPlNetworkWifiModeMax
+|Enum最大数
+|===
+
+[#_PlNetworkEvent]
+==== PlNetworkEvent
+Networkイベントを表す列挙型です。 +
+システムによってサポートするイベントや意味合いが違います。 +
+<<#_SupportedNetworkEvent>>に各カメラのサポート状況と意味を記載しています。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkEventLinkUp,
+    kPlNetworkEventLinkDown,
+    kPlNetworkEventIfUp,
+    kPlNetworkEventIfDown,
+    kPlNetworkEventWifiReady,
+    kPlNetworkEventWifiApStart,
+    kPlNetworkEventWifiApStop,
+    kPlNetworkEventWifiApConnected,
+    kPlNetworkEventWifiApDisconnected,
+    kPlNetworkEventWifiApProbeReqRecved,
+    kPlNetworkEventWifiStaStart,
+    kPlNetworkEventWifiStaStop,
+    kPlNetworkEventWifiStaConnected,
+    kPlNetworkEventWifiStaDisconnected,
+    kPlNetworkEventWifiStaAuthmodeChange,
+    kPlNetworkEventWifiStaRssiLow,
+    kPlNetworkEventWifiStaBeaconTimeout,
+    kPlNetworkEventPhyIdValid,
+    kPlNetworkEventPhyIdInvalid,
+    kPlNetworkEventMax
+} PlNetworkEvent;
+....
+
+[#_PlNetworkStructType]
+==== PlNetworkStructType
+構造体の種別を表す列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkStructTypeSystemInfo,
+    kPlNetworkStructTypeWifiConfig,
+    kPlNetworkStructTypeWifiStatus,
+    kPlNetworkStructTypeMax
+} PlNetworkStructType;
+....
+
+* *値*
+
+.PlNetworkStructTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlNetworkStructTypeSystemInfo
+|struct PlNetworkSystemInfoを表す。
+|kPlNetworkStructTypeWifiConfig
+|struct PlNetworkWifiConfigを表す。
+|kPlNetworkStructTypeWifiStatus
+|struct PlNetworkWifiStatusを表す。
+|kPlNetworkStructTypeMax
+|Enum最大数
+|===
+
+[#_PlNetworkSystemInfo]
+==== PlNetworkSystemInfo
+システムが持つネットワーク情報を表す構造体です。 
+
+* *書式*
+
+[source, C]
+....
+typedef struct {
+    char           if_name[32+1];
+    PlNetworkType  type;
+    bool           cloud_enable;
+    bool           local_enable;
+} PlNetworkSystemInfo;
+....
+
+* *値*
+
+[#_PlNetworkSystemInfoValue]
+.PlNetworkSystemInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|char if_name[32+1]
+|ネットワークI/F名
+|<<#_PlNetworkType,PlNetworkType>> type
+|ネットワークI/Fの種別
+|bool cloud_enable
+|クラウド接続に使用可能かどうか
+|bool local_enable
+|ローカル接続に使用可能かどうか
+|===
+
+[#_PlNetworkConfig]
+==== PlNetworkConfig
+PlNetworkSet/GetConfig時に使用するパラメータです。メンバに各I/F用の構造体を持ちます。
+
+* *書式*
+
+[source, C]
+....
+typedef struct {
+    PlNetworkType type,
+    union {
+        struct PlNetworkWifiConfig wifi;
+        // Bluetooth, etc
+    };
+} PlNetworkConfig;
+....
+
+* *値*
+
+[#_PlNetworkConfigValue]
+.PlNetworkConfigの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|<<#_PlNetworkType,PlNetworkType>> type
+|Network I/Fの種別
+|<<#_PlNetworkWifiConfig,PlNetworkWifiConfig>> wifi
+|Wi-Fi用の設定パラメータ
+|===
+
+[#_PlNetworkWifiConfig]
+==== PlNetworkWifiConfig
+Wi-Fi用の設定パラメータを表す構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct {
+    PlNetworkWifiMode  mode;
+    char               ssid[32+1];
+    char               pass[64+1];
+} PlNetworkWifiConfig;
+....
+
+* *値*
+
+[#_PlNetworkWifiConfigValue]
+.PlNetworkWifiConfigの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|<<#_PlNetworkWifiMode,PlNetworkWifiMode>> mode;
+|Wi-Fiの接続方式
+|char ssid[32+1]
+|接続先のSSID
+|char pass[64+1]
+|接続先のpassword
+|===
+
+[#_PlNetworkStatus]
+==== PlNetworkStatus
+PlNetworkGetStatusで使用するパラメータです。メンバに各I/Fの状態を表す構造体を持ちます。
+
+* *書式*
+
+[source, C]
+....
+typedef struct {
+    union {
+        PlNetworkWifiStatus wifi;
+        // Bluetooth, etc
+    };
+    bool is_link_up;
+    bool is_if_up;
+    bool is_phy_id_valid;
+} PlNetworkStatus;
+....
+
+* *値*
+
+[#_PlNetworkStatusValue]
+.PlNetworkStatusの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|<<#_PlNetworkWifiStatus,PlNetworkWifiStatus>> wifi
+|Wi-Fiの状態を表す構造体。
+|bool is_link_up
+|true: link upされている +
+false: link upされていない
+|bool is_if_up
+|true: if upされている +
+false: if upされていない
+|bool is_phy_id_valid
+|true: PHY ID が正常 +
+false: PHY ID が異常
+|===
+
+[#_PlNetworkWifiStatus]
+==== PlNetworkWifiStatus
+Wi-Fiの状態を表す構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kPlWifiCountryPolicyAuto,
+    kPlWifiCountryPolicyManual,
+    kPlWifiCountryPolicyMax,
+} PlWifiCountryPolicy;
+
+typedef struct {
+    char                 cc[3];
+    uint8_t              schan;
+    uint8_t              nchan;
+    int8_t               max_tx_power;
+    PlWifiCountryPolicy  policy;
+} PlWifiCountry;
+
+typedef enum {
+    kPlWifiBandWidthHt20,
+    kPlWifiBandWidthHt40,
+    kPlWifiBandWidthMax,
+} PlWifiBandWidth;
+
+typedef struct {
+    int8_t            rssi;
+    PlWifiBandWidth   band_width;
+    PlWifiCountry     country;
+} PlNetworkWifiStatus;
+....
+
+* *値*
+
+[#_PlNetworkWifiStatusValue]
+
+各カメラでそれぞれのパラメータのサポート状況は<<#_SupportedNetworkStatus, 各カメラのネットワークStatusのサポート状況>>を参照ください。
+
+.PlNetworkWifiStatusの値の説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+2+|メンバ名  |説明
+
+2+|int8_t rssi
+|電波強度
+
+2+|PlWifiBandWidth band_width
+|帯域幅 +
+(HT20 or HT40)
+
+.5+|PlWifiCountry country
+|char cc[3]
+|カントリーコード
+
+|uint8_t schan
+|開始チャネル番号
+
+|uint8_t nchan
+|チャネル番号総数
+
+|int8_t max_tx_power
+|最大送信パワー設定
+
+|PlWifiCountryPolicy policy
+|カントリーコード設定方法 +
+(Auto or Manual)
+|===
+
+[#_PlNetworkEventHandler]
+==== PlNetworkEventHandler
+Networkのイベントハンドラを表す関数ポインタです。
+
+PlNetworkRegisterEventHandlerで使用します。 +
+このハンドラでifup, ifdown, Wi-Fi Connected などの<<#_PlNetworkEvent,ネットワークイベント>>を上位側で検知することができます。
+
+* *書式*
+
+[source, C]
+....
+typedef void (*PlNetworkEventHandler)(const char *if_name, PlNetworkEvent event, void *private_data)
+....
+
+* *引数の説明* +
+**``[IN] const char *if_name``**:: 
+イベントが起きたネットワークI/F名。
+
+**``[IN] <<#_PlNetworkEvent,PlNetworkEvent>> event``**:: 
+発生したイベント。
+
+**``[IN] void *private_data``**:: 
+PlNetworkRegisterEventHandlerで指定されたprivate_dataがセットされます。
+
+<<<
+
+=== API定義
+[#_PlNetworkInitialize]
+==== PlNetworkInitialize
+* *機能* +
+ネットワークに関する初期化処理を行います。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkInitialize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** ネットワークに関する初期化処理を行います。
+** ネットワークシステム情報(<<#_PlNetworkSystemInfo,PlNetworkSystemInfo>>)を生成し、PlNetworkFinalize()が実行されるまで保持します。
+** ネットワークシステム情報を基に、各ネットワークI/Fに対する初期化処理を行います。
+** ネットワークイベントスレッドとのメッセージ送受信用バッファのメモリ領域を確保します。
+** ネットワークイベントを送受信する為のネットワークイベントスレッド(``PlNetworkEventThread``)を生成します。
+** 上記の処理に成功した場合、内部状態を``RUNNING``に移行します。
+** 上記の処理のいづれかに失敗した場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceInitialize>>を参照。
+
+[#_PlNetworkInitialize_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|PlNetworkInitialize多重呼び出し
+|-
+|影響なし
+|PlNetworkFinalize実施後リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|ミューテクス初期化失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrMemory
+|メモリ確保失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidOperation
+|ネットワーク初期化失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlThreadError
+|スレッド生成失敗
+|-
+|影響なし
+|システム再起動
+|===
+
+<<<
+
+[#_PlNetworkFinalize]
+==== PlNetworkFinalize
+* *機能* +
+ネットワークに関する終了処理を行います。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** ネットワークに関する終了処理を行います。
+** ネットワークシステム情報を基に、各ネットワークI/Fに対する終了処理を行います。
+** 保持しているネットワークシステム情報を解放します。
+** イベントスレッド(``PlNetworkEventThread``)を終了します。
+** ``PlNetworkInitialize``で確保したメッセージ送受信用バッファのメモリ領域を解放します。
+** 内部状態を``READY``に移行します。
+** 上記の処理のいづれかに失敗した場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceFinalize>>を参照。
+
+[#_PlNetworkFinalize_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|ネットワーク終了失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlThreadError
+|スレッド終了失敗
+|-
+|影響なし
+|システム再起動
+|===
+
+<<<
+
+[#_PlNetworkGetSystemInfo]
+==== PlNetworkGetSystemInfo
+
+* *機能* +
+使用可能なネットワークI/F一覧など、システムが持つネットワーク情報を取得します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetSystemInfo(uint32_t *info_total_num, PlNetworkSystemInfo **infos)
+....
+
+* *引数の説明* +
+**[OUT] uint32_t *info_total_num**:: 
+システムが持つネットワークの総数です。
+
+**[OUT] <<#_PlNetworkSystemInfo,PlNetworkSystemInfo>> *{asterisk}infos**:: 
+ネットワーク情報を表す構造体ポインタ(配列)です。 +
+要素数はinfo_total_numです。 +
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** システムが持つネットワーク情報を取得します。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** API呼び出し例は<<#_SequenceGetSystemInfo>>参照。
+
+[#_PlNetworkGetSystemInfo_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkGetSystemInfo_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+|===
+
+<<<
+
+[#_PlNetworkSetConfig]
+==== PlNetworkSetConfig
+* *機能* +
+指定されたネットワークI/Fへ設定を行います。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkSetConfig(const char *if_name, const PlNetworkConfig *config)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+設定対象のネットワークI/F。
+
+**[IN] const <<#_PlNetworkConfig,PlNetworkConfig>> *config**:: 
+設定パラメータ。ネットワークI/Fに応じて中身を変えてください。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fへ設定を行います。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 一度セットしたI/Fに対する再セットは可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** 対象のネットワークI/FがすでにPlNetworkStartでスタートされている場合、本APIはエラーを返します。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Ethernetネットワークの設定APIをコールします。 +
++
+CAUTION: Etherネットワークは設定項目がない為、``kPlErrNoSupported``を返します。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiネットワークの設定APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrNoSupported``を返します。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** 設定パラメータはネットワークI/F毎に保持し、各PL Network APIコール時のネットワークI/F種別を判定する際に参照されます。
+** API呼び出し例は<<#_SequenceSetConfig>>参照。
+
+[#_PlNetworkSetConfig_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkSetConfig_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|ネットワーク開始済み
+|-
+|影響なし
+|PlNetworkStop実施後リトライまたはシステム再起動
+
+|kPlErrNoSupported
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation
+|設定失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkGetConfig]
+==== PlNetworkGetConfig
+* *機能* +
+指定されたネットワークI/Fの設定情報を取得します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetConfig(const char *if_name, PlNetworkConfig *config)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+設定対象のネットワークI/F。
+
+**[OUT] <<#_PlNetworkConfig,PlNetworkConfig>> *config**:: 
+if_nameの設定パラメータ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fの設定情報を取得します。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** 対象のネットワークI/FのPlNetworkStart/Stop状態に関わらず実行が可能です。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Ethernetネットワークの設定取得APIをコールします。 +
++
+CAUTION: Etherネットワークは設定項目がない為、``kPlErrNoSupported``を返します。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiネットワークの設定取得APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrNoSupported``を返します。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceGetConfig>>参照。
+
+[#_PlNetworkGetConfig_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkGetConfig_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|ネットワーク開始済み
+|-
+|影響なし
+|PlNetworkStop実施後リトライまたはシステム再起動
+
+|kPlErrNoSupported
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidOperation
+|設定取得失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkGetStatus]
+==== PlNetworkGetStatus
+* *機能* +
+指定されたネットワークI/Fの状態を取得します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetStatus(const char *if_name, PlNetworkStatus *status)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+対象のネットワークI/F。
+
+**[OUT] <<#_PlNetworkStatus,PlNetworkStatus>> *status**:: 
+if_nameのネットワーク状態。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fの状態を取得します。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** 対象のネットワークI/FのPlNetworkStart/Stop状態に関わらず実行が可能です。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Ethernetネットワークの状態取得APIをコールします。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiネットワークの状態取得APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrCodeOk``を返します。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceGetStatus>>参照。
+
+[#_PlNetworkGetStatus_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkGetStatus_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidOperation
+|状態取得失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkGetNetStat]
+==== PlNetworkGetNetStat
+* *機能* +
+システム全体のネットワーク状態を文字列で取得します。 +
+※Posix系でいうnetstatコマンド相当の機能
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetNetStat(char *buf, const uint32_t buf_size)
+....
+
+* *引数の説明* +
+**[OUT] char *buf**:: 
+結果の格納先。
+
+**[IN] const uint32_t buf_size**:: 
+bufのサイズ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** システム全体のネットワーク状態を文字列で取得します。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 本APIが返す文字列はOSに依存します。
+** PlNetworkStart/Stop状態に関わらず実行が可能です。
+** bufに対してbuf_size分だけ結果を格納します。
+** API呼び出し例は<<#_SequenceGetNetStat>>参照。
+** 本APIの用途は、取得した文字列をコンソールに出力したりログファイルに残すことで、人間が目視で確認するためだけのものです。
+** 例として、システムがNuttxの場合以下のような出力が行われます。
+[source, C]
+....
+             IPv4   TCP   UDP  ICMP
+Received     0026  001c  0009  0000
+Dropped      0001  0000  0000  0000
+  IPv4        VHL: 0000   Frg: 0000
+
+  Checksum   0000  0000  0000  ----
+  TCP         ACK: 0000   SYN: 0000
+              RST: 0002  0002      
+  Type       0000  ----  ----  0000
+
+Sent         002c  0023  0009  0000
+  Rexmit     ----  0001  ----  ----
+....
+** Received: 受信したパケット数
+** Dropped: Dropした数
+*** IPv4
+**** VHL: IP Headerのエラー
+**** Frg: IPフラグメントのパケットを受信した場合のエラー(現状IPフラグメントに対応していないため)
+*** Checksum
+**** IPv4,TCP,UDPでChecksumエラーになった数
+*** TCP
+**** ACK: ACKをDropした数
+**** SYN: SYNCをDropした数
+**** RST: 左からRST、SYNRSTをDropした数
+*** Type
+**** IPv4: 不明なProtocol受信して破棄したパケット
+**** ICMP: ICMPで対応していないTypeのコマンドを受信して破棄したパケット
+** Sent: 送信したパケット数
+*** Rexmit: 再送したパケット数
+
+
+[#_PlNetworkGetNetStat_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkGetNetStat_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrOpen
+|ファイルオープン失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|ファイルリード失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+
+|kPlErrClose
+|ファイルクローズ失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkRegisterEventHandler]
+==== PlNetworkRegisterEventHandler
+* *機能* +
+指定されたネットワークI/Fに対するイベントハンドラを登録します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkRegisterEventHandler(const char *if_name, PlNetworkEventHandler handler, void *private_data)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+登録対象のネットワークI/F。
+
+**[IN] <<#_PlNetworkEventHandler,PlNetworkEventHandler>> handler**:: 
+イベントハンドラ本体。
+
+**[IN] void *private_data**:: 
+ユーザーデータ。NULLでも問題ありません。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fの設定情報を取得します。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** 既にハンドラが登録済みの場合、エラーを返します。
+** 対象のネットワークI/FがすでにPlNetworkStartでスタートされている場合、本APIはエラーを返します。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Etherのイベント登録APIをコールします。 +
++
+CAUTION: Etherネットワークはポーリングでネットワークイベント監視を行いイベント登録の必要がない為、``kPlErrCodeOk``を返します。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiのイベント登録APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrCodeOk``を返します。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceRegisterEventHandler>>参照。
+
+[#_PlNetworkRegisterEventHandler_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkRegisterEventHandler_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|ネットワーク開始済み
+|-
+|影響なし
+|PlNetworkStop実施後リトライまたはシステム再起動
+
+|kPlErrHandler
+|ハンドラ登録済み
+|-
+|影響なし
+|PlNetworkUnregisterEventHandler実施後リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|イベント登録失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkUnregisterEventHandler]
+==== PlNetworkUnregisterEventHandler
+* *機能* +
+指定されたネットワークI/Fに対するイベントハンドラの登録を解除します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkUnregisterEventHandler(const char *if_name)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+対象のネットワークI/F。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fに対するイベントハンドラの登録を解除します。
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** ハンドラが登録されていない場合、エラーを返します。
+** 対象のネットワークI/FがすでにPlNetworkStartでスタートされている場合、本APIはエラーを返します。
+** 対象のネットワークI/Fのイベントハンドラが実行中の際に本APIが呼び出された場合、イベントハンドラの完了を待ってから本APIが開始されます。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Etherのイベント登録解除APIをコールします。 +
++
+CAUTION: Etherネットワークはポーリングでネットワークイベント監視を行いイベント登録の必要がない為、``kPlErrCodeOk``を返します。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiのイベント登録解除APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrCodeOk``を返します。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceUnregisterEventHandler>>参照。
+
+[#_PlNetworkUnregisterEventHandler_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkUnregisterEventHandler_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|ネットワーク開始済み
+|-
+|影響なし
+|PlNetworkStop実施後リトライまたはシステム再起動
+
+|kPlErrHandler
+|ハンドラ未登録
+|-
+|影響なし
+|PlNetworkRegisterEventHandler実施後リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|イベント登録解除失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkStart]
+==== PlNetworkStart
+* *機能* +
+指定されたネットワークI/Fを有効にします。（ifup相当）
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkStart(const char *if_name)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+対象のネットワークI/F。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fを有効にします。（ifup相当）
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** 対象のネットワークI/FがすでにPlNetworkStartでスタートされている場合、本APIはエラーを返します。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Ethernetネットワークの開始APIをコールします。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiネットワークの開始APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrCodeOk``を返します。
+** 本APIは非同期型です。ネットワーク状態の変化はPlNetworkRegisterEventHandlerで登録したハンドラで検知してください。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceStart>>参照。
+
+[#_PlNetworkStart_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|非同期API
+|実行コンテキスト
+|PlNetworkStartが処理を返すまで：呼び元のコンテキストで動作
+
+ネットワークイベントハンドラの実行：PL側スレッドで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkStart_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|ネットワーク開始済み
+|-
+|影響なし
+|PlNetworkStop実施後リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|ネットワーク開始失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkStop]
+==== PlNetworkStop
+* *機能* +
+指定されたネットワークI/Fを無効にします。（ifdown相当）
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkStop(const char *if_name)
+....
+
+* *引数の説明* +
+**[IN] const char *if_name**:: 
+対象のネットワークI/F。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定されたネットワークI/Fを無効にします。（ifdown相当）
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 対象のネットワークI/Fは PlNetworkGetSystemInfo で取得したI/F一覧から選択してください。
+** 対象のネットワークI/FがすでにPlNetworkStopでストップされている場合、またはPlNetworkStartされていない場合、本APIはエラーを返します。
+** 対象ネットワークI/F種別がEthernet(``kPlNetworkTypeEther``)だった場合、Ethernetネットワークの停止APIをコールします。
+** 対象ネットワークI/F種別がWi-Fi(``kPlNetworkTypeWifi``)だった場合、Wi-Fiネットワークの停止APIをコールします。 +
++
+CAUTION: Wi-Fi APモードは機能非対応の為、``kPlErrCodeOk``を返します。
+** 本APIは非同期型です。ネットワーク状態の変化はPlNetworkRegisterEventHandlerで登録したハンドラで検知してください。
+** 上記以外のネットワークI/F種別だった場合、本APIはエラーを返します。
+** API呼び出し例は<<#_SequenceStop>>参照。
+
+[#_PlNetworkStop_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|非同期API
+|実行コンテキスト
+|PlNetworkStopが処理を返すまで：呼び元のコンテキストで動作
+ネットワークイベントハンドラの実行：PL側スレッドで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+[#_PlNetworkStop_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNotFound
+|ネットワークI/F不一致
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|ネットワーク停止中
+|-
+|影響なし
+|PlNetworkStart実施後リトライまたはシステム再起動
+
+|kPlErrInvalidOperation
+|ネットワーク停止失敗
+|-
+|影響なし
+|リトライまたはシステム再起動
+|===
+
+<<<
+
+[#_PlNetworkStructInitialize]
+==== PlNetworkStructInitialize
+* *機能* +
+指定された構造体を初期化します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkStructInitialize(void *structure, PlNetworkStructType type)
+....
+
+* *引数の説明* +
+**[OUT] void *structure**:: 
+初期化したい構造体のポインタ。
+
+**[IN] <<#_PlNetworkStructType,PlNetworkStructType>> type**:: 
+構造体の種別。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 指定された構造体を初期化します。
+*** typeが``kPlNetworkStructTypeSystemInfo``の場合 +
++
+[width="100%",options="header"]
+|===
+|メンバ |初期値
+|char if_name[32+1]
+|'\0'(NULL文字)
+
+|PlNetworkType type
+|kPlNetworkTypeUnkown
+
+|bool cloud_enable
+|false
+
+|bool local_enable
+|false
+|===
+
+*** typeが``kPlNetworkStructTypeWifiConfig``の場合 +
++
+[width="100%",options="header"]
+|===
+|メンバ |初期値
+|PlNetworkWifiMode mode
+|kPlNetworkWifiModeUnkown
+
+|char ssid[32+1]
+|'\0'(NULL文字)
+
+|char pass[64+1]
+|'\0'(NULL文字)
+|===
+
+*** typeが``kPlNetworkStructTypeWifiStatus``の場合 +
++
+[width="100%",options="header"]
+|===
+2+|メンバ |初期値
+2+|int8_t rssi
+|0
+
+2+|PlWifiBandWidth band_width
+|kPlWifiBandWidthHt20
+
+.5+|PlWifiCountry country
+|char cc[3]
+|"01 "
+
+|uint8_t schan
+|1
+
+|uint8_t nchan
+|11
+
+|int8_t max_tx_power
+|0
+
+|PlWifiCountryPolicy policy
+|kPlWifiCountryPolicyManual
+|===
+
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** 使用例 +
++
+[source, C]
+....
+PlNetworkWifiConfig config;
+PlNetworkStructInitialize((void*)&config, PlNetworkStructTypeWifiConfig);
+....
+
+
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrInvalidState
+|PlNetworkInitialize未実施
+|-
+|影響なし
+|PlNetworkInitialize実施後リトライまたはシステム再起動
+
+|kPlErrLock
+|ミューテクスロック失敗
+|-
+|影響なし
+|システム再起動
+|===
+
+<<<
+
+=== 各マクロの説明
+[#_PL_NETWORK_SYSTEM_INFO_INITIALIZER]
+==== PL_NETWORK_SYSTEM_INFO_INITIALIZER
+* *機能* +
+<<#_PlNetworkSystemInfo,PlNetworkSystemInfo>> の初期化を行います。
+PlNetworkInitializeの実行有無に関わらず使用可能です。
+
+* *書式* +
+
+[source, C]
+....
+#define PL_NETWORK_SYSTEM_INFO_INITIALIZER
+....
+
+* *引数の説明* +
+-
+
+* *説明* +
+PlNetworkSystemInfo構造体変数を以下の値で初期化します。 +
++
+[width="100%",options="header"]
+|===
+|メンバ |初期値
+|char if_name[32+1]
+|'\0'(NULL文字)
+
+|PlNetworkType type
+|kPlNetworkTypeUnkown
+
+|bool cloud_enable
+|false
+
+|bool local_enable
+|false
+|===
+
+* *使用例* +
++
+[source, C]
+....
+PlNetworkSystemInfo info = PL_NETWORK_SYSTEM_INFO_INITIALIZER;
+....
+
+<<<
+
+[#_PL_NETWORK_WIFI_CONFIG_INITIALIZER]
+==== PL_NETWORK_WIFI_CONFIG_INITIALIZER
+* *機能* +
+<<#_PlNetworkWifiConfig,PlNetworkWifiConfig>> の初期化を行います。
+PlNetworkInitializeの実行有無に関わらず使用可能です。
+
+* *書式* +
+
+[source, C]
+....
+#define PL_NETWORK_WIFI_CONFIG_INITIALIZER
+....
+
+* *引数の説明* +
+-
+
+* *説明* +
+PlNetworkConfig構造体変数を以下の値で初期化します。 +
++
+[width="100%",options="header"]
+|===
+|メンバ |初期値
+|PlNetworkWifiMode mode
+|kPlNetworkWifiModeUnkown
+
+|char ssid[32+1]
+|'\0'(NULL文字)
+
+|char pass[64+1]
+|'\0'(NULL文字)
+|===
+
+* *使用例* +
++
+[source, C]
+....
+PlNetworkWifiConfig config = PL_NETWORK_WIFI_CONFIG_INITIALIZER;
+....
+<<<
+
+[#_PL_NETWORK_WIFI_STATUS_INITIALIZER]
+==== PL_NETWORK_WIFI_STATUS_INITIALIZER
+* *機能* +
+<<#_PlNetworkWifiStatus,PlNetworkWifiStatus>> の初期化を行います。
+PlNetworkInitializeの実行有無に関わらず使用可能です。
+
+* *書式* +
+
+[source, C]
+....
+#define PL_NETWORK_WIFI_STATUS_INITIALIZER
+....
+
+* *引数の説明* +
+-
+
+* *説明* +
+PlNetworkWifiStatus構造体変数を以下の値で初期化します。 +
++
+[width="100%",options="header"]
+|===
+2+|メンバ |初期値
+2+|int8_t rssi
+|0
+
+2+|PlWifiBandWidth band_width
+|kPlWifiBandWidthHt20
+
+.5+|PlWifiCountry country
+|char cc[3]
+|"01 "
+
+|uint8_t schan
+|1
+
+|uint8_t nchan
+|11
+
+|int8_t max_tx_power
+|0
+
+|PlWifiCountryPolicy policy
+|kPlWifiCountryPolicyManual
+|===
+
+* *使用例* +
++
+[source, C]
+....
+PlNetworkWifiStatus status = PL_NETWORK_WIFI_STATUS_INITIALIZER;
+....
+<<<
+
+[#_SequenceSample]
+== API使用時の呼び出し例
+[#_SequenceInitialize]
+=== ネットワークの初期化
+* *PL Network* +
+** 内部で使用する資源の確保を行います。(ミューテクス、メモリなど) +
+** ネットワークシステム情報を生成し、ネットワークI/F種別毎のネットワーク初期化APIをコールします。 +
+** ネットワークイベントスレッド(PlNetworkEventThread)を生成します。 +
+
+* *PL Ether* +
+** Ethernetネットワーク関する初期化処理を行います。 +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークに関する初期化処理を行います。 +
+
+[{mermaid_block}, title=ネットワークの初期化]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkInitialize()
+    {mermaid_break} 内部状態 != Ready
+      Note over pl_network : PlNetworkInitialize多重呼び出し
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS: メモリ確保(ネットワークイベントメッセージ)
+    OS -->> -pl_network : ポインタ
+    {mermaid_break} ポインタ == NULL
+      Note over pl_network : メモリ確保失敗
+      pl_network -->> app : kPlErrMemory
+    end
+
+    pl_network ->> +OS : ミューテクス初期化
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクス初期化失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : ネットワークI/Fリスト初期化
+    OS -->> -pl_network : void
+
+    loop 0 to kNetworkSystemInfoTotalNum
+      pl_network ->> +OS : メモリ確保(ネットワークI/Fリスト情報)
+      OS -->> -pl_network : ポインタ
+      {mermaid_break} ポインタ == NULL
+        Note over pl_network : メモリ確保失敗
+        pl_network -->> app : kPlErrMemory
+      end
+
+      alt type == kPlNetworkTypeEther
+        pl_network ->> +pl_ether : PlEtherInitialize()
+        Note over pl_network,OS : Ethernetネットワーク初期化
+        pl_ether -->> -pl_network : 応答値(kPlErr***)
+      else type == kPlNetworkTypeWifi
+        pl_network ->> +pl_wifi : PlWifiInitialize()
+        Note over pl_network,OS : Wi-Fiネットワーク初期化
+        pl_wifi -->> -pl_network : 応答値(kPlErr***)
+      end
+
+      {mermaid_break} 応答値 != kPlErrCodeOk
+        Note over pl_network : ネットワーク初期化失敗
+        pl_network -->> app : kPlErrInvalidOperation
+      end
+
+      pl_network ->> +OS : ネットワークI/Fリスト追加
+      OS -->> -pl_network : void
+    end
+
+    pl_network ->> +OS : イベントスレッド生成
+      create participant Network Event Thread
+      OS ->> Network Event Thread : thread create
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : スレッド生成失敗
+      pl_network -->> app : kPlThreadError
+    end
+
+    pl_network ->> pl_network : Ready->Running
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceFinalize]
+=== ネットワークの終了
+* *PL Network* +
+** ネットワークシステム情報より、ネットワークI/F種別毎のネットワーク終了APIをコールします。 +
+** 内部保持しているネットワークシステム情報を削除します。 +
+** ネットワークイベントスレッド(PlNetworkEventThread)を終了します。 +
+** 確保した資源の解放を行います
+
+* *PL Ether* +
+** Ethernetネットワークに関する終了処理を行います。 +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークに関する終了処理を行います。 +
+
+[{mermaid_block}, title=ネットワークの終了]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkFinalize()
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    loop 0 to kNetworkSystemInfoTotalNum
+      alt type == kPlNetworkTypeEther
+        pl_network ->> +pl_ether : PlEtherFinalize()
+        Note over pl_network,OS : Ethernetネットワーク終了
+        pl_ether -->> -pl_network : 応答値(kPlErr***)
+      else type == kPlNetworkTypeWifi
+        pl_network ->> +pl_wifi : PlWifiFinalize()
+        Note over pl_network,OS : Wi-Fiネットワーク終了
+        pl_wifi -->> -pl_network : 応答値(kPlErr***)
+      end
+
+      pl_network ->> +OS: ネットワークI/Fリスト削除
+      OS -->> -pl_network : void
+
+      pl_network ->> +OS: メモリ解放(ネットワークI/Fリスト情報)
+      OS -->> -pl_network : void
+    end
+
+    pl_network ->> +OS : スレッド終了メッセージ送信
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      pl_network ->> +OS : スレッドキャンセル
+      OS -->> -pl_network : void
+    end
+
+    event_thread ->> +event_thread : thread wakeup
+    event_thread ->> +OS: ネットワークイベントメッセージ取得
+    OS -->> -event_thread : 受信メッセージバッファアドレス
+    alt 受信メッセージあり
+      alt メッセージ種別 == 終了イベント
+        Note over event_thread : スレッド終了
+        deactivate event_thread
+        destroy event_thread
+        OS -x event_thread : thread end
+      end
+    end
+
+    pl_network ->> +OS : ネットワークイベント終了待ち
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : スレッド終了失敗
+      pl_network -->> app : kPlThreadError
+    end
+
+    pl_network ->> +OS: メモリ解放(ネットワークイベントメッセージ)
+    OS -->> -pl_network : void
+
+    pl_network ->> +OS : ミューテクス資源解放
+    OS -->> -pl_network : 結果
+
+    pl_network ->> pl_network : Running->Ready
+  pl_network -->> -app : 応答値(kPlErr***)
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetSystemInfo]
+=== システムが持つネットワーク情報の取得
+* *PL Network* +
+** 内部保持しているシステムのネットワーク情報を上位側に返します。 +
+
+[{mermaid_block}, title=システムが持つネットワーク情報の取得]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetSystemInfo(&info_total_num, &infos)
+    {mermaid_break} (info_total_num == NULL) || (infos == NULL)
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> pl_network : システムネットワーク情報をセット
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetNetStat]
+=== システム全体のネットワーク状態の取得
+* *PL Network* +
+** システムAPIをコールし、ネットワーク情報を取得します。 +
+** 取得したネットワーク情報を上位側に返します。 +
+
+[{mermaid_block}, title=システム全体のネットワーク状態の取得]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetNetStat(&buf, buf_size)
+    {mermaid_break} (buf == NULL) || (buf_size < 1)
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +OS : システム全体のネットワーク状態の取得
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ネットワーク状態取得失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceSetConfig]
+=== ネットワークの設定
+* *PL Network* +
+** ネットワークI/F名と設定情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のネットワーク設定取得APIをコールします。 +
+** ネットワーク設定を内部保持します。 +
+
+* *PL Ether* +
+** Ethernetネットワークに対してパラメータを設定します。 +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークに対してパラメータを設定します。 +
+
+[{mermaid_block}, title=ネットワークの設定]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkSetConfig(if_name, &config)
+    {mermaid_break} (if_name == NULL) || (config == NULL)
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} ネットワークI/F状態 != Stopped
+      Note over pl_network : 内部状態異常
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherSetConfig(net_info, config)
+      Note over pl_network,OS : Ethernetネットワーク設定
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiSetConfig(net_info, config)
+      Note over pl_network,OS : Wi-Fiネットワーク設定
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 == kPlErrNoSupported
+      Note over pl_network : 非サポート
+      pl_network -->> app : kPlErrNoSupported
+    end
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : ネットワーク設定失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : 設定内部保持
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetConfig]
+=== ネットワーク設定の取得
+* *PL Network* +
+** 指定されたネットワークI/F名とネットワークI/Fリスト情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のネットワーク設定取得APIをコールします。 +
+
+* *PL Ether* +
+** Ethernetネットワークのパラメータを取得します。 +
+** 取得したパラメータを``config``にセットし、上位側に返します。 +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークのパラメータを取得します。 +
+** 取得したパラメータを``config``にセットし、上位側に返します。 +
+
+[{mermaid_block}, title=ネットワーク設定の取得]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetConfig(if_name, &config)
+    {mermaid_break} (if_name == NULL) || (config == NULL)
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} ネットワークI/F状態 != Stopped
+      Note over pl_network : 内部状態異常
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherGetConfig(net_info, config)
+      Note over pl_network,OS : Ethernetネットワーク設定取得
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiGetConfig(net_info, config)
+      Note over pl_network,OS : Wi-Fiネットワーク設定取得
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 == kPlErrNoSupported
+      Note over pl_network : 非サポート
+      pl_network -->> app : kPlErrNoSupported
+    end
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : ネットワーク設定取得失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetStatus]
+=== ネットワーク状態の取得
+* *PL Network* +
+** 指定されたネットワークI/F名とネットワークI/Fリスト情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のネットワーク状態取得APIをコールします。 +
+
+* *PL Ether* +
+** Ethernetネットワークのネットワーク状態を取得します。 +
+** 取得したネットワーク状態を``status``にセットし、上位側に返します。 +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークのネットワーク状態を取得します。 +
+** 取得したネットワーク状態を``status``にセットし、上位側に返します。 +
+
+[{mermaid_block}, title=ネットワーク状態の取得]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetStatus(if_name, &status)
+    {mermaid_break} (if_name == NULL) || (status == NULL)
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherGetStatus(net_info, status)
+      Note over pl_network,OS : Ethernetネットワーク状態取得
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiGetStatus(net_info, status)
+      Note over pl_network,OS : Wi-Fiネットワーク状態取得
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : ネットワーク状態失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceRegisterEventHandler]
+=== イベントハンドラの登録
+* *PL Network* +
+** <<#_PlNetworkEventHandler, イベントハンドラ>>を内部保持します。 +
+** 指定されたネットワークI/F名とネットワークI/Fリスト情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のイベントハンドラ登録APIをコールします。 +
+
+* *PL Ether* +
+** Ethernetイベントの登録を行います。 +
+
+* *PL Wi-Fi* +
+** Wi-Fiイベントの登録を行います。 +
+
+[{mermaid_block}, title=イベントハンドラの登録]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkRegisterEventHandler(if_name, handler, private_data)
+    {mermaid_break} if_name != NULL
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} ネットワークI/F状態 != Stopped
+      Note over pl_network : 内部状態異常
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler != NULL
+      Note over pl_network : ハンドラ登録済み
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherRegisterEventHandler(net_info)
+      Note over pl_network,OS : Ethernetイベント登録
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiRegisterEventHandler(net_info)
+      Note over pl_network,OS : Wi-Fiイベント登録
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : イベント登録失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : イベントハンドラ登録
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceUnregisterEventHandler]
+=== イベントハンドラの解除
+* *Network* +
+** 内部保持している<<#_PlNetworkEventHandler, イベントハンドラ>>の登録を解除します。 +
+** 指定されたネットワークI/F名とネットワークI/Fリスト情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のイベントハンドラ登録解除APIをコールします。 +
+
+* *Ether* +
+** Ethernetイベントの登録を解除します。 +
+
+* *Wi-Fi* +
+** Wi-Fiイベントの登録を解除します。 +
+
+[{mermaid_block}, title=イベントハンドラの解除]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkUnregisterEventHandler(if_name)
+    {mermaid_break} if_name != NULL
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} ネットワークI/F状態 != Stopped
+      Note over pl_network : 内部状態異常
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler == NULL
+      Note over pl_network : ハンドラ未登録
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherUnregisterEventHandler(net_info)
+      Note over pl_network,OS : Ethernetイベント登録解除
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiUnregisterEventHandler(net_info)
+      Note over pl_network,OS : Wi-Fiイベント登録解除
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : イベント登録解除失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : イベントハンドラ登録解除
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceStart]
+=== ネットワークの開始
+* *PL Network* +
+** 指定されたネットワークI/F名とネットワークI/Fリスト情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のネットワーク開始APをコールします。 +
+** 内部状態を``Started``にセットします。
+
+* *PL Ether* +
+** Ethernetネットワークの接続を開始します。 +
+** ネットワーク状態変化時、状態に応じたネットワークイベントメッセージを送信します。(非同期) +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークの接続を開始します。 +
+** ネットワーク状態変化時、状態に応じたネットワークイベントメッセージを送信します。(非同期) +
+
+* *PL Network(Thread)* +
+** ネットワークイベントメッセージ受信時、<<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler()>>で登録されたイベントハンドラを実行し、上位側に<<#_PlNetworkEvent,ネットワークイベント>>を通知します。 +
+
+[{mermaid_block}, title=ネットワークの開始]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkStart(if_name)
+    {mermaid_break} if_name != NULL
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} ネットワークI/F状態 != Started
+      Note over pl_network : 内部状態異常
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler != NULL
+      Note over pl_network : ハンドラ登録済み
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherStop(net_info)
+      Note over pl_network,OS : Ethernetネットワーク開始
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiStop(net_info)
+      Note over pl_network,OS : Wi-Fiネットワーク開始
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : ネットワーク開始失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Stopped->Started
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+
+  Note over app,OS : ネットワーク開始
+  activate pl_ether
+  Note over pl_ether : IF Status取得
+  opt eth0 ifdown -> ifup検知
+    pl_ether ->> +pl_network : ネットワークイベントメッセージ送信{mermaid_br}("eth0", kPlNetworkEventIfUp, reason)
+      pl_network ->> +OS : ネットワークイベントメッセージ送信
+      OS -->> -pl_network : 結果
+    pl_network -->> -pl_ether : 応答値(kPlErr***)
+  end
+  deactivate pl_ether
+
+  event_thread ->> +event_thread : thread wakeup
+    event_thread ->> +OS : ネットワークイベントメッセージ取得
+    OS -->> -event_thread : 受信メッセージバッファアドレス
+
+    alt 受信メッセージあり
+      alt メッセージ種別 == ネットワークイベント
+        event_thread ->> +pl_network : ネットワークI/Fリスト情報取得
+        pl_network ->> +OS : ネットワークI/Fリスト検索
+        OS -->> -pl_network : ネットワークI/F情報
+        pl_network -->> -event_thread : ネットワークI/F検索結果
+        alt (検索結果 == kPlErrCodeOk) && (handler != NULL)
+          event_thread ->> +app : handler("eth0", kPlNetworkEventIfUp, private_data)
+          Note over app : イベントハンドラ実行
+          app -->> -event_thread : void
+        end
+      end
+    end
+  deactivate event_thread
+....
+
+<<<
+
+[#_SequenceStop]
+=== ネットワークの停止
+* *PL Network* +
+** 指定されたネットワークI/F名とネットワークI/Fリスト情報から<<#_PlNetworkType,ネットワークI/F種別>>を判別し、ネットワークI/F種別毎のネットワーク停止APをコールします。 +
+** 内部状態を``Stopped``にセットします。
+
+* *PL Ether* +
+** Ethernetネットワークの接続を停止します。 +
+** ネットワーク状態変化時、状態に応じたネットワークイベントメッセージを送信します。(非同期) +
+
+* *PL Wi-Fi* +
+** Wi-Fiネットワークの接続を停止します。 +
+** ネットワーク状態変化時、状態に応じたネットワークイベントメッセージを送信します。(非同期) +
+
+* *PL Network(Thread)* +
+** ネットワークイベントメッセージ受信時、<<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler()>>で登録されたイベントハンドラを実行し、上位側に<<#_PlNetworkEvent,ネットワークイベント>>を通知します。 +
+
+[{mermaid_block}, title=ネットワークの停止]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkStop(if_name)
+    {mermaid_break} if_name != NULL
+      Note over pl_network : 引数エラー
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} 内部状態 != Running
+      Note over pl_network : PlNetworkInitialize未実施
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : ミューテクスロック
+    OS -->> -pl_network : 結果
+    {mermaid_break} 結果 != OK
+      Note over pl_network : ミューテクスロック失敗
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : ネットワークI/Fリスト情報取得
+    pl_network ->> +OS : ネットワークI/Fリスト検索
+    OS -->> -pl_network : ネットワークI/F情報
+    pl_network -->> -pl_network : ネットワークI/F検索結果
+    {mermaid_break} 結果 != kPlErrCodeOk
+      Note over pl_network : ネットワークI/F不一致
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} ネットワークI/F状態 != Stopped
+      Note over pl_network : 内部状態異常
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler != NULL
+      Note over pl_network : ハンドラ登録済み
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherStart(net_info)
+      Note over pl_network,OS : Ethernetネットワーク停止
+      pl_ether -->> -pl_network : 応答値(kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiStart(net_info)
+      Note over pl_network,OS : Wi-Fiネットワーク停止
+      pl_wifi -->> -pl_network : 応答値(kPlErr***)
+    end
+
+    {mermaid_break} 応答値 != kPlErrCodeOk
+      Note over pl_network : ネットワーク停止失敗
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Started->Stopped
+
+    pl_network ->> +OS : ミューテクスロック解除
+    OS -->> -pl_network : 結果
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+
+  Note over app,OS : ネットワーク停止
+  activate pl_ether
+  Note over pl_ether : Get interface status
+  opt eth0 detect interface up
+    pl_ether ->> +pl_network : Send network event message{mermaid_br}("eth0", kPlNetworkEventIfDown, reason)
+      pl_network ->> +OS : Set network event message to queue
+      OS -->> -pl_network : restult
+    pl_network -->> -pl_ether : return value(kPlErr***)
+  end
+  deactivate pl_ether
+
+  event_thread ->> +event_thread : thread wakeup
+    event_thread ->> +OS : Get network event message from queue
+    OS -->> -event_thread : network event message buffer
+
+    alt message is valid
+      alt command == network event
+        event_thread ->> +pl_network : Get network list
+        pl_network ->> +OS : Search network info
+        OS -->> -pl_network : network info
+        pl_network -->> -event_thread : return value(kPlErr***)
+        alt (err_code == kPlErrCodeOk) && (handler != NULL)
+          event_thread ->> +app : handler("eth0", kPlNetworkEventIfDown, private_data)
+          Note over app : Execute network event handler
+          app -->> -event_thread : void
+        end
+      end
+    end
+  deactivate event_thread
+....
+
+<<<
+
+[#_SequenceExecuteEventHandler]
+=== イベントハンドラの実行
+* *PL Ether* +
+* *PL Wi-Fi* +
+** ネットワーク状態変化時、状態に応じたネットワークイベントメッセージを送信します。 +
+
+* *PL Network(Thread)* +
+** ネットワークイベントメッセージ受信時、<<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler()>>で登録されたイベントハンドラを実行し、上位側に<<#_PlNetworkEvent,ネットワークイベント>>を通知します。 +
+
+[{mermaid_block}, title=イベントハンドラの実行]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+
+  activate pl_ether
+  Note over pl_ether : Get link status
+  opt eth0 detect link up
+    pl_ether ->> +pl_network : Send network event{mermaid_br}("eth0", kPlNetworkEventLinkUp, reason)
+      pl_network ->> +OS : Set network event message to queue
+      OS -->> -pl_network : restult
+    pl_network -->> -pl_ether : return value(kPlErr***)
+  end
+  deactivate pl_ether
+
+  event_thread ->> +event_thread : thread wakeup
+    event_thread ->> +OS : Get network event message from queue
+    OS -->> -event_thread : network event message buffer
+
+    alt message is valid
+      alt command == network event
+        event_thread ->> +pl_network : Get network list
+        pl_network ->> +OS : Search network info
+        OS -->> -pl_network : network info
+        pl_network -->> -event_thread : return value(kPlErr***)
+        alt (err_code == kPlErrCodeOk) && (handler != NULL)
+          event_thread ->> +app : handler("eth0", kPlNetworkEventLinkUp, private_data)
+          Note over app : Execute network event handler
+          app -->> -event_thread : void
+        end
+      end
+    end
+  deactivate event_thread
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+=== 各カメラが持つシステムネットワーク情報
+<<#_PlNetworkSystemInfo, PlNetworkSystemInfo>>で示している各パラメータについて、各カメラのサポート状況を<<#_TableSupportedSystemNetwork>>に記します。
+
+[#_TableSupportedSystemNetwork]
+.システムネットワーク情報
+|===
+2.2+^.^|*システムネットワーク情報* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+.4+|0
+|if_name
+|"eth0"
+|"eth0"
+|"eth0"
+
+|type
+|kPlNetworkTypeEther
+|kPlNetworkTypeEther
+|kPlNetworkTypeEther
+
+|cloud_enable
+|y
+|y
+|y
+
+|local_enable
+|n
+|n
+|n
+
+.4+|1
+|if_name
+|"wlan0"
+|"wlan0"
+|N/A
+
+|type
+|kPlNetworkTypeWifi
+|kPlNetworkTypeWifi
+|N/A
+
+|cloud_enable
+|y
+|y
+|N/A
+
+|local_enable
+|n
+|n
+|N/A
+
+.4+|2
+|if_name
+|N/A
+|N/A
+|N/A
+
+|type
+|N/A
+|N/A
+|N/A
+
+|cloud_enable
+|N/A
+|N/A
+|N/A
+
+|local_enable
+|N/A
+|N/A
+|N/A
+
+2+|*ネットワークI/F総数*
+|2
+|2
+|1
+|===
+
+[#_SupportedNetworkEvent]
+===  各カメラのネットワークイベントサポート状況
+[#_SupportedNetworkEventEther]
+* *Ether* +
+Ethernetネットワークにて発生する<<#_PlNetworkEvent,ネットワークイベント>>のサポート状況を<<#_TableSupportedNetworkEventEther>>に記します。 +
++
+[#_TableSupportedNetworkEventEther]
+.ネットワークイベント(Ether)
+[width="100%"]
+|===
+.2+^.^|*ネットワークイベント* .2+^.^|*意味* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|kPlNetworkEventIfUp
+|ネットワークI/Fが使用可能になった
+^|○
+^|○
+^|○
+
+|kPlNetworkEventIfDown
+|ネットワークI/Fが使用不可になった
+^|○
+^|○
+^|○
+
+|kPlNetworkEventLinkUp
+|ネットワークI/Fが通信可能になった
+^|○
+^|○
+^|○
+
+|kPlNetworkEventLinkDown
+|ネットワークI/Fが通信不可になった
+^|○
+^|○
+^|○
+
+|kPlNetworkEventPhyIdValid
+|ネットワークI/Fから取得した PHY IDが正常
+^|○
+^|○
+^|○
+
+|kPlNetworkEventPhyIdInvalid
+|ネットワークI/Fから取得した PHY ID が正常でない
+^|○
+^|○
+^|○
+|===
+
+[#_SupportedNetworkEventWifi]
+* *Wi-Fi* +
+Wi-Fiネットワークにて発生する<<#_PlNetworkEvent,ネットワークイベント>>のサポート状況を<<#_TableSupportedNetworkEventWifiSta>>および<<#_TableSupportedNetworkEventWifiAp>>に記します。 +
++
+NOTE: WIFI_***系は ESP-IDFのWi-Fiドライバのイベントをそのまま通知します。 +
+ https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/wifi.html#esp32-s3-wi-fi-event-description[Wi-Fi Event Description]参照
++
+[#_TableSupportedNetworkEventWifiSta]
+.ネットワークイベント(Wi-Fi(STA))
+[width="100%"]
+|===
+.2+^.^|*ネットワークイベント* .2+^.^|*意味* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|kPlNetworkEventWifiReady
+|Wi-Fiドライバの準備が完了した
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaStart
+|ネットワークI/Fが使用可能になった
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaStop
+|ネットワークI/Fが使用不可になった
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaConnected
+|アクセスポイントと接続され、通信可能になった
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaDisconnected
+|アクセスポイントから切断され、通信不可になった
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaAuthmodeChange
+|アクセスポイントの認証方式が変更された
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaRssiLow
+|アクセスポイントの電波強度(RSSI)が低下した
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaBeaconTimeout
+|アクセスポイントからビーコンが受信できず、タイムアウトが発生した
+^|○
+^|○
+^|×
+|===
++
+[#_TableSupportedNetworkEventWifiAp]
+.ネットワークイベント(Wi-Fi(AP))
+[width="100%"]
+|===
+.2+^.^|*ネットワークイベント* .2+^.^|*意味* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|kPlNetworkEventWifiReady
+|Wi-Fiドライバの準備が完了した
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApStart
+|ネットワークI/Fが使用可能になった
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApStop
+|ネットワークI/Fが使用不可になった
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApConnected
+|Wi-Fi端末と接続され、通信可能になった
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApDisconnected
+|Wi-Fi端末と切断され、通信不可になった
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApProbeReqRecved
+|Wi-Fi端末からのプローブ要求を受信した
+^|×
+^|×
+^|×
+|===
+
+[#_SupportedNetworkStatus]
+===  各カメラのネットワーク状態サポート状況
+<<#_PlNetworkStatus, PlNetworkStatus>>で示している各パラメータについて、各カメラのサポート状況を以下に記します。
+
+* *Ether* +
+Ethernetネットワークにおいて取得可能なネットワーク状態のサポート状況を<<#_TableSupportedNetworkStatusEther>>に記します。 +
++
+[#_TableSupportedNetworkStatusEther]
+.ネットワーク状態サポート状況(Ether)
+|===
+.2+^.^|*ネットワーク状態* .2+^.^|*意味* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|is_if_up
+|ネットワークI/Fの状態(true:ifup, false:ifdown)
+^|○
+^|○
+^|○
+
+|is_link_up
+|ネットワークの通信状態(true:通信可能, false:通信不可)
+^|○
+^|○
+^|○
+
+|is_phy_id_valid
+|ネットワークI/Fの PHY ID 取得状態(true:正常, false:異常 or 未ifup)
+^|○
+^|○
+^|○
+
+|PlNetworkWifiStatus
+|Wi-Fiネットワーク状態(非サポート)
+^|×
+^|×
+^|×
+|===
+
+* *Wi-Fi* +
+Wi-Fiネットワークにおいて取得可能なネットワーク状態のサポート状況を<<#_TableSupportedNetworkStatusWifiSta>>および<<#_TableSupportedNetworkStatusWifiAp>>に記します。 +
++
+[#_TableSupportedNetworkStatusWifiSta]
+.ネットワーク状態サポート状況(Wi-Fi(STA))
+|===
+3.2+^.^|*ネットワーク状態* .2+^.^|*意味* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+3+|is_if_up
+|ネットワークI/Fの状態(true:ifup, false:ifdown)
+^|○
+^|○
+^|×
+
+3+|is_link_up
+|Wi-Fiステーションとの接続状態(true:接続済み, false:未接続)
+^|○
+^|○
+^|×
+
+3+|is_phy_id_valid
+|ネットワークI/Fの PHY ID 取得状態(非サポート)
+^|×
+^|×
+^|×
+
+.6+|PlNetworkWifiStatus
+2+|rssi
+|Wi-Fiステーションとの電波強度
+^|○
+^|○
+^|×
+
+.5+|country
+|cc
+|Wi-Fiステーションのカントリーコード
+^|○
+^|○
+^|×
+
+|schan
+|Wi-Fiステーションの開始チャネル番号
+^|○
+^|○
+^|×
+
+|nchan
+|Wi-Fiステーションのチャネル番号総数
+^|○
+^|○
+^|×
+
+|max_tx_power
+|Wi-Fiステーションの最大送信パワー設定
+^|○
+^|○
+^|×
+
+|policy
+|Wi-Fiステーションのカントリーコード設定方法
+^|○
+^|○
+^|×
+|===
++
+[#_TableSupportedNetworkStatusWifiAp]
+.ネットワーク状態サポート状況(Wi-Fi(AP))
+|===
+3.2+^.^|*ネットワーク状態* .2+^.^|*意味* 3+^|*対応状況*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+3+|is_if_up
+|ネットワークI/Fの状態(true:ifup, false:ifdown)
+^|×
+^|×
+^|×
+
+3+|is_link_up
+|Wi-Fi端末との接続状態(true:接続済み, false:未接続)
+^|×
+^|×
+^|×
+
+3+|is_phy_id_valid
+|ネットワークI/Fの PHY ID 取得状態(非サポート)
+^|×
+^|×
+^|×
+
+.6+|PlNetworkWifiStatus
+2+|rssi
+|Wi-Fiアクセスポイントの電波強度(非サポート)
+^|×
+^|×
+^|×
+
+.5+|country
+|cc
+|Wi-Fiアクセスポイントのカントリーコード
+^|×
+^|×
+^|×
+
+|schan
+|Wi-Fiアクセスポイントの開始チャネル番号
+^|×
+^|×
+^|×
+
+|nchan
+|Wi-Fiアクセスポイントのチャネル番号総数
+^|×
+^|×
+^|×
+
+|max_tx_power
+|Wi-Fiアクセスポイントの最大送信パワー設定
+^|×
+^|×
+^|×
+
+|policy
+|Wi-Fiアクセスポイントのカントリーコード設定方法
+^|×
+^|×
+^|×
+|===
+
+
+== 使用しているOSSの一覧
+T.B.D.
+
+<<<
+
+== 参考文献
+[width="100%", cols="20%,80%",options="header"]
+|===
+|文献|リンク
+|ESP-IDF Programming Guide
+|https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/network/esp_wifi.html
+|===
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|初版
+
+|v0.0.2
+|HAL Network機能仕様書とOSAL Network機能仕様書を統合 +
+実装内容をフィードバック
+
+* 全体
+** HAL -> PLに名称を修正
+** シーケンス図、状態遷移図などをMermaidで図示するよう修正
+
+* 3.2. コンポーネントの詳細説明
+** 「Netdev」コンポーネントを追加
+** 依存する以下コンポーネントに関する説明を追加
+*** HAL IOExpLIB
+*** Utility MSG
+
+* 3.3.3. PL Netwrokイベントによる状態遷移
+** EthernetネットワークイベントにおいてEthernetドライバの実装に依存してイベント発生順が変わる可能性がある旨を追記
+
+* 3.4. コンポーネントの機能一覧
+** 実装内容に合わせて説明を修正
+
+* 3.7. コンポーネントの非機能要件説明
+** 詳細設計書レベルの細かい記載となっていた為、仕様書レベルの荒い粒度で記載するよう修正
+
+* 3.8. コンポーネントの制約・注意事項
+** 制約事項を追記
+
+* 4.1.3. API一覧
+* 4.3. API定義
+** 内部APIを削除(詳細設計書に記載すべき内容)
+** 実装内容に合わせて説明を修正
+
+* 6. 特記事項やコンポーネントごとの特有の説明事項
+** HAL Configに関する説明を削除
+** 各カメラ毎の特有の説明事項を追記
+
+|v0.0.3
+|
+** 3.8.2. 注意事項 +
+インターフェイスダウン中はリンク状態が正しく取得できないことがある旨を追記。
+
+** 3.2. コンポーネントの詳細説明 +
+** 3.2.1. 依存コンポーネント +
+ネットワークイベントメッセージ送受信をUtility MSGを使用しないよう変更した為、Utility MSGコンポーネントに関する記載を削除。
+
+** 3.5.1. ネットワークの初期化 +
+前提条件から「UtilityMsgInitialize～」の文言を削除。
+
+** 3.7.2. 通常ヒープ最大使用量 +
+ネットワークイベントメッセージ用のバッファを追加。
+
+** 4.3.1. PlNetworkInitialize +
+** 4.3.2. PlNetworkFinalize +
+Utility Msgハンドル取得/解放処理を削除し、ネットワークイベントメッセージ用のメモリ領域取得/解放処理に修正。
+
+** 5.1. ネットワークの初期化 +
+** 5.2. ネットワークの終了 +
+** 5.10. ネットワークの開始 +
+** 5.11. ネットワークの停止 +
+Utility Msgに関するシーケンスを修正。
+
+** 3. コンポーネントの説明 +
+T5/T3Pコード共通化対応に伴いコンポーネント図および説明を修正。
+
+** 5. API使用時の呼び出し例 +
+シーケンス図におけるコンポーネント名を修正。
+
+|v0.0.4
+|
+** 4.2.4. PlNetworkEvent +
+PHY ID 取得イベントを追加。
+
+** 4.2.7. PlNetworkStatus +
+is_phy_id_valid を追加。
+
+** 6.2. 各カメラのネットワークイベントサポート状況 +
+*** Ether +
+PHY ID 取得イベントを追加。
+
+** 6.3. 各カメラのネットワーク状態サポート状況 +
+is_phy_id_valid を追加。
+
+|===

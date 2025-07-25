@@ -1,0 +1,751 @@
+= PL BUTTON (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document describes the specifications of the PL Button impl, which is part of the AITRIOS PL implementation layer. The purpose of the PL BUTTON layer is to absorb implementation differences that may vary between different boards, such as button interrupt detection.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[options="header"]
+|===
+|Term |Description 
+
+|PL
+|Porting Layer. A layer that absorbs differences between cameras/OS.
+|===
+
+<<<
+
+== Component Description
+
+The PL Button layer is the core part that interfaces with the PL I/F, designed to absorb differences in camera button functionality. It can also be added or modified based on the target camera.
+
+=== Component Overview
+
+The following software architecture diagram centers around this block.
+
+.Overview Diagram
+image::./images/button_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Component Detailed Description
+
+An example usage sequence for PL BUTTON is shown below.
+The upper layer can use various button functions through the PL BUTTON API after executing PlButtonInitialize.
+
+[#_button_seq]
+.Sequence Overview
+image::./images/button_seq.png[scaledwidth="100%",align="center"]
+
+==== Dependent Blocks (Internal to PL)
+None
+
+<<<
+
+=== State Transitions
+
+The possible states of the PL are shown in <<#_TableStates>>.
+
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description 
+
+|PL_BUTTON_READY
+|Initial state
+
+|PL_BUTTON_RUNNING
+|Ready to execute state
+|===
+
+In PL, state transitions occur as shown in <<#_FigureState>>. +
+If an error occurs in any API, no state transitions will happen. +
+
+[#_FigureState]
+.State Transition Diagram
+image::./images/button_state.png[scaledwidth="100%",align="center"]
+
+API acceptance and state transitions for each state are shown in <<#_TableStateTransition>>. The state names in the table represent the state after API execution, meaning the API can be called. +
+An '×' indicates that the API cannot be accepted, and an error will be returned without state transitions. For error details, refer to <<#_PlErrCode, PlErrCode List>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|State 
+|PL_BUTTON_READY |PL_BUTTON_RUNNING 
+.10+|API Name
+
+|``**PlButtonInitialize**``            
+|PL_BUTTON_RUNNING                   
+|×
+
+|``**PlButtonFinalize**``   
+|×                   
+|PL_BUTTON_READY
+
+|``**PlButtonGetInfo**``   
+|×                   
+|PL_BUTTON_RUNNING
+
+|``**PlButtonRegisterHandler**``   
+|×                   
+|PL_BUTTON_RUNNING
+
+|``**PlButtonUnregisterHandler**``   
+|×                   
+|PL_BUTTON_RUNNING
+|===
+
+<<<
+
+=== Component Function List
+
+A list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview  |Section Number
+|Get button information of the camera
+|Retrieve the total number of buttons on the camera.
+|<<#_Function1>>
+
+|Register a handler for buttons
+|Register a handler to execute when a button event occurs.
+|<<#_Function2>>
+
+|Unregister a handler for buttons
+|Unregister a handler for button events.
+|<<#_Function3>>
+|===
+
+<<<
+
+=== Component Function Description
+
+[#_Function1]
+==== Get button information of the camera
+Function Overview::
+Retrieve the total number of buttons on the camera.
+Preconditions::
+PlButtonInitialize must be executed.
+Function Details::
+For more details, refer to <<#_PlButtonGetInfo, PlButtonGetInfo>>.
+Detailed Behavior::
+Refer to <<#_PlButtonGetInfo, PlButtonGetInfo>> for details.
+Behavior in case of error and recovery methods::
+Refer to <<#_PlButtonGetInfo, PlButtonGetInfo>> for details.
+Considerations::
+None
+
+[#_Function2]
+==== Register a handler for buttons
+Function Overview::
+Register a handler to execute when a button event occurs.
+Preconditions::
+PlButtonInitialize must be executed.
+Function Details::
+Refer to <<#_PlButtonRegisterHandler, PlButtonRegisterHandler>> for more details.
+Detailed Behavior::
+For further details, refer to <<#_PlButtonRegisterHandler, PlButtonRegisterHandler>>.
+Error behavior and recovery methods::
+Refer to <<#_PlButtonRegisterHandler, PlButtonRegisterHandler>> for more details.
+Considerations::
+None
+
+[#_Function3]
+==== Unregister a handler for buttons
+Function Overview::
+Unregister a handler for button events.
+Preconditions::
+PlButtonInitialize must be executed.
+Function Details::
+Refer to <<#_PlButtonUnregisterHandler, PlButtonUnregisterHandler>> for more details.
+Detailed Behavior::
+For more details, refer to <<#_PlButtonUnregisterHandler, PlButtonUnregisterHandler>>.
+Error behavior and recovery methods::
+Refer to <<#_PlButtonUnregisterHandler, PlButtonUnregisterHandler>> for more details.
+Considerations::
+None
+
+<<<
+
+=== Component Non-functional Requirements List
+
+The non-functional requirements are listed in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview  |Section Number
+|Maximum Stack Usage
+|Maximum stack size used by PL BUTTON.
+|<<#_stack, 3.7.1.>>
+
+|Maximum Heap Usage
+|Maximum app heap size used by PL BUTTON.
+|<<#_appheap, 3.7.2.>>
+
+|Maximum Static Data Usage
+|Maximum static data size used by PL BUTTON.
+|<<#_static, 3.7.3.>>
+
+|Performance
+|Performance of the features provided by PL BUTTON.
+|<<#_paformance, 3.7.4.>>
+|===
+
+=== Component Non-functional Requirement Description
+
+[#_stack]
+==== Maximum Stack Usage
+[width="100%", cols="50%,50%",options="header"]
+|===
+|Usage |Size
+|Stack area used during each PL BUTTON API.
+|Maximum 1 KB
+
+|Stack size for the thread executing PlButtonHandler.
+|4 KB
+|===
+
+[#_heap]
+==== Maximum Heap Usage
+The normal heap usage is 256 bytes per button as defined by CONFIG.
+
+==== Maximum App Heap Usage
+PL BUTTON does not use the app heap.
+
+[#_static]
+==== Maximum Static Data Usage
+256 bytes are used.
+
+[#_paformance]
+==== Performance
+** All APIs in this module operate within 1 ms.
+*** This does not include the performance of lower modules. Please refer to those separately.
+
+<<<
+
+=== Constraints
+==== Notes
+There is only one PL thread that executes the button callback. Be aware that if multiple button interrupts are detected, heavy processing in a callback can delay subsequent callbacks.
+
+== API Specifications
+=== Definition List
+==== Data Type List
+The data types are shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview  |Section Number
+|enum PlErrCode
+|Enumeration type that defines the result of API execution.
+|<<#_PlErrCode, PlErrCode List>>
+
+|enum PlButtonStatus
+|Enumeration type representing button status.
+|<<#_PlButtonStatus, 4.2.2.>>
+
+|PlButtonHandler
+|Function pointer representing the core of the button event handler.
+|<<#_PlButtonHandler, 4.2.3.>>
+|===
+
+
+<<<
+
+[#_PlButtonFinalize]
+==== PlButtonFinalize
+* *Function* +
+Performs overall finalization processing for buttons.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlButtonFinalize(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+Performs overall finalization processing for buttons.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from multiple threads
+|Allowed
+|Calls from multiple tasks
+|Allowed
+|Does this API block internally?
+|It blocks. If other PL BUTTON APIs are running in another context, it waits for completion before executing.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System Status after Error |Recovery Method
+|kPlErrInvalidState (Tentative)
+|PlButtonFinalize has already been executed.
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (Tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlButtonGetInfo]
+==== PlButtonGetInfo
+
+* *Function* +
+Retrieves information such as the total number of buttons on the camera.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlButtonGetInfo(PlButtonInfo *info)
+....
+
+* *Parameter Description* +
+**[OUT] PlButtonInfo *info**:: 
+Information about the buttons on the camera.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** This API can be used after executing PlButtonInitialize.
+** If info is NULL, it returns an error.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from multiple threads
+|Allowed
+|Calls from multiple tasks
+|Allowed
+|Does this API block internally?
+|It blocks. If other PL BUTTON APIs are running in another context, it waits for completion before executing.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System Status after Error |Recovery Method
+|kPlErrInvalidState (Tentative)
+|PlButtonInitialize has not been executed.
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (Tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (Tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrOpen (Tentative)
+|The specified button is not OPEN.
+|-
+|No impact
+|Not required
+
+|kPlErrCallback (Tentative)
+|Double callback registration error
+|-
+|No impact
+|Not required
+
+|kPlErrThread (Tentative)
+|Thread stopped error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlButtonRegisterHandler]
+==== PlButtonRegisterHandler
+
+* *Function* +
+Registers a handler to be executed when a button event occurs.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlButtonRegisterHandler(uint32_t button_id, PlButtonHandler handler, void *private_data)
+....
+
+* *Parameter Description* +
+**[IN] uint32_t button_id**:: 
+The button number for which the handler is to be registered. Select from CONFIG definitions.
+
+**[IN] <<#_PlButtonHandler, PlButtonHandler>> handler**:: 
+The handler itself. Returns an error if NULL.
+
+**[IN] void *private_data**:: 
+User data. NULL is acceptable.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** Registers a handler to be executed when a button event occurs.
+** This API can be used after executing PlButtonInitialize.
+** If the handler is already registered, it returns an error.
+** If handler is NULL, it returns an error.
+** The target button should be selected from the button_id members defined in CONFIG (e.g., for CONFIG_EXTERNAL_PL_BUTTON0_GPIO, the button_id is 0).
+** The handler runs on the PL-side thread, with the priority determined by CONFIG_EXTERNAL_PL_BUTTON_THREAD_PRIORITY.
+** The handler is executed either when PlButtonRegisterHandler is called or when a button interrupt is detected.
+
+TIP: If the system is powered on with a button pressed, the system may not detect the button state upon startup, so the handler is executed even during PlButtonRegisterHandler. This particular handler execution runs in the caller's thread.
+
+[#_button_callback]
+.Handler Execution Timing
+image::./images/button_callback.png[scaledwidth="100%",align="center"]
+
+[#_PlButtonRegisterHandler_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from multiple threads
+|Allowed
+|Calls from multiple tasks
+|Allowed
+|Does this API block internally?
+|It blocks. If other PL BUTTON APIs are running in another context, it waits for completion before executing.
+|===
+
+[#_PlButtonRegisterHandler_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System Status after Error |Recovery Method
+|kPlErrInvalidState (Tentative)
+|PlButtonInitialize has not been executed.
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (Tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (Tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrOpen (Tentative)
+|The specified button is not OPEN.
+|-
+|No impact
+|Not required
+
+|kPlErrCallback (Tentative)
+|Double callback registration error
+|-
+|No impact
+|Not required
+
+|kPlErrThread (Tentative)
+|Thread stopped error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlButtonUnregisterHandler]
+==== PlButtonUnregisterHandler
+* *Function* +
+Unregisters the handler for button events.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlButtonUnregisterHandler(uint32_t button_id)
+....
+
+* *Parameter Description* +
+**[IN] uint32_t button_id**:: 
+The button number for which the handler is to be unregistered. Select from CONFIG definitions.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+Unregisters the handler for the specified button.
+This API can be used after executing PlButtonInitialize.
+If the handler is not registered, it returns an error.
+Select the target button from the button_id members defined in CONFIG (e.g., for CONFIG_EXTERNAL_PL_BUTTON0_GPIO, the button_id is 0).
+If the handler for the target button is running, the API waits for completion before executing.
+
+[#_PlButtonUnregisterHandler_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from multiple threads
+|Allowed
+|Calls from multiple tasks
+|Allowed
+|Does this API block internally?
+|It blocks. If other PL BUTTON APIs are running in another context, it waits for completion before executing.
+If the handler for the target button is running, it waits for completion before executing.
+|===
+
+[#_PlButtonUnregisterHandler_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System Status after Error |Recovery Method
+|kPlErrInvalidState (Tentative)
+|PlButtonInitialize has not been executed.
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (Tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrOpen (Tentative)
+|The specified button is not OPEN.
+|-
+|No impact
+|Not required
+
+|kPlErrCallback (Tentative)
+|No callback registered error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlButtonOpen]
+==== PlButtonOpen
+* *Function* +
+[PL Internal API] Initializes the specified button.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlButtonOpen(uint32_t button_id)
+....
+
+* *Parameter Description* +
+**[IN] uint32_t button_id**:: 
+The button number to be initialized. Select from CONFIG definitions.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+Initializes the specified button. This is an internal API for PL.
+If an already open button is specified, it returns an error.
+
+[#_PlButtonOpen_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from multiple threads
+|Allowed
+|Calls from multiple tasks
+|Allowed
+|Does this API block internally?
+|It blocks. If other PL BUTTON APIs are running in another context, it waits for completion before executing.
+|===
+
+[#_PlButtonOpen_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System Status after Error |Recovery Method
+|kPlErrOpen (Tentative)
+|The specified button is already OPEN.
+|-
+|No impact
+|Not required
+
+|kPlErrMemory (Tentative)
+|Memory error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlButtonClose]
+==== PlButtonClose
+* *Function* +
+[PL Internal API] Performs the termination process for the specified button.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlButtonClose(uint32_t button_id)
+....
+
+* *Parameter Description* +
+**[IN] uint32_t button_id**:: 
+The target button number. Select from CONFIG definitions.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+Performs the termination process for the specified button. This is an internal API for PL.
+If a button that has already been closed is specified, it returns an error.
+
+[#_PlButtonClose_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Simultaneous Calls
+|Allowed
+|Calls from multiple threads
+|Allowed
+|Calls from multiple tasks
+|Allowed
+|Does this API block internally?
+|It blocks. If other PL BUTTON APIs are running in another context, it waits for completion before executing.
+|===
+
+[#_PlButtonClose_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System Status after Error |Recovery Method
+|kPlErrOpen (Tentative)
+|The specified button is not OPEN.
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+== Example API Calls
+
+Refer to <<#_button_seq, Sequence Overview>> for details.
+
+== Specific Notes and Component Explanations
+None
+
+== List of OSS Used
+None
+
+<<<
+
+== References
+None
+
+<<<
+
+== Version History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|Initial Version
+
+|0.0.2
+|- Added spaces around English words (for readability).
+- Changed READY/RUNNING to PL_BUTTON_READY/PL_BUTTON_RUNNING.
+- Updated hal_overview.adoc to reflect HalErrCode list (T.B.D.).
+- Updated the order of APIs in section 4.3: Changed PlButtonInitialize/PlButtonFinalize to public functions.
+- Added error code kPlErrUnlock.
+- Updated images (*.png) to English labels.
+
+|===

@@ -1,0 +1,1474 @@
+= HAL IOExp
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.3
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+本書では AITRIOS HAL I/F レイヤーの一つである、HAL IOExp の仕様について記載します。
+HAL IOExp の目的は、IOExpander のピンの出力反転の吸収や、IOExpander ピンへの割り込み設定など、IOExpander に関係する機能を担当することです。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|HAL
+|Hardware Abstract Layer. カメラ差分を吸収する層
+
+|PL
+|Porting Layer. カメラ/ OS 差分を吸収する層
+
+|I/F
+|Interface
+|===
+
+<<<
+
+== コンポーネントの説明
+
+HAL IOExp レイヤーは、カメラの IOExpander を制御することが目的となります。
+このモジュールはカメラ差分に影響されず、<<#_BuildConfig>> の内容によってカメラ差分を吸収することができます。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/ioexplib_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+
+HAL IOExp の使用シーケンス例を以下に示します。
+上位レイヤーは HalIoexpInitialize を実行後、HAL IOexp の API を使用して各種 IOExpander の制御機能を使うことができます。
+
+[#_button_seq]
+.シーケンス概要
+image::./images/ioexplib_seq.png[scaledwidth="100%",align="center"]
+
+==== 依存ブロック（HAL 内部向け）
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |リンク
+|HAL Driver
+|HAL ドライバを実装すめための HAL Driver I/F を実装しています。
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/driver/hal_driver_ja.adoc
+|===
+
+<<<
+
+=== 状態遷移
+HAL IOexp の取り得る状態を <<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|HAL_IOEXP_READY
+|HAL IOexp 未初期化。
+
+|HAL_IOEXP_RUNNING
+|HAL IOexp 初期化済み。
+
+|IOEXP_CLOSE
+|ハンドル未取得。HAL_IOEXP_RUNNING のサブ状態です。
+
+|IOEXP_OPEN
+|ハンドル取得済み。HAL_IOEXP_RUNNING のサブ状態です。
+|===
+
+HAL IOexp では <<#_FigureState>> に示す状態遷移を行います。
+また、各APIでエラーが発生した場合には状態遷移は起こりません。
+
+[#_FigureState]
+.状態遷移図
+image::./images/ioexplib_state.png[scaledwidth="100%",align="center"]
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでの API 呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_HalErrCode, HalErrCode 一覧>> を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|状態 
+.2+|HAL_IOEXP_READY
+2+|HAL_IOEXP_RUNNING
+|IOEXP_CLOSE
+|IOEXP_OPEN
+.20+|API 名
+
+|``**HalIoexpInitialize**``
+|HAL_IOEXP_RUNNING
+|×
+|×
+
+|``**HalIoexpFinalize**``
+|×
+|HAL_IOEXP_READY
+|HAL_IOEXP_READY
+
+|``**HalIoexpOpen**``
+|×
+|IOEXP_OPEN
+|×
+
+|``**HalIoexpClose**``
+|×
+|×
+|IOEXP_CLOSE
+
+|``**HalIoexpSetConfigure**``
+|×
+|×
+|IOEXP_OPEN
+
+|``**HalIoexpGetConfigure**``
+|×
+|×
+|IOEXP_OPEN
+
+|``**HalIoexpWrite**``
+|×
+|×
+|IOEXP_OPEN
+
+|``**HalIoexpWriteMulti**``
+|×
+|×
+|IOEXP_OPEN
+
+|``**HalIoexpRead**``
+|×
+|×
+|IOEXP_OPEN
+
+|``**HalIoexpRegisterIrqHandler**``
+|×
+|×
+|IOEXP_OPEN
+
+|``**HalIoexpUnregisterIrqHandler**``
+|×
+|×
+|IOEXP_OPEN
+|===
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|HAL IOexp API ハンドルの取得/解放
+|HAL IOexp API を使用するためのハンドルを取得/解放します。
+|<<#_Function1>>
+
+|IOExpander ピンの設定/取得
+|IOExpander ピンの入出力方向などを設定/取得します。
+|<<#_Function2>>
+
+|IOExpander ピンの値設定/取得
+|IOExpander ピンの出力値を設定/入出力値を取得します。
+|<<#_Function3>>
+
+|IOExpander ピンの割り込み設定
+|IOExpander ピンの割り込みを有効/無効にします。
+|<<#_Function4>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== HAL IOexp API ハンドルの取得/解放
+機能概要::
+HAL IOexp API を使用するためのハンドルを取得/解放する。
+前提条件::
+HAL IOexp が使用可能状態であること。
+機能詳細::
+ハンドルの取得の詳細は <<#_HalIoexpOpen, HalIoexpOpen>> を参照してください。 +
+ハンドルの解放の詳細は <<#_HalIoexpClose, HalIoexpClose>> を参照してください。
+詳細挙動::
+ハンドルの取得の詳細は <<#_HalIoexpOpen, HalIoexpOpen>> を参照してください。 +
+ハンドルの解放の詳細は <<#_HalIoexpClose, HalIoexpClose>> を参照してください。
+エラー時の挙動、復帰方法::
+ハンドルの取得の詳細は <<#_HalIoexpOpen, HalIoexpOpen>> を参照してください。 +
+ハンドルの解放の詳細は <<#_HalIoexpClose, HalIoexpClose>> を参照してください。
+検討事項::
+なし
+
+[#_Function2]
+==== IOExpander ピンの IOexp 設定/取得
+機能概要::
+IOExpander ピンの入出力方向などを設定/取得します。
+前提条件::
+IOExpander が使用可能状態であること。
+機能詳細::
+設定の詳細は <<#_HalIoexpSetConfigure, HalIoexpSetConfigure>> を参照してください。 +
+取得の詳細は <<#_HalIoexpGetConfigure, HalIoexpGetConfigure>> を参照してください。
+詳細挙動::
+設定の詳細は <<#_HalIoexpSetConfigure, HalIoexpSetConfigure>> を参照してください。 +
+取得の詳細は <<#_HalIoexpGetConfigure, HalIoexpGetConfigure>> を参照してください。
+エラー時の挙動、復帰方法::
+設定の詳細は <<#_HalIoexpSetConfigure, HalIoexpSetConfigure>> を参照してください。 +
+取得の詳細は <<#_HalIoexpGetConfigure, HalIoexpGetConfigure>> を参照してください。
+検討事項::
+なし
+
+[#_Function3]
+==== IOExpander ピンの値設定/取得
+機能概要::
+IOExpander ピンの出力値を設定/入出力値を取得します。
+前提条件::
+IOExpander が使用可能状態であること。
+機能詳細::
+値設定の詳細は <<#_HalIoexpWrite, HalIoexpWrite>> を参照してください。 +
+値設定の詳細は <<#_HalIoexpWriteMulti, HalIoexpWriteMulti>> を参照してください。 +
+値取得の詳細は <<#_HalIoexpRead, HalIoexpRead>> を参照してください。
+詳細挙動::
+値設定の詳細は <<#_HalIoexpWrite, HalIoexpWrite>> を参照してください。 +
+値設定の詳細は <<#_HalIoexpWriteMulti, HalIoexpWriteMulti>> を参照してください。 +
+値取得の詳細は <<#_HalIoexpRead, HalIoexpRead>> を参照してください。
+エラー時の挙動、復帰方法::
+値設定の詳細は <<#_HalIoexpWrite, HalIoexpWrite>> を参照してください。 +
+値設定の詳細は <<#_HalIoexpWriteMulti, HalIoexpWriteMulti>> を参照してください。 +
+値取得の詳細は <<#_HalIoexpRead, HalIoexpRead>> を参照してください。
+検討事項::
+なし
+
+[#_Function4]
+==== IOExpander ピンの割り込み設定
+機能概要::
+IOExpander ピンの割り込みを有効/無効にします。
+前提条件::
+IOExpander が使用可能状態であること。
+機能詳細::
+割り込み有効の詳細は <<#_HalIoexpRegisterIrqHandler, HalIoexpRegisterIrqHandler>> を参照してください。 +
+割り込み無効の詳細は <<#_HalIoexpUnregisterIrqHandler, HalIoexpUnregisterIrqHandler>> を参照してください。
+詳細挙動::
+割り込み有効の詳細は <<#_HalIoexpRegisterIrqHandler, HalIoexpRegisterIrqHandler>> を参照してください。 +
+割り込み無効の詳細は <<#_HalIoexpUnregisterIrqHandler, HalIoexpUnregisterIrqHandler>> を参照してください。
+エラー時の挙動、復帰方法::
+割り込み有効の詳細は <<#_HalIoexpRegisterIrqHandler, HalIoexpRegisterIrqHandler>> を参照してください。 +
+割り込み無効の詳細は <<#_HalIoexpUnregisterIrqHandler, HalIoexpUnregisterIrqHandler>> を参照してください。
+検討事項::
+なし
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack 最大使用量
+|HAL IOexp が使用する最大スタックサイズ
+|<<#_stack, 3.7.1.>>
+
+|通常ヒープ最大使用量
+|HAL IOexp が使用する最大ヒープサイズ
+|<<#_heap, 3.7.2.>>
+
+|static データ最大使用量
+|HAL IOexp が使用する最大 static データサイズ
+|<<#_static, 3.7.3.>>
+
+|パフォーマンス
+|HAL IOexp が提供する機能のパフォーマンス
+|<<#_paformance, 3.7.4.>>
+|===
+
+=== コンポーネントの非機能要件説明
+==== Stack 最大使用量
+[#_stack]
+2048 バイト
+
+==== ヒープ最大使用量
+[#_heap]
+使用する ioexp_id 1 つにつき、75 バイト +
+使用する device_id 1 つにつき、30 バイト
+
+* *例) T5 の場合* +
+** ioexp_id：0～31 (32個) +
+32 × 75 バイト = 2400 +
+** device_id：0～1 (2個) +
+2 × 30 バイト = 60 バイト
+
+[#_static]
+==== static データ最大使用量
+150 バイト
+
+[#_paformance]
+==== パフォーマンス
+1 ミリ秒未満
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum HalErrCode
+|API の実行結果を定義する列挙型です。
+|<<#_HalErrCode, 4.2.1.>>
+
+|HalIoexpHandle
+|Hal IOexp API を使用するためのハンドラを表す構造体です。
+|<<#_HalIoexpHandle, 4.2.2.>>
+
+|enum HalIoexpValue
+|IOExpander ピンの値を表す列挙型です。
+|<<#_HalIoexpValue, 4.2.3.>>
+
+|HalIoexpIrqHandler
+|IOexpander の割り込みハンドラを表す関数ポインタです。
+|<<#_HalIoexpIrqHandler, 4.2.4.>>
+
+|enum HalIoexpIrqType
+|GPIO 割り込みトリガーを表す列挙型です。
+|<<#_HalIoexpIrqType, 4.2.5.>>
+
+|struct HalIoexpConfig
+|IOExpander ピンの設定を表す構造体です。
+|<<#_HalIoexpConfig, 4.2.6.>>
+
+|enum HalIoexpDirection
+|IOExpander ピンの入出力方向を表す列挙型です。
+|<<#_HalIoexpDirection, 4.2.7.>>
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> に API の一覧を示します。
+
+[#_TablePublicAPI]
+[width="100%", cols="30%,55%,15%",options="header"]
+.上位レイヤーから直接使用可能な API
+|===
+|API 名 |概要 |節番号
+|HalIoexpInitialize
+|HAL IOexp を使用可能状態にします。
+|<<#_HalIoexpInitialize, 4.3.1.>>
+|HalIoexpFinalize
+|HAL IOexp を使用不可状態にします。
+|<<#_HalIoexpFinalize, 4.3.2.>>
+|HalIoexpOpen
+|HAL IOexp ハンドルを取得します。
+|<<#_HalIoexpOpen, 4.3.3.>>
+|HalIoexpClose
+|HAL IOexp ハンドルを解放します。
+|<<#_HalIoexpClose, 4.3.4.>>
+|HalIoexpSetConfigure
+|IOExpander ピンの入出力方向などを設定します。
+|<<#_HalIoexpSetConfigure, 4.3.5.>>
+|HalIoexpGetConfigure
+|IOExpander ピンの入出力方向などを取得します。
+|<<#_HalIoexpGetConfigure, 4.3.6.>>
+|HalIoexpWrite
+|IOExpander ピンに値を設定します。
+|<<#_HalIoexpWrite, 4.3.7.>>
+|HalIoexpWriteMulti
+|IOExpander ピンに複数の値を設定します。
+|<<#_HalIoexpWrite, 4.3.8.>>
+|HalIoexpRead
+|IOExpander ピンの値を取得します。
+|<<#_HalIoexpRead, 4.3.9.>>
+|HalIoexpRegisterIrqHandler
+|IOExpander ピンの割り込みを有効にします。
+|<<#_HalIoexpRegisterIrqHandler, 4.3.10.>>
+|HalIoexpUnregisterIrqHandler
+|IOExpander ピンの割り込みを無効にします。
+|<<#_HalIoexpUnregisterIrqHandler, 4.3.11.>>
+|===
+
+<<<
+[#_BuildConfig]
+==== ビルドコンフィグ (esp32s3 の場合)
+HAL IOexp の設定情報をビルドコンフィグに記載します。
+
+* *書式* +
+[source, C]
+....
+CONFIG_EXTERNAL_HAL_IOEXP_NUM=32
+CONFIG_HAL_IOEXP0_DEV_ID=0
+CONFIG_HAL_IOEXP0_PIN=0
+CONFIG_HAL_IOEXP0_REVERSE=y
+CONFIG_HAL_IOEXP0_IRQ=0
+CONFIG_HAL_IOEXP1_DEV_ID=1
+CONFIG_HAL_IOEXP1_PIN=0
+CONFIG_HAL_IOEXP1_REVERSE=n
+CONFIG_HAL_IOEXP1_IRQ=1
+...
+CONFIG_HAL_IOEXP31_DEV_ID=2
+CONFIG_HAL_IOEXP31_PIN=2
+CONFIG_HAL_IOEXP31_REVERSE=y
+CONFIG_HAL_IOEXP31_IRQ=2
+....
+
+[#_BuildConfig_table]
+.BuildConfig の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|CONFIG_EXTERNAL_HAL_IOEXP_NUM
+|使用する ioexp_id の個数。最大値は 32 です。 +
+CONFIG_EXTERNAL_HAL_IOEXP_NUM = 32 の場合、指定出来る ioexp_id の範囲は 0～31 です。
+|CONFIG_HAL_IOEXP*_DEV_ID
+|ioexp_id=* に紐づく device_id。
+|CONFIG_HAL_IOEXP*_PIN
+|ioexp_id=* に紐づく実際の IOExpander チップのピン番号。
+|CONFIG_HAL_IOEXP*_REVERSE
+|ioexp_id=* に紐づく出力反転フラグ。
+|CONFIG_HAL_IOEXP*_IRQ
+|ioexp_id=* に紐づく IRQ 番号。
+|===
+<<<
+
+=== データ型定義
+[#_HalErrCode]
+==== HalErrCode
+API の実行結果を定義する列挙型です。
+(T.B.D.)
+
+[#_HalIoexpHandle]
+==== HalIoexpHandle
+Hal IOexp API を使用するためのハンドラを表す構造体です。
+
+* *書式* +
+[source, C]
+....
+typedef void *HalIoexpHandle
+....
+
+[#_HalIoexpValue]
+==== HalIoexpValue
+IOExpander ピンの値を表す列挙型です。
+
+* *書式*
+[source, C]
+....
+typedef enum {
+  kHalIoexpValueHigh = 0,
+  kHalIoexpValueLow,
+  kHalIoexpValueMax,
+} HalIoexpValue
+....
+
+* *値*
+
+[#_HalIoexpValueValue]
+.HalIoexpValue の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kHalIoexpValueHigh
+|GPIO 値が High 状態
+|kHalIoexpValueLow
+|GPIO 値が Low 状態
+|kHalIoexpValueMax
+|Enum 最大値
+|===
+
+[#_HalIoexpIrqHandler]
+==== HalIoexpIrqHandler
+IOexpander 割り込みハンドラ本体を表す関数ポインタです。 +
+システムが IOexpander 割り込みを検出した際に実行されます。
+
+* *書式* +
+[source, C]
+....
+typedef void (*HalIoexpIrqHandler)(HalIoexpValue val, void *private_data)
+....
+
+* *引数の説明* +
+**[OUT] HalIoexpValue val**::
+IOExpander ピンの値がセットされます。
+
+**[OUT] void *private_data**::
+HalIoexpRegisterIrqHandler で指定された private_data がセットされます。
+
+[#_HalIoexpIrqType]
+==== HalIoexpIrqType
+IOExp 割り込みトリガーを表す列挙型です。
+
+* *書式*
+[source, C]
+....
+typedef enum {
+  kHalIoexpIrqTypeRisingEdge = 0,
+  kHalIoexpIrqTypeFallingEdge,
+  kHalIoexpIrqTypeBothEdge,
+  kHalIoexpIrqTypeLowLevel,
+  kHalIoexpIrqTypeHighLevel,
+  kHalIoexpIrqTypeMax
+} HalIoexpIrqType;
+....
+
+* *値*
+
+[#_HalIoexpIrqTypeValue]
+.HalIoexpIrqType の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kHalIoexpIrqTypeRisingEdge
+|信号レベルが Low から High に変化
+|kHalIoexpIrqTypeFallingEdge
+|信号レベルが High から Low に変化
+|kHalIoexpIrqTypeBothEdge
+|信号レベルが変化
+|kHalIoexpIrqTypeLowLevel
+|信号レベルが Low のとき常にトリガー
+|kHalIoexpIrqTypeHighLevel
+|信号レベルが High のとき常にトリガー
+|kHalIoexpIrqTypeMax
+|Enum 最大値
+|===
+
+[#_HalIoexpConfig]
+==== HalIoexpConfig
+IOExpander ピンの設定を表す構造体です。
+
+* *書式* +
+[source, C]
+....
+typedef struct {
+  HalIoexpDirection direction;
+} HalIoexpConfig;
+....
+
+[#_HalIoexpConfig_table]
+.HalIoexpConfigの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|HalIoexpDirection direction;
+|ピンの入出力方向
+|===
+
+[#_HalIoexpDirection]
+==== HalIoexpDirection
+IOExpander ピンの入出力方向を表す列挙型です。
+
+* *書式* +
+[source, C]
+....
+typedef enum {
+  kHalIoexpDirectionInput = 0,
+  kHalIoexpDirectionOutput,
+  kHalIoexpDirectionMax
+} HalIoexpDirection;
+....
+
+[#_HalIoexpDirection_table]
+.HalIoexpDirection の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kHalIoexpDirectionInput
+|入力方向
+|kHalIoexpDirectionOutput
+|出力方向
+|kHalIoexpDirectionMax
+|enum 最大値
+|===
+
+<<<
+
+=== 各 API の説明
+
+
+[#_HalIoexpInitialize]
+==== HalIoexpInitialize
+
+* *機能* +
+HAL IOexp を使用可能状態にします。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpInitialize(void)
+....
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL IOexp を使用可能状態にします。
+
+[#_HalIoexpInitialize]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。ただし、二重に Initialize を実行した場合、エラーになります。
+|===
+
+[#_HalIoexpInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|既に使用可能状態になっている。
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalIoexpFinalize]
+==== HalIoexpFinalize
+* *機能* +
+HAL IOexp を使用不可状態にします。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL IOexp を使用不可状態にします。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** 割り込み登録が解除されていないハンドルが存在する場合、割り込み登録の解除を行います。
+** 取得済みのハンドルがある場合、ハンドルを解放します。
+
+[#_HalIoexpFinalize]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。HAL impl 実装者は、HAL API 内で実行してください。ただし、二重に Finalize を実行した場合、エラーになります。
+|===
+
+[#_HalIoexpFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalIoexpOpen]
+==== HalIoexpOpen
+* *機能* +
+IOExpander を使用可能状態にします。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpOpen(uint32_t ioexp_id, HalIoexpHandle *handle)
+....
+
+* *引数の説明* +
+**[IN] uint32_t ioexp_id**::
+ハンドルを取得したい IOExpander の ID。
+
+**[OUT] <<#_HalIoexpHandle, HalIoexpHandle>> *handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL IOexp ハンドルを取得します。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** 存在しない ioexp_id が入力された場合、エラーを返します。
+** ハンドル取得済みの ioexp_id が入力された場合、エラーを返します。
+
+[#_HalIoexpOpen]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpOpen_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalIoexpClose]
+==== HalIoexpClose
+* *機能* +
+IOExpander を使用不可状態にします。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpClose(const HalIoexpHandle handle)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL IOexp ハンドルを解放します。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** IOExpander が動作中の場合、完了を待ってから実行されます。
+** HalIoexpUnregisterIrqHandler によって割り込み登録の解除を行っていないハンドルが入力された場合、割り込み登録を解除した後にハンドルを解放します。
+
+[#_HalIoexpClose]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpClose_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalIoexpSetConfigure]
+==== HalIoexpSetConfigure
+* *機能* +
+IOExpander ピンに入出力方向などの情報を設定します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpSetConfigure(const HalIoexpHandle handle, const HalIoexpConfig *config)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。 +
+実際のIOExpander チップのピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+**[IN] const <<#_HalIoexpConfig, HalIoexpConfig>> *config**::
+IOExpander の設定情報。NULL の場合エラーを返します。
+
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピンに IOexp の入出力方向などを設定します。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 存在しないピン番号が入力された場合、エラーを返します。
+** HalIoexpRegisterIrqHandler によって割り込みピンとして登録されているハンドルが入力された場合、本 API はエラーを返します。
+
+[#_HalIoexpSetConfigure]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpSetConfigure_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalIoexpConfigError (仮)
+|Ioexp情報設定エラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+<<<
+
+[#_HalIoexpGetConfigure]
+==== HalIoexpGetConfigure
+* *機能* +
+IOExpander ピンから入出力方向などの情報を取得します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpGetConfigure(const HalIoexpHandle handle, HalIoexpConfig *config)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。 +
+実際の IOExpander チップのピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+**[OUT] <<#_HalIoexpConfig, HalIoexpConfig>> *config**::
+取得した IOExpander の設定情報。NULL の場合エラーを返します。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピンに IOexp の入出力方向などを取得します。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 存在しないピン番号が入力された場合、エラーを返します。
+
+[#_HalIoexpGetConfigure]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpGetConfigure_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+<<<
+
+[#_HalIoexpWrite]
+==== HalIoexpWrite
+* *機能* +
+IOExpander ピンに値を設定します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpWrite(const HalIoexpHandle handle, HalIoexpValue value)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。 +
+実際の IOExpander チップのピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+**[IN] <<#_HalIoexpValue, HalIoexpValue>> value**::
+設定する IOExpander ピンの値
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピンに値を設定します。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 存在しないピン番号が入力された場合、エラーを返します。
+** HalIoexpRegisterIrqHandler によって割り込みピンとして登録されているピン番号が入力された場合、エラーを返します。
+** 指定したピン番号が Output として設定されている場合、エラーを返します。
+
+[#_HalIoexpWrite_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpWrite_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidValue (仮)
+|値設定エラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalIoexpWriteMulti]
+==== HalIoexpWriteMulti
+* *機能* +
+IOExpander ピンに複数の値を設定します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpWriteMulti(const HalIoexpHandle *handle_array, uint32_t handle_num, const HalIoexpValue *value_array, uint32_t value_num)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> *handle_array**::
+HAL IOexp ハンドル配列。NULL の場合はエラーを返します。 +
+実際の IOExpander チップのデバイス ID やピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+**[IN] uint32_t handle_num**::
+HAL IOexp ハンドル配列の数。
+0の場合はエラーを返します。
+
+**[IN] const <<#_HalIoexpValue, HalIoexpValue>> *value_array**::
+設定する IOExpander ピンの値の配列。
+
+**[IN] uint32_t value_num**::
+設定する IOExpander ピンの値の配列の数。
+0の場合はエラーを返します。
+handle_numと異なる数値の場合、エラーを返します。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピン(複数)に値を設定します。
+** 指定したHAL IOexp ハンドルとIOExpander ピンの値が対になるように配列を作成し、指定してください。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 存在しないピン番号が入力された場合、エラーを返します。
+** HalIoexpRegisterIrqHandler によって割り込みピンとして登録されているピン番号が入力された場合、エラーを返します。
+** 指定したピン番号が Output として設定されている場合、エラーを返します。
+** 指定したHAL IOexp ハンドル配列の各デバイスIDで異なるデバイス ID が存在する場合、エラーを返します。
+** 指定したHAL IOexp ハンドル配列の各ピン番号で同一のピン番号が存在する場合、エラーを返します。
+
+
+[#_HalIoexpWriteMulti_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpWriteMulti_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidValue (仮)
+|値設定エラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalIoexpRead]
+==== HalIoexpRead
+* *機能* +
+IOExpander ピンの値を取得します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpRead(const HalIoexpHandle handle, HalIoexpValue *value)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。 +
+実際の IOExpander チップのピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+**[OUT] <<#_HalIoexpValue, HalIoexpValue>> *value**::
+取得した PIN の値。NULL の場合エラーを返します。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピンの値を取得します。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 存在しないピン番号が入力された場合、エラーを返します。
+
+[#_HalIoexpRead_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpRead_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidValue (仮)
+|値取得エラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+
+[#_HalIoexpRegisterIrqHandler]
+==== HalIoexpRegisterIrqHandler
+* *機能* +
+IOExpander ピンの割り込みを有効にします。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpRegisterIrqHandler(const HalIoexpHandle handle, HalIoexpIrqHandler handler, void *private_data, HalIoexpIrqType type)
+....
+
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。 +
+実際の IOExpander チップのピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+**[IN] <<#_HalIoexpIrqHandler, HalIoexpIrqHandler>> handler**::
+割り込みハンドラ。NULL の場合はエラーを返します。
+
+**[IN] void *private_data**::
+割り込みハンドラ実行時にセットされるパラメータ。NULL でも問題ありません。
+
+**[IN] <<#_HalIoexpIrqType, HalIoexpIrqType>> type**::
+検知したい割り込み種別。
+
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピンの割り込みを有効にします。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 存在しないピン番号が入力された場合、エラーを返します。
+** 割り込み登録済みのピン番号が指定された場合、エラーを返します。
+
+[#_HalIoexpRegisterIrqHandler_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+他のコンテキストでHAL IOExpLib API が実行中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpRegisterIrqHandler_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+
+<<<
+
+[#_HalIoexpUnregisterIrqHandler]
+==== HalIoexpUnregisterIrqHandler
+* *機能* +
+IOExpander ピンの割り込みを無効にします。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalIoexpUnregisterIrqHandler(const HalIoexpHandle handle)
+....
+
+* *引数の説明* +
+**[IN] const <<#_HalIoexpHandle, HalIoexpHandle>> handle**::
+HAL IOexp ハンドル。NULL の場合はエラーを返します。 +
+実際の IOExpander チップのピン番号は取得したハンドルの ioexp_id に紐付けられます。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** IOExpander ピンの割り込みを無効にします。
+** 本 API は HalIoexpInitialize の実行後に使用可能です。
+** HalIoexpOpen で取得したハンドルを使用してください。
+** 割り込みハンドラが動作中の場合、完了を待ってから実行されます。
+** 存在しないピン番号が入力された場合、エラーを返します。
+** 割り込み登録されていないピン番号が入力された場合、エラーを返します。
+
+[#_HalIoexpUnregisterIrqHandler_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL IOexp API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalIoexpUnregisterIrqHandler_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalIoexpInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kHalErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+== API 使用時の呼び出し例
+=== HalIoexpWrite までの一例
+image::./images/ioexplib_write.png[scaledwidth="100%",align="center"]
+
+=== HalIoexpRead までの一例
+image::./images/ioexplib_read.png[scaledwidth="100%",align="center"]
+
+
+=== HalIoExpRegisterIRQHandler の一例
+image::./images/ioexplib_register.png[scaledwidth="100%",align="center"]
+
+== 使用している OSS の一覧
+なし
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+
+|0.0.2
+|- 全体 : 英単語の前後に半角空白を挿入 (読みやすくするため) +
+- 用語 : OSAL の記述を削除し、PL を追記 +
+- HAL Config の記述を、ビルドコンフィグに変更 +
+- Ioexplib の記述を HAL IOexp に変更 +
+- HalInitialize/HalFinalize を HalIoexpInitialize/HalIoexpFinalize に変更 +
+- 依存ブロックの OSAL List と Hal Driver IOexpander を削除 +
+- HAL_READY/HAL_RUNNING を HAL_IOEXP_READY/HAL_IOEXP_RUNNING に変更 +
+- hal_overview.adoc の記述を HalErrCode 一覧 (T.B.D.) に変更 +
+- 4.3. 各 API の説明 : HalIoexpInitialize/HalIoexpFinalize を Public 関数に変更し、API 一覧の並びも変更 +
+- HAL内部でのみ使用されるAPI 項を削除 +
+- エラーコード kHAL* を kHalErr* に変更 +
+- 図 (*.png) を英語表記に変更
+|0.0.3
+|- HalIoexpWriteMulti API 追加 +
+- 4.3. 各 API の説明 :以下のリンクの表示名を変更。 +
+  HalIoexpHandle, HalIoexpValue, HalIoexpIrqHandler, HalIoexpIrqType, HalIoexpConfig
+|===

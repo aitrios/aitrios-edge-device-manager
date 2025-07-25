@@ -1,0 +1,4636 @@
+= AITRIOS JSON 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.6
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本仕様書はJSON作成・解析の機能を有するParser JSONモジュールを示します。 +
+前提として、本モジュールはWASMから呼ばれることはなく、ネイティブからのみ呼ばれるものとします。
+
+<<<
+
+== 用語 
+共通のものができ次第差し替え予定です。 +
+
+=== ESF
+ESF(AITRIOS Edge Software Framework) +
+
+* 各種アプリから実行可能なAITRIOS基準のAPIを持つレイヤです。
+* 基本的にはOS、チップ等の変更影響を受けません。
+* アプリの機能の根幹となるため、SSSが管理します。
+* ブロック単位で分離することで、センサ等を変更する際の影響を極力小さくします。
+
+=== JSON
+JSON(JavaScript Object Notation) +
+
+* テキストベースで、軽量なデータ交換を行うためのフォーマットです。 +
+* JSONを挟み込むことにより異なるプログラミング言語でのデータのやり取りが可能になります。
+* avaScriptやC++、Python、PHP、など様々な言語でサポートされています。
+
+=== parse
+* 一定の書式や、文法によって記述されたデータを解析し、プログラムで扱えるようなデータ構造の集合体へ変換する処理を表します。
+* 本書におけるparse処理は、文字列をJSON Valueに変換するdeserialize処理に該当します。
+
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+
+<<#_Software>>通りの構成になっており、アプリからJSONの作成、解析機能を有していて、JSONのOSSをラップして呼び出すモジュールとなっています。 +
+
+[#_Software]
+.構成図
+[{mermaid_block}]
+----
+graph TB;
+
+system[App]
+
+subgraph ESF
+  subgraph parser
+    subgraph json[JSON]
+      oss[JSON OSS]
+    end
+  end
+  hal[[HAL]]
+end
+
+system --> |serialize/deserialize| json
+json  --> |malloc/free| hal
+----
+
+
+
+<<<
+
+=== コンポーネントの詳細説明
+ハンドル機能部にて各機能を管理をしており、必要に応じたAPIを呼び出すことで各機能の実行が可能です。
+
+[#_SoftwareDetail]
+.詳細図
+[{mermaid_block}]
+----
+graph TB;
+
+app[App]
+
+subgraph JSON
+direction TB
+    func[各機能部]
+    handle[(ハンドル)]
+    OSS[OSS]
+end
+
+app --> |各機能呼び出し|func --> |malloc/free メモリアクセス|handle
+func --> |呼び出す|OSS
+----
+
+
+<<<
+
+=== 状態遷移
+状態遷移はありません。
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|ハンドル機能
+|本ソフトウェアブロックのハンドルの取得・解放機能を提供します。
+|<<#_Function1>>
+
+|構造化機能
+|JSONのシリアライズ・デシリアライズ機能を提供します。
+|<<#_Function2>>
+
+|Object機能
+|JSONのオブジェクト構造型の機能を提供すします。
+|<<#_Function3>>
+
+|Array機能
+|JSONの配列構造型の機能を提供します。
+|<<#_Function4>>
+
+|String機能
+|JSONの文字列型の機能を提供します。
+|<<#_Function5>>
+
+|Number機能
+|JSONの数値型（整数、実数）の機能を提供します。
+|<<#_Function6>>
+
+|Boolean機能
+|JSONの真偽型の機能を提供します。
+|<<#_Function7>>
+
+|Null機能
+|JSONのNull型の機能を提供します。
+|<<#_Function8>>
+
+|JSON Value機能
+|JSONのValueに関する機能を提供します。
+|<<#_Function9>>
+|===
+
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== ハンドル機能
+* 機能概要 +
+ハンドルの取得・解放機能を提供します。 +
+
+* 前提条件 +
+前提条件はありません。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。 +
+    **** メモリの確保 +
+    **** メモリの解放 +
+
+*** ハンドル機能部でメモリの確保/解放を行うことで、他機能部でメモリを意識する必要がなくなります。 +
+
+    ** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#hundleapi>>
+
+
+[#_Function2]
+==== 構造化機能
+* 機能概要 +
+JSONのシリアライズ・デシリアライズ機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動 +
+    *** 下記APIを有する機能部になります。 +
+    **** JSON Valueを文字列に変換するシリアライズ機能 +
+    **** 文字列をJSON Valueに変換するデシリアライズ機能
+
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#structuringapi>>
+
+[#_Function3]
+==== Object機能
+* 機能概要 +
+JSONのオブジェクト構造型に関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。 +
+    **** 空のObject Valueを作成 +
+    **** Keyを指定してObject ValueからJSON Valueを取得 +
+    **** Keyを指定してObject ValueにJSON Valueを設定 +
+    **** Keyを指定してObject ValueからJSON Valueを削除 +
+    **** JSON Valueを初期化し空のObject Valueにする +
+    **** Object Valueの要素数を取得 +
+    **** Indexを指定してObject ValueからKeyとValueを取得 +
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#objectapi>>
+
+[#_Function4]
+==== Array機能
+* 機能概要 +
+JSONの配列構造型に関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。 +
+    **** 空のArray Valueを作成 +
+    **** Indexを指定してArray ValueからJSON Valueを取得 +
+    **** Array Valueの末尾にJSON Valueを追加 + 
+    **** Indexを指定してArray ValueのJSON Valueを置換 +
+    **** Indexを指定してArray ValueからJSON Valueを削除 + 
+    **** JSON Valueを初期化し空のArray Valueにする +
+    **** Array Valueの要素数を取得
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#arrayapi>>
+
+[#_Function5]
+==== String機能
+* 機能概要 +
+JSONの文字列型に関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。 +
+    **** String Valueを作成 +
+    **** String Valueから文字列（エスケープ処理なし）を取得 +
+    **** JSON Valueに文字列（エスケープ処理なし）を設定
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#stringapi>>
+
+[#_Function6]
+==== Number機能
+* 機能概要 +
+JSONの数値型（整数、実数）に関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。 +
+    **** 整数、実数でNumber Valueを作成 +
+    **** Number Valueから整数値、実数値を取得 +
+    **** JSON Valueに整数値、実数値を設定
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#numberapi>>
+
+[#_Function7]
+==== Boolean機能
+* 機能概要 +
+JSONの真偽型に関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。
+    **** Boolean Valueを作成
+    **** Boolean Valueから真偽値を取得
+    **** JSON Valueに真偽値を設定
+    
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#booleanapi>>
+
+[#_Function8]
+==== Null機能
+* 機能概要 +
+JSONのNull型に関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。
+    **** Null Valueを作成
+    **** JSON ValueにNullを設定
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#nullapi>>
+
+[#_Function9]
+==== JSON Value機能
+* 機能概要 +
+JSONのValueに関する機能を提供します。
+* 前提条件 +
+ハンドルを取得していることが前提です。
+* 機能詳細
+    ** 詳細挙動
+    *** 下記APIを有する機能部になります。
+    **** JSON Valueのコピー
+    **** JSON Valueの型取得
+    
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#jsonvalueapi>>
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+目標とするパフォーマンス、メモリ使用量について目安を記載します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="20%,10%,50%,10%",options="header"]
+|===
+|機能名 |数値 |概要 |節番号
+|連続実行処理時間
+|1ms以下
+|最大かかる処理時間です。
+|<<#_NonFunction1>>
+
+|Stackメモリ使用量
+|2KB
+|最大で使用するStackメモリサイズを示します。
+|<<#_NonFunction2>>
+
+|ヒープメモリ使用量
+|16KB
+|最大で使用するヒープメモリサイズを示します。
+|<<#_NonFunction3>>
+
+|スレッド使用数
+|未使用
+|使用するスレッド数を示します。
+|<<#_NonFunction4>>
+
+|staticメモリ使用
+|128byte
+|最大で使用するstaticメモリサイズを示します。
+|<<#_NonFunction5>>
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_NonFunction1]
+==== 連続実行処理時間
+データサイズに左右されますが、基本的には1ms以下で想定しています。
+[#_NonFunction2]
+==== Stackメモリ使用量
+Stackメモリは最大で2KB使用します。
+[#_NonFunction3]
+==== ヒープメモリ使用量
+ヒープメモリは最大で16KB使用します。
+[#_NonFunction4]
+==== スレッド使用数
+スレッドは未使用になります。
+[#_NonFunction5]
+==== staticメモリ使用量
+staticメモリは最大で128byte使用します。
+
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== Kconfig
+
+[#_TableKconfig]
+.コンフィグ一覧
+[width="100%", cols="30%,25%,45%a",options="header"]
+|===
+|コンフィグ名 |デフォルト値  |概要
+
+|EXTERNAL_CODEC_JSON_BUFFER_SIZE
+|4096
+|Memory Managerのハンドルを使用する際に確保する通常ヒープメモリのバッファサイズです。
+
+|EXTERNAL_CODEC_JSON_MEM_HANDLE_MAX
+|3
+|JSONモジュールのハンドル1つあたりのMemory Managerのハンドルを保持できる最大数です。 +
+
+|EXTERNAL_JSON_UTILITY_LOG_ENABLE
+|y
+|Utility Logを有効化します。
+
+|===
+
+<<<
+
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfJsonValueType
+|JSONのデータ型を表す列挙型です。
+|<<#_EsfJsonValueType>>
+
+|EsfJsonErrorCode
+|本モジュールのエラーコードを表す列挙型です。
+|<<#_EsfJsonErrorCode>>
+
+|EsfJsonHandle
+|JSONモジュールの操作ハンドルです。 +
+ハンドルの内部型は変更される可能性があるため、ユーザーは透過的に扱ってください。
+|<<#_EsfJsonHandle>>
+
+|EsfJsonValue
+|デシリアライズされたJSONの各データにアクセスするためのハンドルです。 +
+ハンドルの内部型は変更される可能性があるため、ユーザーは透過的に扱ってください。
+|<<#_EsfJsonValue>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="20%,60%,10%",options="header"]
+|===
+|API名 |概要 |節番号
+//ハンドル機能
+2+|ハンドル機能
+|<<#hundleapi>>
+
+^|EsfJsonOpen
+|JSONモジュールのハンドルを取得します。
+|<<#EsfJsonOpen>>
+
+^|EsfJsonClose
+|JSONモジュールのハンドルを解放します。
+|<<#EsfJsonClose>>
+
+//構造化機能
+2+|構造化機能
+|<<#structuringapi>>
+
+^|EsfJsonSerialize
+|JSON Valueを文字列に変換します。
+|<<#EsfJsonSerialize>>
+
+^|EsfJsonSerializeFree
+|EsfJsonSerialize関数によって生成された文字列を解放します。
+|<<#EsfJsonSerializeFree>>
+
+^|EsfJsonDeserialize
+|文字列をJSON Valueに変換します。
+|<<#EsfJsonDeserialize>>
+
+^|EsfJsonSerializeSizeGet
+|JSON Valueを文字列に変換した際の文字数を取得します。
+|<<#EsfJsonSerializeSizeGet>>
+
+^|EsfJsonSerializeFileIO
+| JSON Valueを文字列に変換し、File I/O対応のMemory Managerのハンドルへ書き込みます。
+|<<#EsfJsonSerializeFileIO>>
+
+^|EsfJsonSerializeIncludesFileIO
+|JSON Valueを文字列に変換する際に、File I/O対応のMemory Managerのハンドルが紐づくJSON Valueを含むか判定します。
+|<<#EsfJsonSerializeIncludesFileIO>>
+
+^|EsfJsonSerializeHandle
+| JSON Valueを文字列に変換し、Memory Managerのハンドル（LargeHeap領域）へ書き込みます。
+|<<#EsfJsonSerializeHandle>>
+
+^|EsfJsonSerializeIncludesHandle
+|JSON Valueを文字列に変換する際に、Memory Managerのハンドル（LargeHeap領域）が紐づくJSON Valueを含むか判定します。
+|<<#EsfJsonSerializeIncludesHandle>>
+
+//Object機能
+2+|Object機能
+|<<#objectapi>>
+
+^|EsfJsonObjectInit
+|空のObject Valueを作成します。
+|<<#EsfJsonObjectInit>>
+
+^|EsfJsonObjectGet
+|Keyを指定してObject ValueからJSON Valueを取得します。
+|<<#EsfJsonObjectGet>>
+
+^|EsfJsonObjectSet
+|Keyを指定してObject ValueにJSON Valueを設定します。
+|<<#EsfJsonObjectSet>>
+
+^|EsfJsonObjectRemove
+|Keyを指定してObject ValueからJSON Valueを削除します。
+|<<#EsfJsonObjectRemove>>
+
+^|EsfJsonObjectClear
+|JSON Valueを初期化し空のObject Valueにします。
+|<<#EsfJsonObjectClear>>
+
+^|EsfJsonObjectCount
+|Object Valueの要素数を取得します。
+|<<#EsfJsonObjectCount>>
+
+^|EsfJsonObjectGetAt
+| Indexを指定してObject ValueからKeyとValueを取得します。
+|<<#EsfJsonObjectGetAt>>
+
+//Array機能
+2+|Array機能
+|<<#arrayapi>>
+
+^|EsfJsonArrayInit
+|空のArray Valueを作成します。
+|<<#EsfJsonArrayInit>>
+
+^|EsfJsonArrayGet
+| Indexを指定してArray ValueからJSON Valueを取得します。
+|<<#EsfJsonArrayGet>>
+
+^|EsfJsonArrayAppend
+| Array Valueの末尾にJSON Valueを追加します。
+|<<#EsfJsonArrayAppend>>
+
+^|EsfJsonArrayReplace
+| Indexを指定してArray ValueのJSON Valueを置換します。
+|<<#EsfJsonArrayReplace>>
+
+^|EsfJsonArrayRemove
+|Indexを指定してArray ValueからJSON Valueを削除します。
+|<<#EsfJsonArrayRemove>>
+
+^|EsfJsonArrayClear
+|JSON Valueを初期化し空のArray Valueにします。
+|<<#EsfJsonArrayClear>>
+
+^|EsfJsonArrayCount
+|Array Valueの要素数を取得します。
+|<<#EsfJsonArrayCount>>
+
+//String機能
+2+|String機能
+|<<#stringapi>>
+
+^|EsfJsonStringInit
+| String Valueを作成します。
+|<<#EsfJsonStringInit>>
+
+^|EsfJsonStringInitFileIO
+| File I/O対応のMemory Managerのハンドルが紐づくString Valueを作成します。
+|<<#EsfJsonStringInitFileIO>>
+
+^|EsfJsonStringInitHandle
+| Memory Managerのハンドル（LargeHeap領域）が紐づくString Valueを作成します。
+|<<#EsfJsonStringInitHandle>>
+
+^|EsfJsonStringGet
+| String Valueから文字列（エスケープ処理なし）を取得します。
+|<<#EsfJsonStringGet>>
+
+^|EsfJsonStringSet
+|JSON Valueに文字列（エスケープ処理なし）を設定します。
+|<<#EsfJsonStringSet>>
+
+^|EsfJsonStringSetFileIO
+|EsfJsonStringInitFileIOで設定したFile I/O対応のMemory Managerのハンドル情報を書き換えます。
+|<<#EsfJsonStringSetFileIO>>
+
+^|EsfJsonStringSetHandle
+|EsfJsonStringInitHandleで設定したMemory Manager（LargeHeap領域）のハンドル情報を書き換えます。
+|<<#EsfJsonStringSetHandle>>
+
+
+//Number機能
+2+|Number機能
+|<<#numberapi>>
+
+^|EsfJsonIntegerInit
+|整数でNumber Valueを作成します。
+|<<#EsfJsonIntegerInit>>
+
+^|EsfJsonRealInit
+|実数でNumber Valueを作成します。
+|<<#EsfJsonRealInit>>
+
+^|EsfJsonIntegerGet
+|Number Valueから整数値を取得します。
+|<<#EsfJsonIntegerGet>>
+
+^|EsfJsonRealGet
+|Number Valueから実数値を取得します。
+|<<#EsfJsonRealGet>>
+
+^|EsfJsonIntegerSet
+|JSON Valueに整数値を設定します。
+|<<#EsfJsonIntegerSet>>
+
+^|EsfJsonRealSet
+|JSON Valueに実数値を設定します。
+|<<#EsfJsonRealSet>>
+
+
+//Boolean機能
+2+|Boolean機能
+|<<#booleanapi>>
+
+^|EsfJsonBooleanInit
+|Boolean Valueを作成します。
+|<<#EsfJsonBooleanInit>>
+
+^|EsfJsonBooleanGet
+|Boolean Valueから真偽値を取得します。
+|<<#EsfJsonBooleanGet>>
+
+^|EsfJsonBooleanSet
+|JSON Valueに真偽値を設定します。
+|<<#EsfJsonBooleanSet>>
+
+//Null機能
+2+|Null機能
+|<<#nullapi>>
+
+^|EsfJsonNullInit
+|Null Valueを作成します。
+|<<#EsfJsonNullInit>>
+
+^|EsfJsonNullSet
+|JSON ValueにNullを設定します。
+|<<#EsfJsonNullSet>>
+
+//JSON Value機能
+2+|JSON Value機能
+|<<#jsonvalueapi>>
+
+^|EsfJsonValueCopy
+|JSON Valueをコピーします。
+|<<#EsfJsonValueCopy>>
+
+^|EsfJsonValueTypeGet
+|JSON Valueの型を取得します。
+|<<#EsfJsonValueTypeGet>>
+|===
+
+<<<
+
+=== データ型定義
+[#_EsfJsonValueType]
+==== EsfJsonValueType
+JSONのデータ型を表す列挙型です。 +
+JSONのデータ型の判別に用いられ、各APIを使用する際の判定にも使用されます。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfJsonValueType {
+    kEsfJsonValueTypeObject,
+    kEsfJsonValueTypeArray,
+    kEsfJsonValueTypeString,
+    kEsfJsonValueTypeNumber,
+    kEsfJsonValueTypeBoolean,
+    kEsfJsonValueTypeNull,
+} EsfJsonValueType;
+....
+
+
+* *値* 
+
+[#_Table_EsfJsonValueType]
+.EsfJsonValueTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |概要
+|kEsfJsonValueTypeObject
+|Object
+
+|kEsfJsonValueTypeArray
+|Array
+
+|kEsfJsonValueTypeString
+|String
+
+|kEsfJsonValueTypeNumber
+|Number
+
+|kEsfJsonValueTypeBoolean
+|Boolean
+
+|kEsfJsonValueTypeNull
+|Null
+|===
+
+[#_EsfJsonErrorCode]
+==== EsfJsonErrorCode
+エラー種別を特定するためのエラーコードです。 +
+本モジュールの戻り値として使用されます。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfJsonErrorCode {
+    kEsfJsonSuccess,
+    kEsfJsonInternalError,  
+    kEsfJsonInvalidArgument,
+    kEsfJsonHandleError,
+    kEsfJsonValueTypeError,
+    kEsfJsonValueNotFound,
+    kEsfJsonValueLimit,
+    kEsfJsonOutOfMemory,
+    kEsfJsonParentAlreadyExists,
+    kEsfJsonIndexExceed,
+    kEsfJsonValueDuplicated
+} EsfJsonErrorCode;
+....
+
+* *値* 
+
+[#_Table_EsfJsonErrorCode]
+.EsfJsonErrorCodeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |概要
+|kEsfJsonSuccess
+|成功時に使用されます。
+
+|kEsfJsonInternalError
+|内部でエラーが発生した際のエラーコードです。
+
+|kEsfJsonInvalidArgument
+|引数に関するエラーコードです。
+
+|kEsfJsonHandleError
+|ハンドル取得のエラーコードです。
+
+|kEsfJsonValueTypeError
+|JSONの型不一致のエラーコードです。
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからない場合のエラーコードです。
+
+|kEsfJsonValueLimit 
+|ハンドルに対してJSON Value数が上限を超えた際のエラーコードです。
+
+|kEsfJsonOutOfMemory
+|メモリ確保失敗のエラーコードです。
+
+|kEsfJsonParentAlreadyExists
+|parentが既に存在するエラーコードです。
+
+|kEsfJsonIndexExceed
+|構造体や配列の要素数を超えた際のエラーコードです。
+
+|kEsfJsonValueDuplicated
+|以下操作を行った際に、parentとvalueが同一、またはvalueのJSONデータ構造にparentが含まれている場合のエラーコードです。 +
+・Object ValueにJSON Valueを設定 +
+・Array ValueにJSON Valueを追加 +
+・Array ValueのJSON Valueを置き換え
+
+|===
+
+[#_EsfJsonHandle]
+==== EsfJsonHandle
+JSONモジュールの操作ハンドルです。 +
+各APIで使用するJSONデータの管理に使用されます。 +
+ハンドルの内部型は変更される可能性があるため、ユーザーは透過的に扱ってください。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfJsonHandleImpl EsfJsonHandleImpl;
+
+typedef EsfJsonHandleImpl *EsfJsonHandle;
+....
+
+
+
+[#_EsfJsonValue]
+==== EsfJsonValue
+デシリアライズされたJSONの各データにアクセスするためのハンドルです。 +
+JSON データに紐づける管理IDとして使用されます。 +
+ハンドルの内部型は変更される可能性があるため、ユーザーは透過的に扱ってください。
+
+* *書式*
+
+[source, C]
+....
+typedef int32_t EsfJsonValue;
+....
+
+
+=== API定義
+[#hundleapi]
+==== ハンドル機能系API詳細
+本API群は本ソフトウェアブロックのハンドルに関する機能を提供します。
+[#EsfJsonOpen]
+===== EsfJsonOpen
+* *機能* 
++
+JSON APIのハンドルを取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonOpen(EsfJsonHandle* handle)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+**``IN``**はありません。
+
+**``[OUT] EsfJsonHandle* handle``**:: 
+JSON APIのハンドルです。
+
+
+* *戻り値* +
+[#_TableEsfJsonOpenReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+|===
+
+* *説明* +
+** メモリ確保を行い、確保したハンドルを**``handle``**に返します。 +
+
+
+* エラー時の挙動、復帰方法 +
+
+[#_TableError]
+.エラーについての説明
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+|kEsfJsonInvalidArgument
+| handle NULL
+| 引数をチェックして再実施してください。 
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+|===
+
+
+
+[#EsfJsonClose]
+===== EsfJsonClose
+* *機能* 
++
+JSON APIのハンドルを解放します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonClose(EsfJsonHandle handle)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonCloseReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** 確保したメモリを解放します。
+** EsfJsonSerialize関数による文字列やJSON Valueなど、ハンドルに紐づいたリソースは全て解放されます。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+|引数エラー
+|kEsfJsonInvalidArgument
+| handle NULL
+| 引数をチェックして再実施してください。
+
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+ 
+
+<<<
+
+[#structuringapi]
+==== 構造化機能系API詳細
+本API群はJSONの構造化・文字列化に関する機能を提供します。
+
+
+[#EsfJsonSerialize]
+===== EsfJsonSerialize
+* *機能* 
++
+JSON Valueを文字列に変換します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonSerialize(EsfJsonHandle handle, EsfJsonValue value, const char{asterisk}{asterisk} str)**``
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] const char{asterisk}{asterisk} str``**:: 
+変換後の文字列です。
+
+
+* *戻り値* +
+[#_TableEsfJsonSerializeReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** シリアライズ対象の**``value``**を文字列化します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+文字列化結果を**``str``**へ返します。 +
+対象のJSON Valueが存在しない場合、本APIは**``kEsfJsonValueNotFound``**を返します。この場合、**``str``**は変更されません。
+
+** 文字列はEsfJsonSerializeFree関数を呼び出すことで解放可能。 
+** 最新の文字列のみが保持されます。
+** 再度EsfJsonSerialize関数を呼び出すことで以前の文字列は解放されるため、参照してはなりません。
+** ``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で作成されたString Valueを含む場合、代替文字列を使用した文字列を生成します。 +
+  File I/O対応のMemory Managerのハンドル内のデータを文字列化したい場合は、``**EsfJsonSerializeFileIO**``を使用してください。
+** ``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で作成されたString Valueを含む場合、代替文字列を使用した文字列を生成します。 +
+  Memory Managerのハンドル（LargeHeap領域）内のデータを文字列化したい場合は、``**EsfJsonSerializeHandle**``を使用してください。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+|kEsfJsonHandleError
+|handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| str NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+|===
+
+
+[#EsfJsonSerializeFree]
+===== EsfJsonSerializeFree
+* *機能* 
++
+EsfJsonSerialize関数によって生成された文字列を解放します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeFree(EsfJsonHandle handle)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonSerializeFreeReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|===
+
+* *説明* +
+** EsfJsonSerialize関数で生成した文字列を解放します。 +
+文字列が生成されていない場合は何もせずに**``kEsfJsonSuccess``**を返します。 +
+
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得するかつ**``EsfJsonSerialize``**が呼ばれている必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+
+|===
+
+
+[#EsfJsonDeserialize]
+===== EsfJsonDeserialize
+* *機能* 
++
+文字列をJSON Valueに変換します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonDeserialize(EsfJsonHandle handle, const char* str, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] const char* str``**:: 
+変換する文字列です。
+
+**``[OUT] EsfJsonValue* value``**:: 
+JSON Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonDeserializeReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|===
+
+* *説明* +
+** デシリアライズ対象の文字列**``str``**をJSON Valueに変換し、結果を**``value``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+対象の文字列が異常な場合、本APIは**``kEsfJsonInvalidArgument``**を返します。この場合、**``value``**は変更されません。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| str NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+|===
+
+[#EsfJsonSerializeSizeGet]
+===== EsfJsonSerializeSizeGet
+* *機能* 
++
+JSON Valueを文字列に変換した際の文字数を取得します。
+
+* *書式* +
++
+``** size_t EsfJsonSerializeSizeGet(EsfJsonHandle handle, EsfJsonValue value)**``
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+* *戻り値* +
+NULL終端文字を含めない文字数を返します。 +
+エラーが発生した場合、0を返します。
+
+* *説明* +
+** 対象の**``value``**を文字列化した際の文字数を返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+** 対象のJSON Valueおよび子のJSON Valueに``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で作成されたString Valueを含む場合、Memory Managerのハンドル内のデータを文字列化に使用した際のサイズを返します。
+** 対象のJSON Valueおよび子のJSON Valueに``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で作成されたString Valueを含む場合、Memory Managerのハンドル内のデータを文字列化に使用した際のサイズを返します。
+** 本API実行前と実行後でMemory Managerのハンドルのシーク位置は変わりません。
+
+[#EsfJsonSerializeFileIO]
+===== EsfJsonSerializeFileIO
+* *機能* 
++
+JSON Valueを文字列に変換し、File I/O対応のMemory Managerのハンドルへ書き込みます。
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeFileIO(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t{asterisk} mem_size)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] EsfMemoryManagerHandle mem_handle``**:: 
+変換後の文字列を格納するMemory Managerのハンドルです。
+
+**``[OUT] size_t{asterisk} mem_size``**:: 
+変換後の文字数です。NULL終端文字は含みません。
+
+
+* *戻り値* +
+[#_TableEsfJsonSerializeFileIOReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** シリアライズ対象の**``value``**を文字列化します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+NULL終端文字を含めた文字列を**``mem_handle``**へ書き込みます。 +
+対象のJSON Valueが存在しない場合、本APIは**``kEsfJsonValueNotFound``**を返します。この場合、**``mem_handle``**は変更されません。
+
+** ``**EsfJsonSerialize**``、``**EsfJsonSerializeFree**``関数が管理する文字列には影響を与えません。 +
+  本APIを呼び出しても``**EsfJsonSerialize**``で作成した文字列は解放されません。
+** ``**mem_handle**``は``**EsfMemoryManagerFopen**``済みの状態のものを渡してください。 +
+  またシーク位置は書き込みたいデータの先頭にしてください。
+** 本APIを呼び出した後の``**mem_handle**``のハンドルのシーク位置は、JSON文字列（NULL終端文字を含む）を書き込んだ後の位置になります。 +
+  エラーが発生した場合、シーク位置は不定です。
+** シーク位置を正しく扱うため、``**mem_handle**``は文字列化する際に参照する他のMemory Managerのハンドル（``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``に与えるハンドル）とは異なるハンドルを与えてください。
+** 本API実行時に参照する``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で与えたMemory Managerのハンドルは、String Value生成時のシーク位置に戻してから処理を行います。 +
+  そのため、本API実行後のMemory Managerのハンドルのシーク位置は、引数で与えられた時のシーク位置からデータサイズ分だけ読み出した後のシーク位置になります。 +
+  エラーが発生した場合、シーク位置は不定です。
+** 本APIは複数回呼び出すことが可能です。
+** 本APIは同時に実行できません。本APIの実行が終わるまでブロッキングします。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+|kEsfJsonHandleError
+|handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle、mem_sizeがNULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数、他Moduleエラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonSerializeIncludesFileIO]
+===== EsfJsonSerializeIncludesFileIO
+* *機能* 
++
+JSON Valueを文字列に変換する際に、File I/O対応のMemory Managerのハンドルが紐づくJSON Valueを含むか判定します。
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeIncludesFileIO(EsfJsonHandle handle, EsfJsonValue value, bool{asterisk} is_included)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] bool{asterisk} is_included``**:: 
+判定結果を格納します。
+
+
+* *戻り値* +
+[#_TableEsfJsonSerializeIncludesFileIOReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** JSON Valueを文字列に変換する際に、``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で作成されたString Valueを含むか判定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+判定結果を**``is_included``**へ返します。trueの場合、``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で作成されたString Valueを含みます。 +
+対象のJSON Valueが存在しない場合、本APIは**``kEsfJsonValueNotFound``**を返します。この場合、**``is_included``**は変更されません。
+** 本API実行前と実行後でMemory Managerのハンドルのシーク位置は変わりません。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+|kEsfJsonHandleError
+|handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle、mem_sizeがNULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数、他Moduleエラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonSerializeHandle]
+===== EsfJsonSerializeHandle
+* *機能* 
++
+JSON Valueを文字列に変換し、Memory Managerのハンドル（LargeHeap領域）へ書き込みます。
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeHandle(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t{asterisk} mem_size)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] EsfMemoryManagerHandle mem_handle``**:: 
+変換後の文字列を格納するMemory Managerのハンドルです。
+
+**``[OUT] size_t{asterisk} mem_size``**:: 
+変換後の文字数です。NULL終端文字は含みません。
+
+
+* *戻り値* +
+[#_TableEsfJsonSerializeHandleHandleReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** シリアライズ対象の**``value``**を文字列化します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+NULL終端文字を含めた文字列を**``mem_handle``**へ書き込みます。 +
+対象のJSON Valueが存在しない場合、本APIは**``kEsfJsonValueNotFound``**を返します。この場合、**``mem_handle``**は変更されません。
+
+** ``**EsfJsonSerialize**``、``**EsfJsonSerializeFree**``関数が管理する文字列には影響を与えません。 +
+  本APIを呼び出しても``**EsfJsonSerialize**``で作成した文字列は解放されません。
+** 本APIを呼び出した後の``**mem_handle**``のハンドルのシーク位置は、JSON文字列（NULL終端文字を含む）を書き込んだ後、先頭位置に位置に戻ります。 +
+  エラーが発生した場合も同様です。 +
+  ※File I/O、Mapハンドル共通
+** シーク位置を正しく扱うため、``**mem_handle**``は文字列化する際に参照する他のMemory Managerのハンドル（``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``に与えるハンドル）とは異なるハンドルを与えてください。
+** 本API実行時に参照する``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で与えたMemory Managerのハンドルは、String Value生成時のシーク位置に戻してから処理を行います。 +
+  ※File I/O、Mapハンドル共通
+** 本APIは複数回呼び出すことが可能です。
+** 本APIは同時に実行できません。本APIの実行が終わるまでブロッキングします。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+|kEsfJsonHandleError
+|handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle、mem_sizeがNULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数、他Moduleエラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonSerializeIncludesHandle]
+===== EsfJsonSerializeIncludesHandle
+* *機能* 
++
+JSON Valueを文字列に変換する際に、Memory Managerのハンドル（LargeHeap領域）が紐づくJSON Valueを含むか判定します。
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeIncludesHandle(EsfJsonHandle handle, EsfJsonValue value, bool{asterisk} is_included)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] bool{asterisk} is_included``**:: 
+判定結果を格納します。
+
+
+* *戻り値* +
+[#_TableEsfJsonSerializeIncludesHandleReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** JSON Valueを文字列に変換する際に、``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で作成されたString Valueを含むか判定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+判定結果を**``is_included``**へ返します。trueの場合、``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で作成されたString Valueを含みます。 +
+対象のJSON Valueが存在しない場合、本APIは**``kEsfJsonValueNotFound``**を返します。この場合、**``is_included``**は変更されません。
+** 本API実行前と実行後でMemory Managerのハンドルのシーク位置は変わりません。 +
+  ※File I/O、Mapハンドル共通
+
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+|kEsfJsonHandleError
+|handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle、mem_sizeがNULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数、他Moduleエラー
+|内部エラーのため担当者に確認してください。
+|===
+
+
+
+[#objectapi]
+==== Object機能系API詳細
+本API群はJSONのObject型に関する機能を提供します。
+[#EsfJsonObjectInit]
+===== EsfJsonObjectInit
+* *機能* 
++
+空のObject Valueを作成する。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectInit(EsfJsonHandle handle, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[OUT] EsfJsonValue* value``**:: 
+Object Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonObjectInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** 空のObject Valueを生成し、結果を**``value``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+
+[#EsfJsonObjectGet]
+===== EsfJsonObjectGet
+* *機能* 
++
+Keyを指定してObject ValueからJSON Valueを取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectGet(EsfJsonHandle handle, EsfJsonValue parent, const char* key, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Valueです。
+
+**``[IN] const char* key``**:: 
+対象のKeyです。
+
+**``[OUT] EsfJsonValue* value``**:: 
+取得したJSON Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonObjectInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|===
+
+* *説明* +
+** **``parent``**と**``key``**で指定したObject ValueのJSON Valueを取得し、その結果を**``value``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``value``**は変更されません。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| key NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+|===
+
+
+
+[#EsfJsonObjectSet]
+===== EsfJsonObjectSet
+* *機能* 
++
+Keyを指定してObject ValueにJSON Valueを設定します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectSet(EsfJsonHandle handle, EsfJsonValue parent, const char* key, EsfJsonValue value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Valueです。
+
+**``[IN] const char* key``**:: 
+対象のKeyです。
+
+**``[IN] EsfJsonValue value``**:: 
+設定するJSON Valueです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonObjectSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueTypeError
+|JSON Type不一致
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonParentAlreadyExists
+|parentが既に存在している +
+(**``value``**に親が存在している)
+
+|kEsfJsonValueDuplicated
+|JSON Valueが重複しているエラー
+|===
+
+* *説明* +
+** **``parent``**と**``key``**で指定したObject ValueのJSON Valueへ、**``value``**の値を設定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+** 既にKeyが存在する場合、新たなJSON Valueに置換する。既存のJSON Valueは解放します。
+** 新たなJSON Valueが既にObjectやArrayに紐づけられている場合、エラー応答します。
+** parentとvalueが同一の場合またはvalueのJSONデータ構造にparentが含まれている場合、エラー応答します。
+
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| key NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 対象keyが存在しない
+| 引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonParentAlreadyExists
+|parentが既に存在している +
+(**``value``**に親が存在している)
+|handleを再取得して再実施してください。
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|kEsfJsonValueDuplicated
+|parentとvalueが同一、またはvalueのJSONデータ構造にparentが含まれている
+|parentとvalueが同一にならないようにJSONデータ構造を見直してください。 +
+複数のJSONデータ構造に対して同一のJSON Valueを設定したい場合、
+`EsfJsonValueCopy` でJSON Valueをコピーしてから設定することでkEsfJsonValueDuplicated
+エラーを回避することができます。
+|===
+
+
+[#EsfJsonObjectRemove]
+===== EsfJsonObjectRemove
+* *機能* 
++
+Keyを指定してObject ValueからJSON Valueを削除します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectRemove(EsfJsonHandle handle, EsfJsonValue parent, const char* key)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Valueです。
+
+**``[IN] const char* key``**:: 
+対象のKeyです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonObjectRemoveReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``parent``**と**``key``**で指定したObject ValueのJSON Valueを削除します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| key NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonObjectClear]
+===== EsfJsonObjectClear
+* *機能* 
++
+JSON Valueを初期化し空のObject Valueにします。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectClear(EsfJsonHandle handle, EsfJsonValue value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+Object Valueです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonObjectClearReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``parent``**で指定したJSON Valueを初期化(クリア)します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 引数不正
+| 引数をチェックして再実施してください。
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+
+
+|===
+
+[#EsfJsonObjectCount]
+===== EsfJsonObjectCount
+* *機能* 
++
+Object Valueの要素数を取得します。
+
+
+* *書式* +
++
+``** int32_t EsfJsonObjectCount(EsfJsonHandle handle, EsfJsonValue parent)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Valueです。
+
+**``[OUT] なし``**:: 
+OUTはありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonObjectCountReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|数値
+|要素数取得結果 +
+関数内でエラーが発生した場合-1を応答します。
+
+|===
+
+* *説明* +
+ ** **``parent``**で指定したObject Valueの要素数を取得し、結果を返します。 +
+ 本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+|-1
+|要素数取得失敗
+|エラーの集約をしているため正確な対処法はありません。
+|===
+
+[#EsfJsonObjectGetAt]
+===== EsfJsonObjectGetAt
+* *機能* 
++
+Indexを指定してObject ValueからKeyとValueを取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectGetAt(EsfJsonHandle handle, EsfJsonValue parent, int32_t index, const char{asterisk}{asterisk} key, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Valueです。
+
+**``[IN] int32_t index``**:: 
+対象のIndexです。
+
+**``[OUT] const char{asterisk}{asterisk} key``**:: 
+取得したKeyです。
+
+**``[OUT] EsfJsonValue value``**:: 
+JSON Valueです。
+
+* *戻り値* +
+[#_TableEsfJsonObjectGetAtReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonIndexExceed
+|Index(要素数)超過
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|===
+
+* *説明* +
+** **``parent``**と**``Index``**で指定したObject ValueのJSON Valueの結果を**``key``**と**``value``**へ返します。 +
+ 本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+ 本APIが**``kEsfJsonSuccess``**以外を返した場合、**``value``**、**``key``**は変更されません。 +
+** Keyの生存期間はValueの生存期間に等しいです。 +
+** Object Value解放後やValue削除後にKeyを参照してはなりません。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| str NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonIndexExceed
+|Index(要素数)超過
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+|===
+
+
+[#arrayapi]
+==== Array機能系API詳細
+本API群はJSONのArray型に関する機能を提供します。
+[#EsfJsonArrayInit]
+===== EsfJsonArrayInit
+* *機能* 
++
+空のArray Valueを作成する。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayInit(EsfJsonHandle handle, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[OUT] EsfJsonValue* value``**:: 
+Array Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** 空のArray Valueを生成し、結果を**``value``**へ返します。 +
+ 本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+[#EsfJsonArrayGet]
+===== EsfJsonArrayGet
+* *機能* 
++
+Indexを指定してArray ValueからJSON Valueを取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayGet(EsfJsonHandle handle, EsfJsonValue parent, int32_t index, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Array Valueです。
+
+**``[IN] int32_t index``**:: 
+対象のIndexです。
+
+**``[OUT] EsfJsonValue* value``**:: 
+JSON Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonIndexExceed
+|Index(要素数)超過
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+|===
+
+* *説明* +
+** **``parent``**と**``Index``**で指定したArray ValueのJSON Valueを**``value``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+ 本APIが**``kEsfJsonSuccess``**以外を返した場合、**``value``**は変更されません。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+ |kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonIndexExceed
+|Index(要素数)超過
+| 引数をチェックして再実施してください。 
+|===
+
+[#EsfJsonArrayAppend]
+===== EsfJsonArrayAppend
+* *機能* 
++
+Array Valueの末尾にJSON Valueを追加します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayAppend(EsfJsonHandle handle, EsfJsonValue parent, EsfJsonValue value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Array Valueです。
+
+**``[IN] EsfJsonValue value``**:: 
+追加するJSON Valueです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayAppendReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonParentAlreadyExists 
+|parent既存エラー
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonValueDuplicated
+|JSON Valueが重複しているエラー
+|===
+
+* *説明* +
+** **``parent``**で指定したArray Valueに**``value``**を追加します。。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+** parentとvalueが同一の場合またはvalueのJSONデータ構造にparentが含まれている場合、エラー応答します。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonParentAlreadyExists
+|parentが既に存在している +
+(**``value``**に親が存在している)
+|handleを再取得して再実施してください。
+
+|kEsfJsonValueDuplicated
+|parentとvalueが同一、またはvalueのJSONデータ構造にparentが含まれている
+|parentとvalueが同一にならないようにJSONデータ構造を見直してください。 +
+複数のJSONデータ構造に対して同一のJSON Valueを設定したい場合、
+`EsfJsonValueCopy` でJSON Valueをコピーしてから設定することでkEsfJsonValueDuplicated
+エラーを回避することができます。
+
+|===
+
+[#EsfJsonArrayReplace]
+===== EsfJsonArrayReplace
+* *機能* 
++
+Indexを指定してArray ValueのJSON Valueを置換します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayReplace(EsfJsonHandle handle, EsfJsonValue parent, int32_t index, EsfJsonValue value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Array Valueです。
+
+**``[IN] int32_t index``**:: 
+対象のIndexです。
+
+**``[IN] EsfJsonValue value``**:: 
+置換するJSON Valueです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayReplaceReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonParentAlreadyExists 
+|parent既存エラー
+
+|kEsfJsonIndexExceed
+|Index(要素数)超過 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+
+|kEsfJsonValueDuplicated
+|JSON Valueが重複しているエラー
+|===
+
+* *説明* +
+** **``parent``**と**``Index``**で指定したArray ValueのJSON Valueを、**``value``**で置換します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+** parentとvalueが同一の場合またはvalueのJSONデータ構造にparentが含まれている場合、エラー応答します。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonParentAlreadyExists
+|parentが既に存在している +
+(**``value``**に親が存在している)
+|handleを再取得して再実施してください。
+|kEsfJsonIndexExceed
+|Index(要素数)超過
+| 引数をチェックして再実施してください。 
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|kEsfJsonValueDuplicated
+|parentとvalueが同一、またはvalueのJSONデータ構造にparentが含まれている
+|parentとvalueが同一にならないようにJSONデータ構造を見直してください。 +
+複数のJSONデータ構造に対して同一のJSON Valueを設定したい場合、
+`EsfJsonValueCopy` でJSON Valueをコピーしてから設定することでkEsfJsonValueDuplicated
+エラーを回避することができます。
+|===
+
+[#EsfJsonArrayRemove]
+===== EsfJsonArrayRemove
+* *機能* 
++
+Indexを指定してArray ValueからJSON Valueを削除します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayRemove(EsfJsonHandle handle, EsfJsonValue parent, int32_t index)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Array Valueです。
+
+**``[IN] int32_t index``**:: 
+対象のIndexです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayRemoveReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonIndexExceed
+|Index(要素数)超過 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``parent``**と**``Index``**で指定したArray ValueのJSON Valueを削除します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+|kEsfJsonIndexExceed
+|Index(要素数)超過
+| 引数をチェックして再実施してください。 
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonArrayClear]
+===== EsfJsonArrayClear
+* *機能* 
++
+JSON Valueを初期化し空のArray Valueにします。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayClear(EsfJsonHandle handle, EsfJsonValue value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayClearReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したArray valueを初期化します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 引数不正
+| 引数をチェックして再実施してください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+
+|===
+
+[#EsfJsonArrayCount]
+===== EsfJsonArrayCount
+* *機能* 
++
+Array Valueの要素数を取得します。
+
+
+* *書式* +
++
+``** int32_t EsfJsonArrayCount(EsfJsonHandle handle, EsfJsonValue parent)**``    
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue parent``**:: 
+Array Valueです。
+
+**``[OUT] なし``**:: 
+OUTはありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonArrayCountReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|数値
+|要素数取得結果 +
+関数内でエラーが発生した場合-1を応答します。
+|===
+
+* *説明* +
+** **``parent``**で指定したArray Valueの要素数を取得し、結果を返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+|-1
+|要素数取得失敗
+|エラーの集約をしているため正確な対処法はありません。
+|===
+
+
+[#stringapi]
+==== String機能系API詳細
+本API群はJSONのString型に関する機能を提供します。
+[#EsfJsonStringInit]
+===== EsfJsonStringInit
+* *機能* 
++
+String Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringInit(EsfJsonHandle handle, const char* str, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] const char* str``**:: 
+設定する文字列です。
+
+**``[OUT] EsfJsonValue* value``**:: 
+String Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** String Valueを生成し、指定した文字列**``str``**を設定し、結果を**``Value``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| str NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+[#EsfJsonStringInitFileIO]
+===== EsfJsonStringInitFileIO
+* *機能* 
++
+File I/O対応のMemory Managerのハンドルが紐づくString Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringInitFileIO(EsfJsonHandle handle, EsfMemoryManagerHandle mem_handle, size_t mem_size, EsfJsonValue{asterisk} value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**:: 
+設定する文字列を含む、File I/O対応のMemory Managerのハンドルです。
+
+**``[IN] size_t mem_size``**:: 
+設定する文字数です。NULL終端文字は文字数に含めないでください。
+
+**``[OUT] EsfJsonValue* value``**:: 
+String Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringInitFileIOReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** 文字列``**mem_handle**``を設定したString Valueを生成し、**``Value``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+** ``**mem_handle**``は``**EsfMemoryManagerFopen**``済みの状態のものを渡してください。 +
+  またシーク位置は書き込みたいデータの先頭にし、そこから書き込みたいデータサイズを引数``**mem_size**``で指定してください。なお、データサイズはNULL終端文字を含めないサイズを指定してください。
+
+** 生成したString Valueには代替文字列を設定します。 ``**EsfJsonStringGet**``で文字列を取得した場合、代替文字列を返します。 +
+  ``**mem_handle**``のデータは、``**EsfJsonSerializeFileIO**``を呼び出した時に代替文字列を置換してJSON文字列に埋め込みます。
+
+** ``**mem_handle**``に含まれるデータをJSON文字列に埋め込む際、エスケープ処理やエラーチェックを行いません。 +
+  正しいデータを``**mem_handle**``へ設定してください。
+
+** 文字列化する際にString Value生成時のシーク位置へ戻してから処理するため、他のJSON Valueと同一の``**mem_handle**``を設定可能です。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle NULL、File I/O非対応
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+[#EsfJsonStringInitHandle]
+===== EsfJsonStringInitHandle
+* *機能* 
++
+Memory Manager（LargeHeap領域）のハンドルが紐づくString Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringInitHandle(EsfJsonHandle handle, EsfMemoryManagerHandle mem_handle, size_t mem_size, EsfJsonValue{asterisk} value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**:: 
+設定する文字列を含む、Memory Managerのハンドルです。
+
+**``[IN] size_t mem_size``**:: 
+設定する文字数です。NULL終端文字は文字数に含めないでください。
+
+**``[OUT] EsfJsonValue* value``**:: 
+String Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringInitHandleReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|kEsfJsonInternalError
+|内部エラー
+|===
+
+* *説明* +
+** 文字列``**mem_handle**``を設定したString Valueを生成し、**``Value``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+** ``****mem_size****``は書き込みたいデータサイズを指定してください。なお、データサイズはNULL終端文字を含めないサイズを指定してください。
+
+** 生成したString Valueには代替文字列を設定します。 ``**EsfJsonStringGet**``で文字列を取得した場合、代替文字列を返します。 +
+  ``**mem_handle**``のデータは、``**EsfJsonSerializeHandle**``を呼び出した時に代替文字列を置換してJSON文字列に埋め込みます。
+
+** ``**mem_handle**``に含まれるデータをJSON文字列に埋め込む際、エスケープ処理やエラーチェックを行いません。 +
+  正しいデータを``**mem_handle**``へ設定してください。
+
+** 文字列化する際にString Value生成時のシーク位置へ戻してから処理するため、他のJSON Valueと同一の``**mem_handle**``を設定可能です。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle NULL、mem_handle異常
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+
+[#EsfJsonStringGet]
+===== EsfJsonStringGet
+* *機能* 
++
+String Valueから文字列（エスケープ処理なし）を取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringGet(EsfJsonHandle handle, EsfJsonValue value, const char{asterisk}{asterisk} str)**``
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+String Valueです。
+
+**``[OUT] const char{asterisk}{asterisk} str``**:: 
+取得した文字列です。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+**  **``value``**で指定したString Valueが持つデータを**``str``**に返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``str``**は変更されません。 +
+``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で作成されたString Valueの場合、File I/O対応のMemory Managerのハンドルが保持するデータではなく、本モジュールが使用している代替文字列を返します。
+``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で作成されたString Valueの場合、Memory Managerのハンドル（LargeHeap領域）が保持するデータではなく、本モジュールが使用している代替文字列を返します。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| str NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+
+|===
+
+[#EsfJsonStringSet]
+===== EsfJsonStringSet
+* *機能* 
++
+JSON Valueに文字列（エスケープ処理なし）を設定します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringSet(EsfJsonHandle handle, EsfJsonValue value, const char* str)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[IN] const char* str``**:: 
+設定する文字列です。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ文字列**``str``**を設定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| str NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonStringSetFileIO]
+===== EsfJsonStringSetFileIO
+* *機能* 
++
+EsfJsonStringInitFileIOで設定したFile I/O対応のMemory Managerのハンドル情報を書き換えます。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringSetFileIO(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t mem_size)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**:: 
+設定する文字列を含む、File I/O対応のMemory Managerのハンドルです。
+
+**``[IN] size_t mem_size``**:: 
+設定する文字数です。NULL終端文字は文字数に含めないでください。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ文字列``**mem_handle**``を設定します。 +
+指定する**``value``**は**``EsfJsonStringInitFileIO``**で設定したもの指定してください +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+** ``**mem_handle**``は``**EsfMemoryManagerFopen**``済みの状態のものを渡してください。 +
+  またシーク位置は書き込みたいデータの先頭にし、そこから書き込みたいデータサイズを引数``**mem_size**``で指定してください。なお、データサイズはNULL終端文字を含めないサイズを指定してください。
+
+** 生成したString Valueには代替文字列を設定します。 ``**EsfJsonStringGet**``で文字列を取得した場合、代替文字列を返します。 +
+  ``**mem_handle**``のデータは、``**EsfJsonSerializeFileIO**``を呼び出した時に代替文字列を置換してJSON文字列に埋め込みます。
+
+** ``**mem_handle**``に含まれるデータをJSON文字列に埋め込む際、エスケープ処理やエラーチェックを行いません。 +
+  正しいデータを``**mem_handle**``へ設定してください。
+
+** 文字列化する際にString Value生成時のシーク位置へ戻してから処理するため、他のJSON Valueと同一の``**mem_handle**``を設定可能です。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle NULL、File I/O非対応
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数、他Moduleエラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonStringSetHandle]
+===== EsfJsonStringSetFileIO
+* *機能* 
++
+EsfJsonStringInitHandleで設定したMemory Managerのハンドル（LargeHeap領域）情報を書き換えます。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonStringSetHandle(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t mem_size)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**:: 
+設定する文字列を含む、Memory Managerのハンドルです。
+
+**``[IN] size_t mem_size``**:: 
+設定する文字数です。NULL終端文字は文字数に含めないでください。
+
+
+* *戻り値* +
+[#_TableEsfJsonStringSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ文字列``**mem_handle**``を設定します。 +
+指定する**``value``**は**``EsfJsonStringInitHandle``**で設定したもの指定してください +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+** ``**mem_size**``は書き込みたいデータサイズを引数``**mem_size**``で指定してください。なお、データサイズはNULL終端文字を含めないサイズを指定してください。
+
+** 生成したString Valueには代替文字列を設定します。 ``**EsfJsonStringGet**``で文字列を取得した場合、代替文字列を返します。 +
+  ``**mem_handle**``のデータは、``**EsfJsonSerializeHandle**``を呼び出した時に代替文字列を置換してJSON文字列に埋め込みます。
+
+** ``**mem_handle**``に含まれるデータをJSON文字列に埋め込む際、エスケープ処理やエラーチェックを行いません。 +
+  正しいデータを``**mem_handle**``へ設定してください。
+
+** 文字列化する際にString Value生成時のシーク位置へ戻してから処理するため、他のJSON Valueと同一の``**mem_handle**``を設定可能です。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| mem_handle NULL、mem_handle異常
+| 引数をチェックして再実施してください。 
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+3+|内部エラー
+|kEsfJsonInternalError
+|OSS、内部関数、他Moduleエラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#numberapi]
+==== Number機能系API詳細
+本API群はJSONのNumber型に関する機能を提供します。
+[#EsfJsonIntegerInit]
+===== EsfJsonIntegerInit
+* *機能* 
++
+整数でNumber Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonIntegerInit(EsfJsonHandle handle, int32_t num, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] int32_t num``**:: 
+設定する整数値です。
+
+**``[OUT] EsfJsonValue* value``**:: 
+Number Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonIntegerInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** 設定する整数値**``num``**でNumber Valueを生成し、結果を**``value``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+[#EsfJsonRealInit]
+===== EsfJsonRealInit
+* *機能* 
++
+実数でNumber Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonRealInit(EsfJsonHandle handle, double num, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] double num``**:: 
+設定する実数値です。
+
+**``[OUT] EsfJsonValue* value``**:: 
+Number Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonRealInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** 設定する実数値**``num``**でNumber Valueを生成し、結果を**``value``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+|===
+
+[#EsfJsonIntegerGet]
+===== EsfJsonIntegerGet
+* *機能* 
++
+Number Valueから整数値を取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonIntegerGet(EsfJsonHandle handle, EsfJsonValue value, int32_t* num)**``
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+Number Valueです。
+
+**``[OUT] int32_t* num``**:: 
+取得した整数値です。
+
+
+* *戻り値* +
+[#_TableEsfJsonIntegerGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したNumber Valueを取得し、結果を**``num``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``num``**は変更されません。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| num NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+
+|===
+
+[#EsfJsonRealGet]
+===== EsfJsonRealGet
+* *機能* 
++
+Number Valueから数値を取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonRealGet(EsfJsonHandle handle, EsfJsonValue value, double* num)**``
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+Number Valueです。
+
+**``[OUT] double* num``**:: 
+取得した実数値です。
+
+
+* *戻り値* +
+[#_TableEsfJsonRealGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したNumber Valueを取得し、結果を**``num``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``num``**は変更されません。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| num NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+
+|===
+
+[#EsfJsonIntegerSet]
+===== EsfJsonIntegerSet
+* *機能* 
++
+JSON Valueに整数値を設定します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonIntegerSet(EsfJsonHandle handle, EsfJsonValue value, int32_t num)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[IN] int32_t num``**:: 
+設定する整数値です。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonIntegerSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ整数値**``num``**を設定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 引数不正
+| 引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+[#EsfJsonRealSet]
+===== EsfJsonRealSet
+* *機能* 
+JSON Valueに実数値を設定します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonRealSet(EsfJsonHandle handle, EsfJsonValue value, double num)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[IN] double num``**:: 
+設定する実数値です。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+
+* *戻り値* +
+[#_TableEsfJsonRealSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ実数値**``num``**を設定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 引数不正
+| 引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+
+[#booleanapi]
+==== Boolean機能系API詳細
+本API群はJSONのBoolean型に関する機能を提供します。
+[#EsfJsonBooleanInit]
+===== EsfJsonBooleanInit
+* *機能* 
++
+Boolean Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonBooleanInit(EsfJsonHandle handle, bool boolean, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] bool boolean``**:: 
+設定する真偽値です。
+
+**``[OUT] EsfJsonValue* value``**:: 
+Boolean Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonBooleanInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** 設定する真偽値**``boolean``**でBoolean Valueを生成し、結果を**``value``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+[#EsfJsonBooleanGet]
+===== EsfJsonBooleanGet
+* *機能* 
++
+Boolean Valueから真偽値を取得します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonBooleanGet(EsfJsonHandle handle, EsfJsonValue value, bool* boolean)**``
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+Boolean Valueです。
+
+**``[OUT] bool* boolean``**:: 
+取得した真偽値です。
+
+
+* *戻り値* +
+[#_TableEsfJsonBooleanGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonValueTypeError 
+|JSON Type不一致
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したBoolean Valueを取得し、結果を**``boolean``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``boolean``**は変更されません。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| boolean NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+
+3+|JSON 関連
+|kEsfJsonValueTypeError
+|JSON Type不一致
+|JSON Typeを確認して再実施してください。
+
+
+|===
+
+[#EsfJsonBooleanSet]
+===== EsfJsonBooleanSet
+* *機能* 
++
+JSON Valueに真偽値を設定します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonBooleanSet(EsfJsonHandle handle, EsfJsonValue value, bool boolean)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[IN] bool boolean``**:: 
+設定する真偽値です。
+
+**``[OUT] なし``**:: 
+ありません
+
+
+* *戻り値* +
+[#_TableEsfJsonBooleanSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ、設定する真偽値**``boolean``**を設定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 引数不正
+| 引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+
+[#nullapi]
+==== Null機能系API詳細
+本API群はJSONのNull型に関する機能を提供します。
+[#EsfJsonNullInit]
+===== EsfJsonNullInit
+* *機能* 
++
+Null Valueを作成します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonNullInit(EsfJsonHandle handle, EsfJsonValue* value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[OUT] EsfJsonValue* value``**:: 
+Null Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonNullInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+|===
+
+* *説明* +
+** Null Valueを生成し、結果を**``value``**へ返します。 +
+設定される値は**``NULL``**となります。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| value NULL
+| 引数をチェックして再実施してください。 
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+
+
+|===
+
+[#EsfJsonNullSet]
+===== EsfJsonNullSet
+* *機能* 
++
+JSON ValueにNullを設定します。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonNullSet(EsfJsonHandle handle, EsfJsonValue value)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] なし``**:: 
+**``OUT``**はありません。
+
+* *戻り値* +
+[#_TableEsfJsonNullSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueへ、**``NULL``**を設定します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|kEsfJsonInvalidArgument
+| 引数不正
+| 引数をチェックして再実施してください。
+
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+
+
+|===
+
+
+[#jsonvalueapi]
+==== JSON Value機能系API詳細
+本API群はJSON Valueに関する機能を提供します。
+[#EsfJsonValueCopy]
+===== EsfJsonValueCopy
+* *機能* 
++
+JSON Valueをコピーします。
+
+
+* *書式* +
++
+``** enum EsfJsonErrorCode EsfJsonValueCopy(EsfJsonHandle handle, EsfJsonValue source, EsfJsonValue* destination)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue source``**:: 
+コピー元のJSON Valueです。
+
+**``[OUT] EsfJsonValue* destination``**:: 
+コピー先のJSON Valueです。
+
+
+* *戻り値* +
+[#_TableEsfJsonValueCopyReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonOutOfMemory
+|メモリ確保エラー 
+
+|kEsfJsonValueLimit 
+|1ハンドルに対するJSON Value数上限
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueをコピーし、**``destination``**へ返します。
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``destination``**は変更されません。 +
+
+** ``**EsfJsonStringInitFileIO**``、``**EsfJsonStringSetFileIO**``で生成したJSON Valueもコピー可能です。
+** ``**EsfJsonStringInitHandle**``、``**EsfJsonStringSetHandle**``で生成したJSON Valueもコピー可能です。
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|戻り値|エラー条件|復帰方法
+3+| 引数エラー
+| kEsfJsonHandleError
+| handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| destination NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+
+3+|メモリ関連エラー
+|kEsfJsonOutOfMemory
+|メモリ確保失敗
+|ユーザー側でメモリ容量をチェックしてください。
+
+3+|JSON 関連
+|kEsfJsonValueLimit 
+|ハンドルに対するJSON Value上限
+|ハンドルを再取得して再度実施してください。
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|===
+
+
+[#EsfJsonValueTypeGet]
+===== EsfJsonValueTypeGet
+* *機能* 
++
+JSON Valueの型を取得します。
+
+
+* *書式* +
++
+``** EsfJsonErrorCode EsfJsonValueTypeGet(EsfJsonHandle handle, EsfJsonValue value, EsfJsonValueType* type)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+JSON APIのハンドルです。
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Valueです。
+
+**``[OUT] EsfJsonValueType* type``**:: 
+JSON Valueの型です。
+
+
+* *戻り値* +
+[#_TableEsfJsonValueTypeGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|名称  |説明
+|kEsfJsonSuccess
+|成功
+
+|kEsfJsonHandleError
+|ハンドル未取得
+
+|kEsfJsonInvalidArgument
+|引数不正
+
+|kEsfJsonInternalError
+|内部エラー
+
+|kEsfJsonValueNotFound
+|JSON Valueが見つからなかった場合のエラー
+|===
+
+* *説明* +
+** **``value``**で指定したJSON Valueの型を取得し、し、結果を**``type``**へ返します。 +
+本APIを呼び出す前に**``EsfJsonOpen``**でハンドルを取得する必要があります。 +
+本APIが**``kEsfJsonSuccess``**以外を返した場合、**``type``**は変更されません。 +
+
+* エラー時の挙動、復帰方法 +
+
+.エラーについての説明
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+|戻り値|エラー条件|復帰方法
+|kEsfJsonHandleError
+|handle invalid
+| ハンドル取得して再実施してください。
+|kEsfJsonInvalidArgument
+| type NULL
+| 引数をチェックして再実施してください。 
+|kEsfJsonInternalError
+|OSS、内部関数エラー
+|内部エラーのため担当者に確認してください。
+|kEsfJsonValueNotFound
+| JSON Valueが存在しない
+|引数をチェックして再実施してください。
+|===
+
+<<<
+
+== API使用時の呼び出し例
+=== シーケンス
+
+* Serialize(JSON作成)
+
+[{mermaid_block}]
+----
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+  autonumber
+  participant system as App
+  participant json as ESF（Parser JSON）
+  participant handle as JSON Handle
+
+  Note over system: ハンドル取得
+  system ->> + json : EsfJsonOpen(EsfJsonHandle*)
+    json ->> handle : -
+    handle -->> json : -
+  json -->> - system : -
+
+  Note over system: JSONデータ作成処理<br>例：StringデータをObjectに設定する
+  system ->> + handle : EsfJsonStringInit(EsfJsonHandle, const char* data, EsfJsonValue* str)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonObjectInit(EsfJsonHandle, EsfJsonValue* parent)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonObjectSet(EsfJsonHandle, EsfJsonValue parent,<br> const char* key, EsfJsonValue str)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonSerialize(EsfJsonHandle, EsfJsonValue parent,<br> const char** serialized_str)
+  handle -->> - system : -
+
+  Note over system: ハンドル解放<br>関連リソースは全て解放される
+  system ->> + handle : EsfJsonClose(EsfJsonHandle)
+  handle -->> - system : -
+----
+
+
+* Deserialize(文字列のParse)
+
+[{mermaid_block}]
+----
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+  autonumber
+  participant system as App
+  participant json as ESF（Parser JSON）
+  participant handle as JSON Handle
+
+  Note over system: ハンドル取得
+  system ->> + json : EsfJsonOpen(EsfJsonHandle*)
+    json ->> handle : -
+    handle -->> json : -
+  json -->> - system : -
+
+  Note over system: JSONデータ読み取り処理<br>例：ObjectからStringデータを読み出す
+  system ->> + handle : EsfJsonDeserialize(EsfJsonHandle, const char* str, EsfJsonValue* value)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonObjectGet(EsfJsonHandle, EsfJsonValue parent,<br> const char* key, EsfJsonValue* str)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonStringGet(EsfJsonHandle, EsfJsonValue str, const char** data)
+  handle -->> - system : -
+
+  Note over system: ハンドル解放<br>関連リソースは全て解放される
+  system ->> + handle : EsfJsonClose(EsfJsonHandle)
+  handle -->> - system : -
+----
+
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+* スレッドセーフ + 
+異なるハンドルへのAPI呼び出しはスレッドセーフです。 +
+同じハンドルへのAPI呼び出しは非スレッドセーフです。 +
+
+* ハンドルの利用期間 +
+ハンドル内部のリソースを解放するため、一連のJSON処理を終えたらハンドルを解放してください。
+
+* JSON Valueの生存期間 +
+** 異なるハンドルのJSON Valueを処理することはできません。
+
+** ObjectやArrayに紐づけられているJSON Valueは、RemoveやClear操作された後は参照できません。 +
+また、ObjectやArray自体が解放された後も参照できません。
+
+* コメント付きJSON +
+非対応とします。
+
+=== 使用資源一覧
+==== OS資源
+[#_TableOSResource]
+[width="100%", cols="15%,70%",options="header"]
+|===
+|OS資源  |用途
+|Heap
+|バッファの確保に使用します。
+|===
+
+==== HW資源
+[#_TableHWResource]
+[width="100%", cols="15%,70%",options="header"]
+|===
+|HW資源  |用途
+|未使用です。
+|
+|===
+
+==== 依存ブロック
+[#_TableDependentBlockResource]
+[width="100%", cols="15%,15%,70",options="header"]
+|===
+|HW資源  |利用用途 |コメント
+|OSAL
+|Heap
+|OS資源（メモリ）使用のためです。
+|===
+
+==== ユニットテスト
+[#_TableUnitTestResource]
+[width="100%", cols="15%,15%,70",options="header"]
+|===
+|ブロック名 |種別 |コメント
+|SystemApp
+|ドライバ
+|JSONのAPIを呼び出します。
+
+|OSAL
+|スタブ
+|malloc/free
+|===
+
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|拡張名 |説明 |用途
+|**``##\\__VA_ARGS__``**
+|**``\\__VA_ARGS__``**のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|===
+<<<
+
+== 使用しているOSSの一覧
+* parson
+** C言語のJSONライブラリです。JSONの処理に使用しています。
+
+
+<<<
+
+== 参考文献
+
+* JSON標準規格 +
+** https://datatracker.ietf.org/doc/html/rfc8259[RFC 8259]
+
+* JSON OSS
+** C言語
+*** https://github.com/kgabis/parson[parson]
+*** https://github.com/akheron/jansson/tree/master[jansson]
+*** https://github.com/ibireme/yyjson[yyjson]
+
+** C++
+*** https://github.com/dropbox/json11[json11]
+*** https://github.com/nlohmann/json[nlohmann]
+
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|ASCIIDoc版リリース
+
+|v0.1.1
+|詳細設計のフィードバック
+
+* 全体
+  ** 誤記修正
+
+* API一覧
+  ** データ型定義
+    *** **``SsfJsonValueType``** +
+      戻り値の整理により **``kSsfJsonValueTypeError``** を削除
+
+    *** **``SsfJsonErrorCode``** +
+      エラー応答ケースの整理により **``kSSFJsonValueDuplicated``** を追加
+
+  
+  ** API定義
+    *** API変更
+      **** 関数内でのエラーを識別するためエラーコードを返却するように修正 +
+        **``SsfJsonSerialize``** +
+        **``SsfJsonStringGet``** +
+        **``SsfJsonIntegerGet``** +
+        **``SsfJsonRealGet``** +
+        **``SsfJsonBooleanGet``** +
+        **``SsfJsonValueTypeGet``**
+
+      **** kSSFJsonValueDuplicated エラー応答 追加 +
+        **``SsfJsonObjectSet``** +
+        **``SsfJsonArrayAppend``** +
+        **``SsfJsonArrayReplace``**
+
+      **** エラー応答値を **``0``** から **``-1``** へ変更 +
+        **``SsfJsonObjectCount``** +
+        **``SsfJsonArrayCount``**
+
+|v0.1.2
+|名称変更対応
+
+* 全体
+  ** 名称変更
+    *** SSF -> ESF
+
+* データ型定義
+  ** EsfJsonErrorCode
+    *** enum定義をkEsfXXXからkEsfJsonXXXに変更
+
+|v0.1.3
+|File I/O API対応
+
+* API追加
+  ** EsfJsonSerializeSizeGet
+  ** EsfJsonSerializeFileIO
+  ** EsfJsonSerializeIncludesFileIO
+  ** EsfJsonStringInitFileIO
+  ** EsfJsonStringSetFileIO
+
+* Kconfig追加
+  ** EXTERNAL_CODEC_JSON_BUFFER_SIZE
+  ** EXTERNAL_CODEC_JSON_MEM_HANDLE_MAX
+
+|v0.1.4
+|* 処理見直し対応
+** **``EsfJsonValueTypeGet``**戻り値修正 
+** **``EsfJsonStringSetFileIO``**内容更新
+
+|v0.1.5
+|仕様書最新化対応
+
+* ソースと詳細設計の内容一致化を実施
+
+|v0.1.6
+|MemoryManagerハンドル対応API 追加
+
+  ** EsfJsonSerializeHandle
+  ** EsfJsonSerializeIncludesHandle
+  ** EsfJsonStringInitHandle
+  ** EsfJsonStringSetHandle
+|===
+

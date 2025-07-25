@@ -1,0 +1,1081 @@
+= AITRIOS ESF Main 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.7
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本仕様書はデバイスのメイン機能を有するMainモジュールについて記載します。 +
+本仕様書は暫定対応について記載します。 +
+暫定対応において、間欠駆動処理は未対応です。
+
+<<<
+
+== 用語 
+共通のものができ次第差し替え予定です。 +
+
+=== ESF
+ESF(AITRIOS Edge Software Framework) +
+
+* 各種アプリから実行可能なAITRIOS基準のAPIを持つレイヤです。
+* 基本的にはOS、チップ等の変更影響を受けません。
+* アプリの機能の根幹となるため、SSSが管理します。
+* ブロック単位で分離することで、センサ等を変更する際の影響を極力小さくします。
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+
+<<#_FigureOverview>>通りの構成になっており、ESFモジュールの初期化管理、終了管理、システム停止管理を行うコンポーネントです。 +
+暫定対応として各機能の枠組みを用意し、実際の必要処理については各モジュールやアプリが記載する形で提供します。
+
+[#_FigureOverview]
+.構成図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    main[ESF Main]
+    style main fill:#f9f
+    modules[ESF Modules]
+    hal[HAL/Utility]
+    pl[PL Main]
+  end
+  evp_runtime[EVP Runtime等]
+
+os --> |起動/終了| main
+main --> |初期化/終了| hal
+main --> |メッセージ送受信| hal
+main --> |"初期化/終了{mermaid_br}システム停止{mermaid_br}(再起動/シャットダウン/ファクトリーリセット)"| modules
+main --> |"初期化/終了{mermaid_br}システム停止{mermaid_br}(再起動/シャットダウン/ファクトリーリセット)"| evp_runtime
+main --> |"デバイス依存の初期化/終了{mermaid_br}Downgrade"| pl
+modules --> |システム停止通知| main
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+==== 初期化管理
+ESFモジュールの初期化管理機能を提供します。 +
+各モジュール・アプリ・HAL等が記載した初期化処理を実行し、Led Managerへ状態設定をします。
+詳細図を<<#_FigureDetailBoot>>に示します。
+[#_FigureDetailBoot]
+.ESFモジュール初期化詳細図
+[{mermaid_block}]
+....
+graph TB;
+  os[OS]
+  subgraph ESF
+    hal[HAL/Utility]
+    style main fill:#f9f
+    subgraph main
+      event[システム停止管理]
+      msg[システム停止通知]
+      main_entry[メイン]
+      boot[初期化管理]
+      finish[終了管理]
+    end
+    modules[Modules]
+    pl[PL Main]
+  end
+  evp_runtime[EVP Runtime等]
+
+os --> |起動| main_entry
+main_entry --> |初期化処理| boot
+boot --> |初期化処理| hal
+boot --> |"初期化処理 (ユーザ記載)"| hal
+boot --> |"初期化処理 (ユーザ記載){mermaid_br}状態設定(LedManager)"| modules
+boot --> |"初期化処理 (ユーザ記載)"| evp_runtime
+boot --> |初期化処理| pl
+....
+
+==== 終了管理
+ESFモジュールの終了管理機能を提供します。 +
+各モジュール・アプリ・HAL等が記載した終了処理を実行します。 +
+詳細図を<<#_FigureDetailFinish>>に示します。
+[#_FigureDetailFinish]
+.ESFモジュール終了詳細図
+[{mermaid_block}]
+....
+graph TB;
+  os[OS]
+  subgraph ESF
+    hal[HAL/Utility]
+    style main fill:#f9f
+    subgraph main
+      event[システム停止管理]
+      msg[システム停止通知]
+      main_entry[メイン]
+      boot[初期化管理]
+      finish[終了管理]
+    end
+    modules[Modules]
+    pl[PL Main]
+  end
+  evp_runtime[EVP Runtime等]
+
+os --> |終了シグナル| main_entry
+main_entry --> |終了処理| finish
+finish --> |終了処理| hal
+finish --> |"終了処理 (ユーザ記載)"| hal
+finish --> |"終了処理 (ユーザ記載)"| modules
+finish --> |"終了処理 (ユーザ記載)"| evp_runtime
+finish --> |終了処理| pl
+....
+
+==== システム停止管理
+システム再起動、シャットダウン、ファクトリーリセット処理を行います。 +
+各モジュール・アプリ・HALが記載した処理を実行した後、システムの再起動もしくはシャットダウンを行います。 +
+また、メインに対するシステム停止契機を通知するシステム停止通知機能を提供します。 +
+詳細図を<<#_FigureDetailEvent>>に示します。
+
+[#_FigureDetailEvent]
+.システム停止管理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph utility
+      hal_msg[UtilityMsg]
+    end
+    style main fill:#f9f
+    subgraph main
+      event[システム停止管理]
+      msg[システム停止通知]
+    end
+    modules[Modules]
+  end
+  evp_runtime[EVP Runtime]
+  app[App]
+
+modules --> |メッセージ送信| msg
+msg --> |メッセージ送信| hal_msg
+event --> |メッセージ受信| msg
+msg --> |メッセージ受信| hal_msg
+event --> |"システム停止処理 (ユーザ記載)"| modules
+event --> |"システム停止処理 (ユーザ記載)"| utility
+event --> |"システム停止処理 (ユーザ記載)"| evp_runtime
+event --> |"システム停止処理 (ユーザ記載)"| app
+....
+
+<<<
+
+=== 状態遷移
+Mainの取り得る状態を<<#_TableStates>>に示します。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_TableStates]
+.初期化状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|UNINIT
+|未初期化の状態です。起動処理以外の機能を利用できません。
+
+|INIT
+|初期化済みの状態です。
+
+|===
+
+
+[#_FigureStateTransition]
+.状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> UNINIT
+    UNINIT --> INIT : 初期化
+    INIT --> UNINIT : 終了
+    INIT --> INIT : システム停止管理{mermaid_br}システム停止通知
+----
+
+各状態での処理実行可否と状態遷移先を<<#_TableStateTransition, 状態遷移表>>に示します。 +
+表中の状態名は、処理完了後の遷移先状態を示し、すなわち処理実行可能であることを示します。 +
+×は受け付け不可を示し、ここでの処理実行API呼び出しは``**kEsfMainErrorInternal**``エラーを返し状態遷移は起きません。 +
+エラーの詳細は <<#_DataType_EsfMainError>>を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|状態 
+|UNINIT |INIT
+.5+|処理
+
+|初期化
+|INIT
+|×
+
+|終了
+|×
+|UNINIT
+
+|システム停止管理、システム停止通知
+|×
+|INIT
+
+|===
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+
+|OSエントリ機能
+|OSからの起動・終了要求対応処理を行います。 +
+|<<#_Function0>>
+
+|初期化管理
+|システムの初期化処理を行います。 +
+|<<#_Function1>>
+
+|終了管理
+|システムの終了処理を行います。 +
+|<<#_Function2>>
+
+|システム停止管理
+|システム再起動、シャットダウン、ファクトリーリセット処理を行います。 +
+|<<#_Function3>>
+
+|システム停止通知
+|システム停止管理への実行契機通知機能を提供します。 +
+|<<#_Function4>>
+
+|===
+
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function0]
+==== OSエントリ機能
+* 機能概要 +
+    OSからの起動・終了要求対応処理を行います。 +
+
+* 前提条件 +
+    前提条件はありません。
+
+* 機能詳細
+    ** 起動 +
+    OSから起動され、内部リソース初期化後に<<#_Function1, 初期化管理>>、<<#_Function3, システム停止管理>>を使用してMain処理を行います。
+    ** 終了 +
+    OSからのシグナル受信を契機に<<#_Function2, 終了管理>>を使用して各モジュールの終了を行います。 +
+    その後内部リソースを解放し、プロセスを終了します。
+
+* エラー時の挙動、復帰方法 +
+    プロセスを終了します。 +
+    プロセスもしくはシステムの再起動を実施してください。
+
+[#_Function1]
+==== 初期化管理
+* 機能概要 +
+    ESFモジュールの初期化管理を行います。 +
+    モジュール追加時は<<#_ModuleRegistration, モジュール登録方法>>を参照し、初期化処理の記載を行ってください。 +
+
+* 前提条件 +
+    前提条件はありません。
+
+* 機能詳細
+    ** ESFMainの初期化を実施します。 +
+      内部状態を初期化し、必要なリソースを確保します。 +
+      HALおよびUtilityMsgを初期化します。 +
+    ** 各モジュールが記載した初期化処理を実施します。 +
+    ** Led Managerへ状態設定をします。
+
+* エラー時の挙動、復帰方法 +
+    システムは起動できません。 +
+    システムの再起動を実施してください。
+
+[#_Function2]
+==== 終了管理
+* 機能概要 +
+    ESFモジュールの終了管理機能を提供します。 +
+    モジュール追加時は<<#_ModuleRegistration, モジュール登録方法>>を参照し、終了処理の記載を行ってください。 +
+
+* 前提条件 +
+    初期化実施済みであること。 +
+
+* 機能詳細
+    ** 各モジュールが記載した終了処理を実施します。 +
+    ** ESFMainの終了処理を実施します。 +
+      内部状態をクリアし、確保したリソースを解放します。 +
+      HALおよびUtilityMsgを終了します。
+
+* エラー時の挙動、復帰方法 +
+    正常に終了できません。 +
+    システムの再起動を実施してください。
+
+[#_Function3]
+==== システム停止管理
+* 機能概要 +
+    システム再起動、シャットダウン、ファクトリーリセット処理を行います。 +
+    システム再起動、シャットダウン、ファクトリーリセット時に<<#_Function2, 終了管理>>以外に処理を行う必要があるモジュールは<<#_ModuleRegistration, モジュール登録方法>>を参照し、対応処理の記載を行ってください。 +
+
+* 前提条件 +
+    初期化実施済みであること。 +
+
+* 機能詳細
+    ** 各モジュールが記載した対応処理を実施します。 +
+    ** <<#_Function2, 終了管理>>を使用して、各モジュールの終了関数を順次呼び出します。 +
+    ** PowerManagerを使用し、システム再起動もしくはシャットダウンを行います。 +
+
+* エラー時の挙動、復帰方法 +
+    システム停止処理に失敗しました。 +
+    システムの再起動を実施してください。
+
+[#_Function4]
+==== システム停止通知
+* 機能概要 +
+  システム停止管理への実行契機通知機能を提供します。 +
+
+* 前提条件 +
+    起動処理実施済みであること。 +
+
+* 機能詳細
+    ** ``**EsfMainNotifyMsg**``を呼び出すことで、システム停止管理への実行契機通知を行います。
+
+** エラー時の挙動、復帰方法に関しては各API詳細説明にて記載しているため、そちらを参照ください。<<#EsfMainNotifyMsg>>
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+目標とするパフォーマンス、メモリ使用量について目安を記載します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="20%,10%,50%,10%",options="header"]
+|===
+|機能名 |数値 |概要 |節番号
+|連続実行処理時間
+|10msec
+|最大かかる処理時間です。
+|<<#_NonFunction1>>
+
+|Stackメモリ使用量
+|320byte
+|最大で使用するStackメモリサイズを示します。
+|<<#_NonFunction2>>
+
+|ヒープメモリ使用量
+|4byte
+|最大で使用するヒープメモリサイズを示します。
+|<<#_NonFunction3>>
+
+|スレッド使用数
+|0
+|使用するスレッド数を示します。
+|<<#_NonFunction4>>
+
+|staticメモリ使用
+|64byte
+|最大で使用するstaticメモリサイズを示します。
+|<<#_NonFunction5>>
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_NonFunction1]
+==== 連続実行処理時間
+排他制御・外部API待ち時間を除いて 10msec
+[#_NonFunction2]
+==== Stackメモリ使用量
+320byte
+[#_NonFunction3]
+==== ヒープメモリ使用量
+4byte
+[#_NonFunction4]
+==== スレッド使用数
+スレッドを使用しません。
+[#_NonFunction5]
+==== staticメモリ使用量
+64byte
+
+<<<
+
+== API仕様
+
+=== コンフィグ設定
+[#_TableConfig]
+.コンフィグ設定
+[width="100%", cols="30%,20%,50%",options="header"]
+|===
+|コンフィグ名 |デフォルト値 |概要 
+|EXTERNAL_MAIN_LOCKTIME_MS
+|1000
+|排他制御最大待ち時間（ms）です。
+
+|EXTERNAL_MAIN_OSAL_MSG_WAITTIME_MS
+|100
+|UtilityMsgRecv受信待ち時間（ms）です。
+
+|EXTERNAL_MAIN_APP_MEM_DIV_NUM
+|1
+|EsfMemoryManagerInitializeに設定するAppMemoryの分割数です。
+
+|EXTERNAL_MAIN_SYSTEMAPP_STUB
+|n
+|System App stub module の有効無効定義です。
+
+|EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB
+|n
+|EsfSensor stub の有効無効定義です。
+
+|EXTERNAL_MAIN_WAIT_SYSTEM_APP_TERM_TIME
+|3000000
+|System App の終了待機時間 (usec) です。 +
+(*) waitpidを使用すると無応答となる可能性があるため、usleepで終了待ち受けを実施。
+
+|EXTERNAL_MAIN_FIRMWARE_MANAGER_STUB
+|n
+|FirmwareManager stub の有効無効定義です。
+
+|EXTERNAL_MAIN_ENABLE_LOG
+|y
+|ログ制御APIの有効無効です。 +
+nの場合は標準出力にログ出力します。
+
+|===
+
+
+=== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|EsfMainError
+|APIの実行結果を定義する列挙型です。
+|<<#_DataType_EsfMainError>>
+
+|EsfMainMsgType
+|システム停止通知種別を定義する列挙型です。
+|<<#_DataType_EsfMainMsgType>>
+
+|===
+
+
+=== 定義一覧
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="20%,50%,20%",options="header"]
+|===
+|API名 |概要 |節番号
+|EsfMainNotifyMsg
+|システム停止通知処理を行います。 +
+システム停止管理に対し、指定された処理の開始契機を通知します。
+|<<#EsfMainNotifyMsg>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_DataType_EsfMainError]
+==== EsfMainError
+APIの実行結果を定義する列挙型です。
+
+* *書式* 
+
+[source, C]
+....
+typedef enum EsfMainError {
+    kEsfMainOk,
+    kEsfMainErrorInvalidArgument,
+    kEsfMainErrorResourceExhausted,
+    kEsfMainErrorInternal,
+    kEsfMainErrorUninitialize,
+    kEsfMainErrorExternal,
+    kEsfMainErrorTimeout,
+    kEsfMainErrorNotSupport,
+} EsfMainError;
+....
+
+* *値* 
+
+[#_Table_EsfMainError]
+.EsfMainErrorの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfMainOk
+|成功です。
+
+|kEsfMainErrorInvalidArgument
+|引数が正しくありません。
+
+|kEsfMainErrorResourceExhausted
+|メモリが不足しています。
+
+|kEsfMainErrorInternal
+|内部処理に失敗しました。
+
+|kEsfMainErrorUninitialize
+|未初期化状態です。
+
+|kEsfMainErrorExternal
+|外部API実行エラーです。
+
+|kEsfMainErrorTimeout
+|タイムアウトが発生しました。
+
+|kEsfMainErrorNotSupport
+|未サポートです。
+
+|===
+
+[#_DataType_EsfMainMsgType]
+==== EsfMainMsgType
+システム停止通知種別を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfMainMsgType {
+    kEsfMainMsgTypeReboot,
+    kEsfMainMsgTypeShutdown,
+    kEsfMainMsgTypeFactoryReset,
+    kEsfMainMsgTypeFactoryResetForDowngrade,
+} EsfMainMsgType;
+....
+
+* *値* 
+
+[#_Table_EsfMainMsgType]
+.EsfMainMsgTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfMainMsgTypeReboot
+|再起動通知です。
+
+|kEsfMainMsgTypeShutdown
+|シャットダウン通知です。
+
+|kEsfMainMsgTypeFactoryReset
+|ファクトリーリセット通知です。
+
+|kEsfMainMsgTypeFactoryResetForDowngrade
+|ファクトリーリセット(Downgrade)通知です。
+
+|===
+
+<<<
+
+=== API定義
+[#EsfMainNotifyMsg]
+==== EsfMainNotifyMsg
+* *機能* 
++
+システム停止通知処理を行います。 +
+システム停止管理に対し、指定された処理の開始契機を通知します。
+
+* *書式* +
++
+``** EsfMainError EsfMainNotifyMsg(EsfMainMsgType type)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMainMsgType type``**::
+通知メッセージ種別です。 +
+詳細は<<#_DataType_EsfMainMsgType>>を参照ください。
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfMainError, EsfMainError>>のいずれかの値が返ります。
+
+* *説明* +
+** Mainモジュールのシステム停止管理に対して指定されたメッセージを通知します。 +
+    通知には``**UtilityMsgSend**``を使用します。
+** 本APIを同時に呼び出すことは可能です。
+** 本APIを複数のスレッドから呼び出すことは可能です。
+** 本APIを複数のタスクから呼び出すことは可能です。
+** 本APIでは<<#_TableStates, 状態>>アクセスのため内部で排他制御を行います。 +
+
+* *エラー情報*
+
+[#_TableEsfMainNotifyMsg]
+.EsfMainNotifyMsgエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfMainOk
+|成功
+|成功
+|なし
+
+|kEsfMainErrorInvalidArgument
+|引数不正
+|**``type``**に不正な値が指定された
+|正しい引数を指定してリトライ
+
+|kEsfMainErrorTimeout
+|タイムアウトエラー 
+|排他制御でタイムアウトが発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfMainErrorUninitialize
+|未初期化エラー
+|ESFMainが未初期化でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfMainErrorExternal
+|外部エラー
+|外部APIでエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfMainErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfMainErrorNotSupport
+|未サポートエラー 
+|T3P以外のシステムで**``type``**に**``kEsfMainMsgTypeFactoryResetForDowngrade``**が指定された
+|なし
+|===
+
+
+<<<
+
+== API使用時の呼び出し例
+各APIを使用する場合の呼び出し例を以下に示します。
+
+=== 初期化終了シーケンス
+[#_初期化終了シーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant OS
+    participant esf_main as Main
+    participant HAL as HAL/Utility
+
+  OS ->> +esf_main : 起動
+  rect rgba(200, 150, 255,0.5)
+    Note left of esf_main: 初期化処理(EsfMainBoot)
+    esf_main ->> +HAL : Utility***Initialize
+    HAL -->> -esf_main : -
+    esf_main ->> +HAL : Hal***Initialize
+    HAL -->> -esf_main : -
+    Note over esf_main : 各モジュールで記載した起動処理を実行
+    Note over esf_main : 入力不可状態をLed Managerへ有効設定
+    esf_main ->> +HAL : UtilityMsgOpen
+    HAL -->> -esf_main : -
+    esf_main ->> esf_main : リソース確保
+  end
+
+  rect rgba(238, 220, 179, 0.5)
+    Note left of esf_main: システム停止通知待ち受け
+    loop 終了シグナル受信まで
+      esf_main ->> +HAL : UtilityMsgRecv
+      HAL -->> -esf_main : -
+      OS -) esf_main : 終了シグナル
+    end
+  end
+
+  rect rgba(200, 150, 255,0.5)
+    Note left of esf_main: 終了処理(EsfMainFinish)
+    esf_main ->> +HAL : UtilityMsgClose
+    HAL -->> -esf_main : -
+    Note over esf_main : 各モジュールで記載した終了処理を実行
+    esf_main ->> +HAL : Hal***Finalize
+    HAL -->> -esf_main : -
+    esf_main ->> +HAL : Utility***Finalize
+    HAL -->> -esf_main : -
+    esf_main ->> esf_main : リソース解放
+  end
+  esf_main -->> -OS : 終了
+  
+....
+
+=== システム停止管理シーケンス
+[#_システム停止管理シーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant OS
+    participant esf_main as Main
+    participant esf_main_api as MainAPI
+    participant esf_modules as ESF_MODULES
+    participant HAL as Utility
+
+  Activate esf_main
+
+  esf_modules ->> +esf_main_api : EsfMainNotifyMsg(再起動)
+  esf_main_api ->> + HAL : UtilityMsgSend(再起動イベント)
+  HAL -->> -esf_main_api : -
+  esf_main_api -->> -esf_modules : -
+
+  rect rgba(238, 220, 179, 0.5)
+    Note left of esf_main: システム停止管理
+    loop 終了シグナル受信まで
+      esf_main ->> +HAL : UtilityMsgRecv
+      HAL -->> -esf_main : 再起動メッセージ
+      rect rgba(200, 150, 255,0.5)
+        Note left of esf_main: 再起動処理(EsfMainProcessReboot)
+        Note over esf_main : 各モジュールで記載した処理を実行
+        esf_main ->> esf_main : EsfMainFinish(終了処理)
+        esf_main ->> +esf_modules : EsfPwrMgrExecuteReboot(再起動実行)
+        Note over OS, HAL : OS再起動
+        Deactivate  esf_main
+      end
+    end
+  end
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+* 間欠駆動機能は未対応です。
+
+=== HALおよび他モジュールに要求する機能の一覧
+.HALおよび他モジュールに要求する機能の一覧
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|モジュール名 |要求機能 |説明
+|Utility
+|メッセージ送受信機能
+|メッセージを送受信する機能。
+
+|ESF(PowerManager)
+|再起動・シャットダウン機能
+|再起動・シャットダウンを行う機能。
+
+|PL(Main)
+|デバイス依存の初期化・終了機能
+|初期化・終了を行う機能。
+
+|===
+
+[#_ModuleRegistration]
+=== モジュール登録方法
+本モジュールでは、初期化・終了・システム停止の各処理において各モジュールの処理を実行する機能を提供します。 +
+ここでは新規モジュール登録時にモジュールの必要な処理を追加する方法を記載します。 +
+初期化・終了・再起動・シャットダウン・ファクトリーリセット時に処理を行う必要が無い場合は対応不要です。 +
+
+==== 対応処理記載 +
+初期化・終了・システム停止（再起動・シャットダウン・ファクトリーリセット）で処理が必要なモジュールは、以下対応を行ってください。
+
+* 処理記載追加 +
+  各機能毎に必要な処理を記載してください。 +
+  各モジュールの処理は { } を使用してスコープを限定してください。 +
+
+
+以下に管理機能毎の処理追加内容を記載します。
+
+[#_TableUserFuncList]
+.処理追加内容一覧
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|管理機能  |処理追加関数 |処理追加内容
+|初期化
+|EsfMainBoot
+|各モジュールの初期化関数起動 +
+その他必要な処理を記載してください。 +
+リソース保持が必要なモジュールはグローバルに定義を追加し、保存してください。
+
+|終了
+|EsfMainFinish
+|各モジュールの終了関数起動 +
+その他必要な処理を記載してください。 +
+終了処理では異常が発生しても途中終了せずに処理を進めてください。 +
+初期化でリソースを保持したモジュールは必ず解放してください。
+
+|再起動
+|EsfMainProcessReboot
+|終了処理以外で再起動に必要な処理を記載してください。 +
+再起動処理では異常が発生しても途中終了せずに処理を進めてください。
+
+|シャットダウン
+|EsfMainProcessShutdown
+|終了処理以外で再起動に必要な処理を記載してください。 +
+シャットダウン処理では異常が発生しても途中終了せずに処理を進めてください。
+
+|ファクトリーリセット
+|EsfMainProcessFactoryReset
+|終了処理以外で再起動に必要な処理を記載してください。 +
+ファクトリーリセット処理では異常が発生しても途中終了せずに処理を進めてください。
+
+|===
+
+以下に初期化および終了処理追加例を記載します。
+
+* 初期化 +
+  以下に初期化処理追加例を記載します。 +
+  Sampleモジュールの追加例です。
++
+[source, C]
+....
+EsfMainError EsfMainBoot(void) {
+  // Initialize main
+  HalErrCode hal_ret = HalInitialize();
+  if (hal_ret != kHalErrCodeOk) {
+    // log output
+    return kEsfMainErrorExternal;
+  }
+  ・・・
+
+  {
+    // Initialize SampleModule
+    EsfSampleResult result = EsfSampleInit();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      return kEsfMainErrorExternal;
+    }
+  }
+
+  return kEsfMainOk;
+}
+....
+
+* 終了 +
+  以下に終了関数処理追加例を記載します。 +
+  Sampleモジュールの追加例です。
++
+[source, C]
+....
+EsfMainError EsfMainFinish(void) {
+・・・
+  {
+    // Deinitialize SampleModule
+    EsfSampleResult result = EsfSampleDeinit();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  // Deinitialize main
+  HalErrCode hal_ret = HalFinalize();
+  if (hal_ret != kHalErrCodeOk) {
+    // log output
+    // fallthrough
+  }
+
+  return kEsfMainOk;
+}
+....
+
+* 再起動 +
+  以下に再起動処理追加例を記載します。 +
+  Sampleモジュールの追加例です。
++
+[source, C]
+....
+EsfMainError EsfMainProcessReboot(void) {
+・・・
+  {
+    // Reboot SampleModule
+    EsfSampleResult result = EsfSamplePreReboot();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  EsfMainError main_result = EsfMainFinish();
+  if (main_result != kEsfMainOk) {
+    // log output
+    // fallthrough
+  }
+
+  EsfPwrMgrExecuteReboot();
+
+  return kEsfMainOk;
+}
+....
+
+* シャットダウン +
+  以下にシャットダウン処理追加例を記載します。 +
+  Sampleモジュールの追加例です。
++
+[source, C]
+....
+EsfMainError EsfMainProcessShutdown(void) {
+・・・
+  {
+    // Reboot SampleModule
+    EsfSampleResult result = EsfSamplePreShutdown();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  EsfMainError main_result = EsfMainFinish();
+  if (main_result != kEsfMainOk) {
+    // log output
+    // fallthrough
+  }
+
+  EsfPwrMgrExecuteShutdown();
+
+  return kEsfMainOk;
+}
+....
+
+* ファクトリーリセット +
+  以下にファクトリーリセット処理追加例を記載します。 +
+  Sampleモジュールの追加例です。
++
+[source, C]
+....
+EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
+・・・
+  {
+    // Reboot SampleModule
+    EsfSampleResult result = EsfSampleFactoryReset();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  EsfMainError main_result = EsfMainFinish();
+  if (main_result != kEsfMainOk) {
+    // log output
+    // fallthrough
+  }
+
+  EsfPwrMgrExecuteReboot();
+
+  return kEsfMainOk;
+}
+....
+
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|拡張名 |説明 |用途
+|**``##\\__VA_ARGS__``**
+|**``\\__VA_ARGS__``**のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|===
+
+<<<
+
+== 使用しているOSSの一覧
+OSSを使用していません。
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|0.1.0
+|初版リリース
+
+|0.1.1
+|SsfMainにmain関数を持つ仕様変更の対応
+
+* コンポーネントの概要 +
+  初期化管理 +
+  OSエントリ機能 +
+  初期化終了シーケンス
+  ** OSからSsfMainを起動する形に構成図、シーケンス、説明文を修正
+
+* API一覧 +
+  API定義 SsfMainLoop
+  ** SsfMainLoop の記載を削除
+
+|0.1.2
+|名称変更対応
+
+* 全体
+  ** 名称変更
+    *** SSF -> ESF
+
+|0.1.3
+|LedManager API変更対応
+
+* 初期化処理変更
+  ** 初期化処理時にLedManagerへ状態を設定する処理の追加
+
+|0.1.4
+|Downgrade対応
+
+* データ型定義
+  ** EsfMainErrorにkEsfMainErrorNotSupportを追加
+  ** EsfMainMsgTypeにkEsfMainMsgTypeFactoryResetForDowngradeを追加
+* API定義
+  ** EsfMainNotifyMsgのエラー定義にkEsfMainErrorNotSupportを追加
+
+|0.1.5
+|LedManager設定処理削除
+
+* 初期化処理変更
+  ** 初期化処理時にLedManagerへ「未接続（インターネット接続なし）」を設定する処理の削除
+
+|0.1.6
+|記載内容の最新化
+
+* OSAL記載個所をUtiliyに修正
+* 6.3. モジュール登録方法
+** 各モジュールの処理を有効無効CONFIGで囲うように実装を依頼した記載を削除。
+
+|0.1.7
+|デバイス依存処理をPL Mainへ分離する対応
+
+* 概要図、詳細図にPL Mainを追加
+* 他モジュールに要求する機能にPL Mainを追加
+* コンフィグ設定を追加
+
+|===
+

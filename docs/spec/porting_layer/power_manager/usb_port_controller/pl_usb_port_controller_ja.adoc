@@ -1,0 +1,679 @@
+= PL USB Port Controller
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書では PL USB Port Controller の仕様について記載します。
+PL USB Port Controller の目的は、カメラ毎に異なる USB Port Controller のチップ差分を吸収することです。
+例えば、USB デバイスの挿抜イベントの検出に関して、USB Port Controller チップや回路接続によって制御方法が異なりますが、上位レイヤーはそのような差分を気にすることなくイベント検出機能を使用することができます。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting layer. カメラ/ OS 差分を吸収する層
+
+|I/F
+|Interface
+
+|PlUsbPC
+|Pl Usb Port Controller
+|===
+
+<<<
+
+== コンポーネントの説明
+
+PL USB Port Controller の目的は、カメラ毎に異なる USB Port Controller のチップ差分を吸収することです。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/usb_port_controller_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+
+PL USB Port Controller の使用シーケンス例を以下に示します。
+
+[#_button_seq]
+.シーケンス概要
+image::./images/usb_port_controller_seq.png[scaledwidth="100%",align="center"]
+
+==== 依存ブロック（PL 内部向け）
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |リンク
+|HAL IOexp
+|USB 挿抜時の割り込み検出のため
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/ioexp/hal_ioexp.adoc
+
+|HAL I2C
+|USB 挿抜時の USB Attach/Detach 確認のため
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/i2c/hal_i2c.adoc
+|===
+
+<<<
+
+=== 状態遷移
+PL USB Pprt Controller の取り得る状態を <<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+|PL_USB_READY
+|PL USB Port Controller 未初期化
+
+|PL_USB_RUNNING
+|PL USB Port Controller 初期化済み
+
+|Callback_Unregistered
+|USB イベント コールバック未登録
+
+|Callback_Registered
+|USB イベント コールバック登録済み
+|===
+
+PL USB Pprt Controller では <<#_FigureState>> に示す状態遷移を行います。 +
+また、各 API でエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureState]
+.状態遷移図
+image::./images/usb_port_controller_state.png[scaledwidth="100%",align="center"]
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+×は API 受け付け不可を示し、ここでの API 呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_PlErrCode, PlErrCode>> を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|状態 
+.2+|PL_USB_READY
+2+|PL_USB_RUNNING
+|Callback_Unregistered
+|Callback_Registered
+.20+|API 名
+
+|``**PlUsbPCInitialize**``
+|PL_USB_RUNNING
+|×
+|×
+
+|``**PlUsbPCFinalize**``
+|×
+|PL_USB_READY
+|PL_USB_READY
+
+|``**PlUsbPCRegEventCallback**``
+|×
+|Callback_Registered
+|×
+
+|``**PlUsbPCUnregEventCallback**``
+|×
+|×
+|Callback_Unregistered
+|===
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> を以下に示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|USB 挿抜イベントの検出
+|USB 挿抜イベントを検出できます。
+|<<#_Function1, 3.5.1.>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== USB 挿抜イベントの検出
+機能概要::
+USB 挿抜イベントを検出できます。
+前提条件::
+PlUsbPCInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlUsbPCRegEventCallback, PlUsbPCRegEventCallback>>、<<#_PlUsbPCUnregEventCallback, PlUsbPCUnregEventCallback>> を参照してください。
+詳細挙動::
+詳細は <<#_PlUsbPCRegEventCallback, PlUsbPCRegEventCallback>>、<<#_PlUsbPCUnregEventCallback, PlUsbPCUnregEventCallback>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_PlUsbPCRegEventCallback, PlUsbPCRegEventCallback>>、<<#_PlUsbPCUnregEventCallback, PlUsbPCUnregEventCallback>> を参照してください。
+検討事項::
+なし
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> を以下に示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="90%,10%",options="header"]
+|===
+|機能名 |節番号
+|Stack 最大使用量
+|<<#_NonFunctionStack, 3.7.>>
+
+|通常ヒープ最大使用量
+|<<#_NonFunctionNormalHeap, 3.7.>>
+
+|static データ使用量
+|<<#_NonFunctionStatic, 3.7.>>
+
+|パフォーマンス
+|<<#_NonFunctionPerformance, 3.7.>>
+|===
+
+=== コンポーネントの非機能要件説明
+
+[#_NonFunctionStack]
+==== Stack 最大使用量
+1 KB（仮）
+
+[#_NonFunctionNormalHeap]
+==== 通常ヒープ最大使用量
+1 KB（仮）
+
+[#_NonFunctionStatic]
+==== static ヒープ最大使用量
+1 KB（仮）
+
+[#_NonFunctionPerformance]
+==== パフォーマンス
+1 ms 以下
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> を以下に示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum PlErrCode
+|API の実行結果を定義する列挙型です。
+|<<#_PlErrCode, 4.3.1.>>
+|enum PlUsbPCEvent
+|USB 挿抜イベントを表す列挙型です。
+|<<#_PlUsbPCEvent, 4.3.2.>>
+|PlUsbPCEventCallback
+|USB 挿抜イベント コールバックの関数ポインタです。
+|<<#_PlUsbPCEventCallback, 4.3.3.>>
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> を以下に示します。
+
+[#_TablePublicAPI]
+.上位アプリから直接使用可能な API 一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+|PlUsbPCInitialize
+|本モジュールの初期化処理を行います。
+|<<#_PlUsbPCInitialize, 4.4.1.>>
+
+|PlUsbPCFinalize
+|本モジュールの終了処理を行います。
+|<<#_PlUsbPCFinalize, 4.4.2.>>
+
+|PlUsbPCRegEventCallback
+|USB 挿抜イベントを検出するコールバックを登録します。
+|<<#_PlUsbPCRegEventCallback, 4.4.3.>>
+
+|PlUsbPCUnregEventCallback
+|USB 挿抜イベントを検出するコールバックを登録解除します。
+|<<#_PlUsbPCUnregEventCallback, 4.4.4.>>
+|===
+
+<<<
+
+=== ビルドコンフィグ
+[#_BuildConfig]
+==== ESP32S3
+
+* *書式* +
+[source, C]
+....
+CONFIG_EXTERNAL_PL_USB_PORT_CTRL_NUM = 1
+CONFIG_EXTERNAL_PL_USB_PORT_CTRL_DEV_ID = 1
+CONFIG_EXTERNAL_PL_USB_PORT_CTRL_IOEXP_ID = 1
+....
+
+[#_BuildConfig_table]
+.BuildConfig の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|CONFIG_EXTERNAL_PL_USB_PORT_CTRL_NUM
+|使用できる USB の個数。
+|CONFIG_EXTERNAL_PL_USB_PORT_CTRL_DEV_ID
+|USB Port Controller を指すデバイス番号 (PL 内部用)。HAL I2C API を呼ぶ際に使用します。
+|CONFIG_EXTERNAL_PL_USB_PORT_CTRL_IOEXP_ID
+|USB Port Controller の割り込みピンが接続される IOexpander を指すデバイス番号 ID (PL 内部用)。割り込み登録の際に使用されます。
+|===
+
+=== データ型定義
+
+[#_PlErrCode]
+==== PlErrCode
+API の実行結果を定義する列挙型です。
+(T.B.D.)
+
+[#_PlUsbPCEvent]
+==== PlUsbPCEvent
+USB 挿抜イベントを表す列挙型です。
+
+* *書式* +
+[source, C]
+....
+typedef enum {
+  PlUsbPCEventConnected,
+  PlUsbPCEventDisconnected,
+  PlUsbPCEventMax
+} PlUsbPCEvent;
+....
+
+.PlUsbPCEvent の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名 |説明
+|PlUsbPCEventConnected
+|USB が接続されたことを表します。
+
+|PlUsbPCEventConnected
+|USB が切断されたことを表します。
+
+|PlUsbPCEventMax
+|enum 最大数
+|===
+
+[#_PlUsbPCEventCallback]
+==== PlUsbPCEventCallback
+USB 挿抜イベント コールバックの関数ポインタです。
+
+* *書式* +
+[source, C]
+....
+void (*PlUsbPCRegEventCallback)(PlUsbPCEvent event, void *private_data)
+....
+
+=== 各 API の説明
+[#_PlUsbPCInitialize]
+==== PlUsbPCInitialize
+* *機能* +
+PL USB Port Controller に関する初期化処理を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlUsbPCInitialize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL USB Port Controller に関する初期化処理を行います。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlUsbPCInitialize または PlUsbPCFinalize が動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlUsbPCInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|指定した Ioexp ID の OPEN に失敗した。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+
+[#_PlUsbPCFinalize]
+==== PlUsbPCFinalize
+* *機能* +
+PL USB Port Controller に関する終了処理を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlUsbPCFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL USB Port Controller に関する終了処理を行います。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで PlUsbPCInitialize または PlUsbPCFinalize が動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlUsbPCInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|指定した Ioexp ID の CLOSE に失敗した。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+|===
+
+
+[#_PlUsbPCRegEventCallback]
+==== PlUsbPCRegEventCallback
+
+* *機能* +
+USB 挿抜イベントを検出するコールバックを登録します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlUsbPCRegEventCallback(uint32_t usb_pc_id, PlUsbPCEventCallback callback, void *private_data)
+....
+
+* *引数の説明* +
+**[IN] uint32_t usb_pc_id**:: 
+** イベント コールバックを登録したい USB の仮想番号。
+** ビルドコンフィグの CONFIG_EXTERNAL_PL_USB_PORT_CTRL_NUM 未満の数を指定してください。
+*** 例：CONFIG_EXTERNAL_PL_USB_PORT_CTRL_NUM = 1 の場合、usb_pc_id = 0 のみが使用できます。
+** CONFIG に存在しない ID が指定された場合、エラーを返します。
+
+**[IN] PlUsbPCEventCallback callback**:: 
+** イベント コールバック本体。NULL の場合エラーを返します。
+
+**[IN] void *private_data**:: 
+** コールバック実行時に引数にセットされるユーザーデータ。NULL でも問題ありません。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** USB 挿抜イベントを検出するコールバックを登録します。
+** 本 API は PlUsbPCInitialize の実行後に使用可能です。
+** イベント コールバックは割り込みコンテキストで実行されます。
+** 対象の usb_pc_id にすでにコールバックが登録済み場合、エラーを返します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlUsbPCInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrAlread (仮)
+|コールバック登録済み
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|コールバックの登録に失敗した。
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_PlUsbPCUnregEventCallback]
+==== PlUsbPCUnregEventCallback
+
+* *機能* +
+USB 挿抜イベントを検出するコールバックを登録解除します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlUsbPCUnregEventCallback(uint32_t usb_pc_id)
+....
+
+* *引数の説明* +
+**[IN] uint32_t usb_pc_id**::
+登録を解除したい USB の仮想番号。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** USB 挿抜イベントを検出するコールバックを登録解除します。
+** ビルドコンフィグの CONFIG_EXTERNAL_PL_USB_PORT_CTRL_NUM 未満の数を指定してください。
+*** 例：CONFIG_EXTERNAL_PL_USB_PORT_CTRL_NUM = 1 の場合、usb_pc_id = 0 のみが使用できます。
+** 本 API は PlUsbPCInitialize の実行後に使用可能です。
+** 対象の usb_pc_id にコールバックが登録されていない場合、エラーを返します。
+** 対象の usb_pc_id のコールバックが実行中の場合は、実行完了を待ってから本処理が実行されます。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlUsbPCInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrAlread (仮)
+|コールバック解除済み
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|コールバックの解除に失敗した。
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+== API 使用時の呼び出し例
+=== Register・Unregister の一例
+.Register・Unregister の一例
+image::./images/usb_port_controller_example.png[scaledwidth="100%",align="center"]
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+== 使用している OSS の一覧
+なし
+
+<<<
+
+== 参考文献
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+
+|0.0.2
+|- 全体 : 英単語の前後に半角空白を挿入 (読みやすくするため) +
+- HAL 記述を PL に変更 +
+- 用語 : HAL を削除し、PL を記載 +
+- HAL_READY/HAL_RUNNING を PL_USB_READY/PL_USB_RUNNING に変更 +
+- データ型に PlErrCode を追加 +
+- PlUsbPCInitialize/PlUsbPCFinalize API の並びを先頭に変更 +
+- PlUsbPCFinalize のエラーコードを変更 +
+- PlUsbPCRegEventCallback のエラーコードを変更 +
+- PlUsbPCUnregEventCallback のエラーコードを変更 +
+- 図 (*.png) を英語表記に変更
+
+|===

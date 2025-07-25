@@ -1,0 +1,1337 @@
+= ButtonManager Function Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.4
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document defines the ButtonManager, which detects user operations using input devices of AITRIOS devices and notifies them.
+It applies to version XX of XX.
+
+<<<
+
+== Terminology
+=== Notification Callback
+A generic term for callbacks registered by the upper-layer App to the ButtonManager. These callbacks notify the upper-layer App when the button operations requested by the App are performed.
+
+=== Detection Callback
+A generic term for callbacks registered by the ButtonManager to PL and Utility, used to notify the ButtonManager of button operations detected by PL or elapsed time from the Utility timer.
+
+<<<
+
+== Component Description
+=== Component Overview
+The ButtonManager is a component that provides the desired processing in response to user button operations in the form of callback function calls.
+
+.Overview Diagram
+Overall diagram to be inserted
+
+
+<<<
+
+=== Detailed Description of the Component
+
+The ButtonManager is opened by the upper-layer App and registers detection callbacks to PL and Utility.  
+The upper-layer App can register notification callbacks and their invocation conditions (button type, operation type, long-press duration, etc.) to the opened ButtonManager.  
+When a detection callback is triggered by PL or Utility due to a user's button operation, the ButtonManager executes the corresponding notification callback that matches the conditions registered by the upper-layer App.
+
+.Structure Diagram
+[source,mermaid]
+....
+graph BT
+    subgraph App
+    	app[Notification Callback]
+    end
+
+    subgraph Button_Manager
+        direction TB
+        pl1[Detection Callback for Button]
+
+    end
+    style Button_Manager fill:#f9f
+
+    subgraph PL
+        direction TB
+        button[Button]
+    end
+
+    subgraph Utility
+        direction TB
+        timer[Timer]
+    end
+
+App ---> |Open/Close<br>Register/Unregister Notification Callback<br>Enable/Disable Notification Callback Execution| Button_Manager
+Button_Manager -.-> |Execute Notification Callback| App
+Button_Manager ---> |Register Detection Callback| PL
+PL -.-> |Execute Detection Callback| Button_Manager
+
+Button_Manager --> |Register Detection Callback / Start / Stop Timer| Utility
+....
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Comments
+|Utility
+|Uses the following APIs:  +
+・Register/Unregister Detection Callback for Elapsed Time +
+・Start/Stop Timer API
+
+|The detection callback for elapsed time is executed when the set time has elapsed after starting the timer using the timer start API.
+
+|PL
+|Uses the following APIs:  +
+・Get Button Information API +
+・Register/Unregister Detection Callback for Button
+
+|The detection callback for button is executed when PL detects changes in the GPIO of the button. +
+
+|OSAL
+|Uses the following APIs: +
+・Message Queue Send/Receive API
+
+|Message queues are used to let the ButtonManager thread handle button detection events from detection callbacks.
+|===
+
+
+
+<<<
+
+=== State Transitions
+The possible states of the ButtonManager are shown in <<#_TableStates>>.
+
+[#_TableStates]
+.List of States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|CLOSE
+|ButtonManager is in the stopped state.
+
+|OPEN
+|ButtonManager is in the active state.
+|===
+
+Additionally, the OPEN state has one of two sub-states: DISABLE or ENABLE. Descriptions of each sub-state are shown in <<#_TableSubState>>.
+
+[#_TableSubState]
+.List of OPEN Sub-States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|DISABLE
+|Notification callback execution is disabled. This is the default sub-state immediately after transitioning from the CLOSE state.  
+In this state, it is possible to register or unregister notification callbacks.  
+When the API to enable notification callback execution is called, the state transitions to ENABLE.
+
+|ENABLE
+|Notification callback execution is enabled.  
+When the API to disable notification callback execution is called, the state transitions to DISABLE.
+
+|===
+
+
+ButtonManager transitions between states as shown in <<#_StateTransitionDiagram>> when each API is called. +
+If an error occurs during the execution of an API, no state transition occurs. +
+
+[#_StateTransitionDiagram]
+.State Transition Diagram
+[source,mermaid]
+....
+stateDiagram-v2
+    direction TB
+    [*] --> CLOSE
+    CLOSE --> OPEN : EsfButtonManagerOpen
+    OPEN --> CLOSE : EsfButtonManagerClose
+    OPEN --> OPEN : EsfButtonManagerOpen
+    state OPEN{
+      [*] --> DISABLE
+      ENABLE --> DISABLE : EsfButtonManagerDisableNotificationCallback
+      DISABLE --> DISABLE : EsfButtonManagerRegisterPressedCallback<br>EsfButtonManagerRegisterReleasedCallback<br>EsfButtonManagerRegisterLongPressedCallback<br>EsfButtonManagerUnregisterPressedCallback<br>EsfButtonManagerUnregisterReleasedCallback<br>EsfButtonManagerUnregisterLongPressedCallback
+      DISABLE --> ENABLE : EsfButtonManagerEnableNotificationCallback
+    }
+....
+
+The acceptability of API calls and the resulting state transitions for each state are shown in <<#_TableStateTransition>>.  
+The sub-state transition table for the OPEN state is shown in <<#_TableSubStateTransition>>.  
+In the tables, the state names indicate the state after successful API execution, and thus, indicate that the API can be called in that state.  
+An "×" indicates that the API cannot be accepted in that state; in such cases, the API call returns an error and no state transition occurs.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|State
+|CLOSE |OPEN
+.10+|API Name
+
+|``**EsfButtonManagerOpen**``
+|OPEN
+|OPEN
+
+|``**EsfButtonManagerClose**``
+|×
+|OPEN/CLOSE *Note 1
+
+|Other APIs
+|×
+|OPEN
+|===
+
+*Note 1: If one or more handles remain, the state remains OPEN. If the handle count becomes zero, the state transitions to CLOSE.
+
+[#_TableSubStateTransition]
+.OPEN Sub-State Transition Table
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|State
+|DISABLE |ENABLE
+.10+|API Name
+
+|``**EsfButtonManagerEnableNotificationCallback**``
+|ENABLE
+|×
+
+|``**EsfButtonManagerDisableNotificationCallback**``
+|×
+|DISABLE
+
+|``**EsfButtonManagerRegisterPressedCallback**``
+|DISABLE
+|×
+
+|``**EsfButtonManagerRegisterReleasedCallback**``
+|DISABLE
+|×
+
+|``**EsfButtonManagerRegisterLongPressedCallback**``
+|DISABLE
+|×
+
+|``**EsfButtonManagerUnregisterPressedCallback**``
+|DISABLE
+|×
+
+|``**EsfButtonManagerUnregisterReleasedCallback**``
+|DISABLE
+|×
+
+|``**EsfButtonManagerUnregisterLongPressedCallback**``
+|DISABLE
+|×
+|===
+
+<<<
+
+
+=== List of Component Functions
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.List of Functions
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+|Button Operation Notification Function
+|A function that notifies the upper-layer App via a callback when a button operation is detected by PL or Utility.
+|<<#_Button_Operation_Notification_Function>>
+
+|Notification Callback Registration Function
+|A function to register a callback to be executed when a specified button is operated.
+|<<#_Notification_Callback_Registration_Function>>
+
+|Notification Callback Unregistration Function
+|A function to unregister a previously registered callback for a specified button operation.
+|<<#_Notification_Callback_Unregistration_Function>>
+
+|Enable/Disable Notification Callback Execution Function
+|A function to enable or disable the execution of registered callbacks.
+|<<#_Enable_Disable_Notification_Callback_Execution_Function>>
+|===
+
+<<<
+
+=== Component Function Descriptions
+[#_Button_Operation_Notification_Function]
+==== Button Operation Notification Function
+* Function Overview
+    ** A function that notifies the upper-layer App via callbacks when button operations are detected by PL or Utility.
+* Preconditions
+    ** The ButtonManager must be in the OPEN state and its sub-state must be ENABLE.
+* Detailed Description
+    ** This function notifies the upper-layer App via callbacks when button operations (press, release, long press) are detected by PL or Utility.
+    ** Notification callbacks can be registered and unregistered via API. Only button operations that occur while callback execution is enabled are subject to notification. If a notification callback has been registered and callback execution is enabled during a long press, the long press is considered to have started from the time the execution was enabled. (See <<#_Timing_Diagram_of_Button_Notification_Scope>>)
+
+[#_Timing_Diagram_of_Button_Notification_Scope]
+.Timing Diagram of Button Notification Scope
+image::./images/EsfButtonManagerTimingDiagram_1.png[scaledwidth="100%",align="center"]
++
+In addition, the timing diagram for button operation notification when the ButtonManager is opened during a long press is shown in <<#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press>>.
++
+[#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press]
+.Timing Diagram When ButtonManager Is Opened During Long Press
+image::./images/EsfButtonManagerTimingDiagram_2.png[scaledwidth="100%",align="center"]
+
+[#_Notification_Callback_Registration_Function]
+==== Notification Callback Registration Function
+* Function Overview
+    ** A function to register a callback that is executed when a specified button is operated.
+* Preconditions
+    ** The ButtonManager must be in the OPEN state, with the sub-state set to DISABLE.
+    ** Execution of notification callbacks must be disabled.
+* Detailed Description
+    ** Registers callbacks to be executed when the button specified via the API is operated (pressed, released, long pressed).
+      *** Press notification callback: Executed when the specified button is pressed.
+      *** Long press notification callback: Executed when the specified button is long-pressed for the specified duration.
+      *** Release notification callback: Executed when the specified button is released after being long-pressed for the specified duration.
+    ** An error will occur if the number of registered notification callbacks exceeds the maximum allowed, or if invalid input parameters are specified.
+
+
+[#_Notification_Callback_Unregistration_Function]
+==== Notification Callback Unregistration Function
+* Function Overview
+    ** A function to unregister a callback that is executed when a specified button is operated.
+* Preconditions
+    ** The ButtonManager must be in the OPEN state, with the sub-state set to DISABLE.
+    ** Execution of notification callbacks must be disabled.
+* Detailed Description
+    ** Unregisters the callback that was registered to be executed when the specified button is operated (pressed, released, or long-pressed).
+    ** An error will occur if no callback is registered for the specified button, or if invalid input parameters are provided.
+
+[#_Enable_Disable_Notification_Callback_Execution_Function]
+==== Enable/Disable Notification Callback Execution Function
+* Function Overview
+    ** A function to enable or disable the execution of registered callbacks.
+* Preconditions
+    ** The ButtonManager must be in the OPEN state.
+    ** To enable execution, the sub-state must be DISABLE.
+    ** To disable execution, the sub-state must be ENABLE.
+* Detailed Description
+    ** Enables or disables the execution of registered notification callbacks for the specified handle via API.
+    ** An error will occur if the handle is invalid.
+
+<<<
+
+=== List of Non-Functional Requirements of the Component
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.List of Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Description |Section
+|Maximum Stack Usage
+|1 KB
+|<<#_Maximum_Stack_Usage>>
+|Number of Threads Used
+|One
+|<<#_Number_of_Threads_Used>>
+|Maximum Processing Time
+|1 ms
+|<<#_Maximum_Processing_Time>>
+|===
+
+<<<
+
+=== Non-Functional Requirement Descriptions of the Component
+
+[#_Maximum_Stack_Usage]
+==== Maximum Stack Usage
+The stack usage is up to 1 KB.
+
+[#_Number_of_Threads_Used]
+==== Number of Threads Used
+One thread is created to handle button detection events.
+
+[#_Maximum_Processing_Time]
+==== Maximum Processing Time
+The maximum processing time from receiving a button detection event to starting the execution of the notification callback shall be 1 ms.
+
+<<<
+
+== API Specifications
+=== List of Definitions
+==== Config List
+The list of configuration items is shown in <<#_TableConfigType>>.
+
+[#_TableConfigType]
+.Config List
+[width="100%", options="header"]
+|===
+|Config Name |Default Value |Description
+|CONFIG_ESF_BUTTON_MANAGER_HANDLE_MAX_NUM
+|3
+|The maximum number of control handles that the ButtonManager can open simultaneously. Can be set from 1 to 5.
+
+|CONFIG_ESF_BUTTON_MANAGER_NOTIFICATION_CALLBACK_MAX_NUM
+|3
+|The maximum number of notification callbacks that can be registered per button for each ButtonManager handle. Can be set from 1 to 5.
+|===
+
+==== Data Type List
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type |Description |Section
+|EsfButtonManagerStatus
+|Enumeration defining the result of API execution
+|<<#_EsfButtonManagerStatus>>
+|EsfButtonManagerHandle
+|Definition of the control handle for ButtonManager
+|<<#_EsfButtonManagerHandle>>
+|EsfButtonManagerCallback
+|Definition of the callback function registered to ButtonManager
+|<<#_EsfButtonManagerCallback>>
+|===
+
+==== API List
+The list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description |Section
+|EsfButtonManagerOpen
+|Starts the Button Manager block and obtains a control handle.
+|<<#_EsfButtonManagerOpen>>
+|EsfButtonManagerClose
+|Stops the Button Manager block and closes the handle.
+|<<#_EsfButtonManagerClose>>
+|EsfButtonManagerRegisterPressedCallback
+|Registers a press notification callback for a button.
+|<<#_EsfButtonManagerRegisterPressedCallback>>
+|EsfButtonManagerRegisterReleasedCallback
+|Registers a release notification callback for a button.
+|<<#_EsfButtonManagerRegisterReleasedCallback>>
+|EsfButtonManagerRegisterLongPressedCallback
+|Registers a long-press notification callback for a button.
+|<<#_EsfButtonManagerRegisterLongPressedCallback>>
+|EsfButtonManagerUnregisterPressedCallback
+|Unregisters a press notification callback for a button.
+|<<#_EsfButtonManagerUnregisterPressedCallback>>
+|EsfButtonManagerUnregisterReleasedCallback
+|Unregisters a release notification callback for a button.
+|<<#_EsfButtonManagerUnregisterReleasedCallback>>
+|EsfButtonManagerUnregisterLongPressedCallback
+|Unregisters a long-press notification callback for a button.
+|<<#_EsfButtonManagerUnregisterLongPressedCallback>>
+|EsfButtonManagerEnableNotificationCallback
+|Enables execution of notification callbacks for buttons.
+|<<#_EsfButtonManagerEnableNotificationCallback>>
+|EsfButtonManagerDisableNotificationCallback
+|Disables execution of notification callbacks for buttons.
+|<<#_EsfButtonManagerDisableNotificationCallback>>
+|===
+
+<<<
+
+=== Data Type Definitions
+[#_EsfButtonManagerStatus]
+==== EsfButtonManagerStatus
+An enumeration that defines the result of API execution.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfButtonManagerStatusOk,
+  kEsfButtonManagerStatusHandleError,
+  kEsfButtonManagerStatusParamError,
+  kEsfButtonManagerStatusInternalError,
+  kEsfButtonManagerStatusResourceError,
+  kEsfButtonManagerStatusStateTransitionError
+} EsfButtonManagerStatus;
+....
+
+* *Values*
+
+[#_TableReturnValue]
+.Description of EsfButtonManagerStatus Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|kEsfButtonManagerStatusOk
+|Normal completion
+
+|kEsfButtonManagerStatusHandleError
+|Invalid handle
+
+|kEsfButtonManagerStatusParamError
+|Invalid input parameter
+
+|kEsfButtonManagerStatusInternalError
+|Other internal error
+
+|kEsfButtonManagerStatusResourceError
+|Resource error
+
+|kEsfButtonManagerStatusStateTransitionError
+|State transition error
+
+|===
+
+
+[#_EsfButtonManagerHandle]
+==== EsfButtonManagerHandle
+Definition of the control handle for the ButtonManager.
+
+* *Format*
+
+[source, C]
+....
+typedef void* EsfButtonManagerHandle;
+....
+
+[#_EsfButtonManagerCallback]
+==== EsfButtonManagerCallback
+Pointer to the notification callback function registered to the ButtonManager.
+
+* *Format*
+
+[source, C]
+....
+typedef void (*EsfButtonManagerCallback)(void *user_data);
+....
+
+* *Parameter*
+**``[IN] void *user_data``**::  
+User-defined data passed at the time of callback registration.
+
+<<<
+
+=== API Definitions
+
+[#_EsfButtonManagerOpen]
+==== EsfButtonManagerOpen
+* *Function* 
++
+Starts the ButtonManager and obtains a control handle.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerOpen(EsfButtonManagerHandle *handle)**``
+
+* *Parameter Description* +
++
+**``[OUT] EsfButtonManagerHandle *handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerOpen_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerOpen_Return_Values]
+.Return Values for EsfButtonManagerOpen
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusParamError
+|The `handle` argument is NULL.
+
+|kEsfButtonManagerStatusInternalError
+|Failed to start ButtonManager due to errors such as thread creation failure or failure to register detection callbacks to PL or Utility.
+
+|kEsfButtonManagerStatusResourceError
+|The maximum number of handles has been reached and no additional handles can be obtained.
+|===
+
+* *Description* +
+Starts the ButtonManager and registers detection callbacks to PL and Utility. +
+Transitions to the OPEN state and obtains a control handle.  +
+Up to `CONFIG_ESF_BUTTON_MANAGER_HANDLE_MAX_NUM` handles can be obtained.  +
+If the state is already OPEN, only handle acquisition is performed.  +
+If the ButtonManager API is already running in another context, execution is delayed until the current process completes. The same applies if a notification callback is being executed.  +
+No state transition occurs if an error is returned.
+
+
+
+[#_EsfButtonManagerClose]
+==== EsfButtonManagerClose
+* *Function*
++
+Stops the ButtonManager and closes the handle.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerClose(EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerClose_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerClose_Return_Values]
+.Return Values for EsfButtonManagerClose
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|The `handle` argument is NULL.
+
+|kEsfButtonManagerStatusInternalError
+|Failed to stop the ButtonManager due to errors such as failure to destroy the thread or unregister detection callbacks from PL and Utility.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state.
+|===
+
+* *Description* +
+Performs the shutdown process of the ButtonManager and closes the handle.  
+All notification callbacks registered to the handle will be unregistered.  
+If all handles are closed, detection callbacks registered to PL and Utility will be unregistered, and the state will transition to CLOSE.  
+If another context is already executing a ButtonManager API, this API will wait for its completion before executing. The same applies if a notification callback is being executed.  
+No state transition occurs if an error is returned.
+
+
+[#_EsfButtonManagerRegisterPressedCallback]
+==== EsfButtonManagerRegisterPressedCallback
+* *Function* +
++
+Registers a press notification callback for a button.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerRegisterPressedCallback(uint32_t button_id, const EsfButtonManagerCallback callback, void* user_data, EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t button_id``**::  
+Button ID. Specify the ID defined in PL_Button.  
+**``[IN] const EsfButtonManagerCallback callback``**::  
+Callback to be registered.  
+**``[IN] void* user_data``**::  
+User data. Set to NULL if not used.  
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerRegisterPressedCallback_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerRegisterPressedCallback_Return_Values]
+.Return Values for EsfButtonManagerRegisterPressedCallback
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|Returned when:
+・The `handle` or `callback` is NULL  
+・An invalid button ID is specified
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusResourceError
+|The maximum number of callbacks has been reached.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or ENABLE sub-state.
+|===
+
+* *Description* +
+Registers a notification callback that is executed when the specified button is pressed.  
+Registration is only allowed while callback execution is disabled.  
+The maximum number of notification callbacks that can be registered per button is defined by `CONFIG_ESF_BUTTON_MANAGER_NOTIFICATION_CALLBACK_MAX_NUM`.  
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is being executed.  
+If there are any issues with the input arguments, the callback will not be registered and an error will be returned.
+
+[#_EsfButtonManagerRegisterReleasedCallback]
+==== EsfButtonManagerRegisterReleasedCallback
+* *Function*
++
+Registers a release notification callback for a button.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerRegisterReleasedCallback(uint32_t button_id, int32_t min_second, int32_t max_second, const EsfButtonManagerCallback callback, void* user_data, EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t button_id``**::  
+Button ID. Specify the ID defined in PL_Button.  
+**``[IN] int32_t min_second``**::  
+Start time (in seconds) of the button long-press duration for which the release callback should be executed.  
+Valid values range from 0 to 120.  
+**``[IN] int32_t max_second``**::  
+End time (in seconds) of the button long-press duration for which the release callback should be executed.  
+Valid values range from 0 to 120.  
+**``[IN] const EsfButtonManagerCallback callback``**::  
+Callback to be registered.  
+**``[IN] void* user_data``**::  
+User-defined data. Set to NULL if not used.  
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+[#_EsfButtonManagerRegisterReleasedCallback_Return_Values]
+.Return Values for EsfButtonManagerRegisterReleasedCallback
+[width="100%", cols="30%,70%",options="header"]
+Returns one of the values listed in <<#_EsfButtonManagerRegisterReleasedCallback_Return_Values>> based on the execution result.
++
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|Returned when:
+・The `handle` or `callback` is NULL  
+・An invalid button ID is specified  
+・Invalid time values are specified
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusResourceError
+|The maximum number of callbacks has been reached.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or ENABLE sub-state.
+|===
+
+* *Description* +
+Registers a notification callback to be executed when the specified button is released.  
+Registration is allowed only when callback execution is disabled.  
+The maximum number of notification callbacks that can be registered per button is defined by `CONFIG_ESF_BUTTON_MANAGER_NOTIFICATION_CALLBACK_MAX_NUM`.  
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is being executed.  
+If there are any issues with the input arguments, the callback will not be registered and an error will be returned.  
+For details on valid `min_second` and `max_second` values, refer to <<#_Examples_of_min_second_and_max_second>>.
++
+[#_Examples_of_min_second_and_max_second]
+.Examples of min_second and max_second
+[width="100%", cols="30%,15%,15%,10%,35%",options="header"]
+|===
+|Pattern |min_second Example |max_second Example |Valid? |Description
+|min_second < max_second
+|0
+|120
+|OK
+|Use case for specifying a time range. The callback is executed if the button is released after holding it between min_second and max_second seconds.
+
+|min_second == max_second
+|15
+|15
+|OK
+|Use case for specifying an exact time. The callback is executed if the button is released exactly after min_second seconds.
+
+|min_second > max_second
+|20
+|19
+|NG
+|Invalid: min_second greater than max_second is not allowed.
+
+|min_second > 0 +
+max_second == 0
+|30
+|0
+|OK
+|Use case for "greater than or equal to" condition. If max_second is 0, the callback is executed if the button is released after holding it for at least min_second seconds.
+
+|min_second == 0 +
+max_second == 0
+|0
+|0
+|OK
+|Use case with no time condition. If both are set to 0, the callback is always executed upon release, regardless of how long the button was held.
+
+
+|min_second > 120
+|121
+|-
+|NG
+|Invalid: min_second cannot exceed 120.
+
+|max_second > 120
+|-
+|121
+|NG
+|Invalid: max_second cannot exceed 120.
+
+|min_second < 0
+|-1
+|-
+|NG
+|Invalid: min_second cannot be negative.
+
+|max_second < 0
+|-
+|-1
+|NG
+|Invalid: max_second cannot be negative.
+
+|===
++
+The table <<#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered>> shows whether each callback is executed based on different button hold durations, when multiple release callbacks with different `min_second` and `max_second` conditions are registered simultaneously. A 〇 indicates that the callback is executed, and a × indicates that it is not.
++
+[#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered]
+.Callback Execution Judgment Table When Multiple Release Callbacks Are Registered
+[width="100%", options="autowidth"]
+|===
+3+^.^|Registered Callback 5+^.^|Hold Duration
+|Name |min_second |max_second |5 sec |15 sec |29 sec |30 sec |31 sec
+
+|Callback 1
+|5
+|29
+|〇
+|〇
+|〇
+|×
+|×
+
+|Callback 2
+|15
+|15
+|×
+|〇
+|×
+|×
+|×
+
+|Callback 3
+|30
+|0
+|×
+|×
+|×
+|〇
+|〇
+|===
+
+[#_EsfButtonManagerRegisterLongPressedCallback]
+==== EsfButtonManagerRegisterLongPressedCallback
+* *Function*
++ 
+Registers a long-press notification callback for a button.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerRegisterLongPressedCallback(uint32_t button_id, int32_t second, const EsfButtonManagerCallback callback, void* user_data, EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t button_id``**::  
+Button ID. Specify the ID defined in PL_Button.  
+**``[IN] int32_t second``**::  
+Duration in seconds to trigger the long-press callback.  
+Valid values range from 1 to 120.  
+**``[IN] const EsfButtonManagerCallback callback``**::  
+Callback to be registered.  
+**``[IN] void* user_data``**::  
+User-defined data. Set to NULL if not used.  
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+[#_EsfButtonManagerRegisterLongPressedCallback_Return_Values]
+.Return Values for EsfButtonManagerRegisterLongPressedCallback
+[width="100%", cols="30%,70%",options="header"]
+Returns one of the values listed in <<#_EsfButtonManagerRegisterLongPressedCallback_Return_Values>> based on the execution result.
++
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|Returned when:
+・The `handle` or `callback` is NULL  
+・An invalid button ID is specified  
+・An invalid time value is specified
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusResourceError
+|The maximum number of callbacks has been reached.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or ENABLE sub-state.
+|===
+
+* *Description* +
+Registers a notification callback to be executed when the specified button is long-pressed. + 
+Registration is only allowed while callback execution is disabled. + 
+The maximum number of notification callbacks that can be registered per button is defined by `CONFIG_ESF_BUTTON_MANAGER_NOTIFICATION_CALLBACK_MAX_NUM`. + 
+If another context is already executing a ButtonManager API, this API waits for its completion before executing. The same applies if a notification callback is being executed. + 
+If there are any issues with the input arguments, the callback will not be registered and an error will be returned.
+
+[#_EsfButtonManagerUnregisterPressedCallback]
+==== EsfButtonManagerUnregisterPressedCallback
+* *Function*
++
+Unregisters the press notification callback for the specified button.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerUnregisterPressedCallback(uint32_t button_id, EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t button_id``**::  
+Button ID. Specify the ID defined in PL_Button.  
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerUnregisterPressedCallback_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerUnregisterPressedCallback_Return_Values]
+.Return Values for EsfButtonManagerUnregisterPressedCallback
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|Returned when:
+・The `handle` is NULL  
+・An invalid button ID is specified
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusResourceError
+|No callback was registered for the specified button.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or ENABLE sub-state.
+|===
+
+* *Description* +
+Unregisters all press notification callbacks for the specified button that are associated with the handle. + 
+Unregistration is allowed only when callback execution is disabled. + 
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is being executed. +
+
+[#_EsfButtonManagerUnregisterReleasedCallback]
+==== EsfButtonManagerUnregisterReleasedCallback
+* *Function*
++
+Unregisters the release notification callback for the specified button.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerUnregisterReleasedCallback(uint32_t button_id, EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t button_id``**::  
+Button ID. Specify the ID defined in PL_Button.  
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerUnregisterReleasedCallback_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerUnregisterReleasedCallback_Return_Values]
+.Return Values for EsfButtonManagerUnregisterReleasedCallback
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|Returned when:  
+・The `handle` is NULL  
+・An invalid button ID is specified
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusResourceError
+|No callback was registered for the specified button.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or ENABLE sub-state.
+|===
+
+* *Description* +
+Unregisters all release notification callbacks for the specified button that are associated with the handle. + 
+Unregistration is allowed only when callback execution is disabled. + 
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is being executed. +
+
+[#_EsfButtonManagerUnregisterLongPressedCallback]
+==== EsfButtonManagerUnregisterLongPressedCallback
+* *Function*
++ 
+Unregisters the long-press notification callback for the specified button.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerUnregisterLongPressedCallback(uint32_t button_id, EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t button_id``**::  
+Button ID. Specify the ID defined in PL_Button.  
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerUnregisterLongPressedCallback_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerUnregisterLongPressedCallback_Return_Values]
+.Return Values for EsfButtonManagerUnregisterLongPressedCallback
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|Returned when:  
+・The `handle` is NULL  
+・An invalid button ID is specified
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusResourceError
+|No callback was registered for the specified button.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or ENABLE sub-state.
+|===
+
+
+* *Description* +
+Unregisters all long-press notification callbacks for the specified button that are associated with the handle. + 
+Unregistration is allowed only when callback execution is disabled. + 
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is being executed. +
+
+[#_EsfButtonManagerEnableNotificationCallback]
+==== EsfButtonManagerEnableNotificationCallback
+* *Function*
++
+Enables the execution of registered button notification callbacks.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerEnableNotificationCallback(EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerEnableNotificationCallback_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerEnableNotificationCallback_Return_Values]
+.Return Values for EsfButtonManagerEnableNotificationCallback
+[width="100%", options="header"]
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|The `handle` argument is NULL.
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or already in the ENABLE sub-state.
+
+|===
+* *Description* +
+Enables execution of the registered button notification callbacks. + 
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is currently being executed. +
+
+[#_EsfButtonManagerDisableNotificationCallback]
+==== EsfButtonManagerDisableNotificationCallback
+* *Function*
++
+Disables the execution of registered button notification callbacks.
+
+* *Format* +
++
+``**EsfButtonManagerStatus EsfButtonManagerDisableNotificationCallback(EsfButtonManagerHandle handle)**``
+
+* *Parameter Description* +
++
+**``[IN/OUT] EsfButtonManagerHandle handle``**::  
+Control handle for the ButtonManager.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_EsfButtonManagerDisableNotificationCallback_Return_Values>> based on the execution result.
++
+[#_EsfButtonManagerDisableNotificationCallback_Return_Values]
+.Return Values for EsfButtonManagerDisableNotificationCallback
+[width="100%", options="header"]
+|===
+|Return Value  |Description
+|kEsfButtonManagerStatusOk
+|Operation completed successfully.
+
+|kEsfButtonManagerStatusHandleError
+|The specified `handle` is invalid.
+
+|kEsfButtonManagerStatusParamError
+|The `handle` argument is NULL.
+
+|kEsfButtonManagerStatusInternalError
+|An internal error occurred.
+
+|kEsfButtonManagerStatusStateTransitionError
+|Called while in the CLOSE state or already in the DISABLE sub-state.
+|===
+
+* *Description* +
+Disables execution of the registered button notification callbacks. + 
+If another context is already executing a ButtonManager API, this API will wait until it completes. The same applies if a notification callback is currently being executed. +
+
+<<<
+
+== Example API Usage
+
+This section shows example sequences for using each API.
+
+[#_General_API_Call_Sequence_Example]
+=== General API Call Sequence Example
+
+[source,mermaid]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    actor User
+    participant App
+    participant esf_buttonmanager as ButtonManager
+    participant PL
+    participant UtilityTimer
+
+  App ->> +esf_buttonmanager : EsfButtonManagerOpen
+  esf_buttonmanager ->> +PL : Register detection callback
+  PL -->> -esf_buttonmanager : _
+  esf_buttonmanager ->> +UtilityTimer : Register elapsed-time detection callback
+  UtilityTimer -->> -esf_buttonmanager : _
+  esf_buttonmanager -->> -App : Handle
+
+  App ->> +esf_buttonmanager : EsfButtonManagerRegisterPressedCallback<br>EsfButtonManagerRegisterReleasedCallback<br>EsfButtonManagerRegisterLongPressedCallback
+  esf_buttonmanager -->> -App : _
+  App ->> +esf_buttonmanager : EsfButtonManagerEnableNotificationCallback
+  esf_buttonmanager -->> -App : _
+
+  User ->> PL : Button press
+  PL ->> +esf_buttonmanager : Execute detection callback (press)
+  esf_buttonmanager -->> -PL : _
+  esf_buttonmanager ->> +UtilityTimer : Start timer
+  UtilityTimer -->> -esf_buttonmanager : _
+  esf_buttonmanager ->> +App : Execute press notification callback
+  App -->> -esf_buttonmanager : _
+
+  loop While button is held
+    User ->> PL : Long press
+    UtilityTimer ->> +esf_buttonmanager : Execute elapsed-time detection callback
+    esf_buttonmanager -->> -UtilityTimer : _
+    esf_buttonmanager ->> +App : Execute long-press notification callback
+    App -->> -esf_buttonmanager : _
+  end
+
+  User ->> PL : Button release
+  PL ->> +esf_buttonmanager : Execute detection callback (release)
+  esf_buttonmanager -->> -PL : _
+  esf_buttonmanager ->> +UtilityTimer : Stop timer
+  UtilityTimer -->> -esf_buttonmanager : _
+  esf_buttonmanager ->> +App : Execute release notification callback
+  App -->> -esf_buttonmanager : _
+
+  App ->> +esf_buttonmanager : EsfButtonManagerClose
+  esf_buttonmanager ->> +PL : Unregister detection callback
+  PL -->> -esf_buttonmanager : _
+  esf_buttonmanager ->> +UtilityTimer : Unregister elapsed-time detection callback
+  UtilityTimer -->> -esf_buttonmanager : _
+  esf_buttonmanager -->> -App : _
+
+....
+
+
+[#_API_Call_Example_From_Multiple_Modules]
+=== API Call Example From Multiple Modules
+When accessing the ButtonManager from multiple modules, each module must obtain its own handle and use it to call APIs.  
+For an example API call sequence, refer to <<#_Timing_Diagram_of_Button_Notification_Scope>>.
+
+
+
+<<<
+
+== Special Notes and Component-Specific Information
+=== Constraints
+* Since the ButtonManager registers detection callbacks for button and elapsed time events to PL and Utility, ensure that PL and Utility are ready to accept such registrations before opening the ButtonManager.
+* If a button is pressed and released while the ButtonManager is in the CLOSE or DISABLE state, the operation will not be notified.
+
+=== Special Notes
+* If a button is pressed while the ButtonManager is in the CLOSE or DISABLE state and is not released even after transitioning to the ENABLE state, the long-press duration will start being measured from the point it enters the ENABLE state.  
+  (Refer to <<#_Timing_Diagram_of_Button_Notification_Scope>>.)
+
+=== List of Required Functions for PL and Other Modules
+.List of Required Functions for PL and Other Modules
+[width="100%",cols="20%,40%,40%",options="header"]
+|===
+|Module |Required Function |Description
+|PL
+|Button Press/Release Detection
+|Detects changes in GPIO when a button is pressed or released, and notifies the registered callback in the ButtonManager module.
+
+|PL
+|Register/Unregister Detection Callback for Button Press/Release
+|Provides the ability to register and unregister detection callbacks for button press/release events.
+
+|PL
+|Button Press Detection During Device Power-Off
+|In scenarios such as intermittent operation where a button is long-pressed while the device is powered off and the power turns on during the press, PL must notify ButtonManager of the press that started while powered off. This notification uses the callback registered by ButtonManager.
+
+|Utility
+|Elapsed-Time Detection
+|Notifies ButtonManager via registered callback when the configured timer duration elapses.
+
+|Utility
+|Register/Unregister Elapsed-Time Detection Callback
+|Provides the ability to register and unregister elapsed-time detection callbacks.
+
+|Utility
+|Start/Stop Timer
+|Provides the ability to start and stop a timer used for elapsed-time detection.
+
+|===
+
+<<<
+
+== List of OSS Used
+None.
+
+<<<
+
+== References
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes
+
+|v0.0.1
+|Initial release
+
+|v0.0.2
+|Changes: + 
+・Title updated +
+・Added notification callback API to architecture diagram; changed GPIO to Button + 
+・Modified HAL description in dependency block; added OSAL + 
+・Added OPEN sub-state to state transition diagram + 
+・Added "Enable/Disable Notification Callback Execution Function" to component function list + 
+・Modified the following in Component Function Descriptions: + 
+　- Changed explanation for Button Operation Notification Function and replaced its sequence diagram with a timing diagram + 
+　- Added <<#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press>> + 
+　- Updated Notification Callback Registration Function: added preconditions and revised description +
+　- Added preconditions to Callback Unregistration Function + 
+　- Added Enable/Disable Notification Callback Execution Function +
+・Updated Data Type List: +
+　- Removed EsfButtonManagerButtonType +
+　- Removed EsfButtonManagerButtonPressedCallbackInfo +
+　- Removed EsfButtonManagerButtonReleasedCallbackInfo +
+　- Removed EsfButtonManagerButtonLongPressedCallbackInfo +
+　- Removed EsfButtonManagerNotificationCallbackInfo  
+・API List / API Definitions: +
+　- Removed EsfButtonManagerRegisterNotificationCallback +
+　- Removed EsfButtonManagerUnregisterNotificationCallback +
+　- Added EsfButtonManagerRegisterPressedCallback +
+　- Added EsfButtonManagerRegisterReleasedCallback +
+　- Added EsfButtonManagerRegisterLongPressedCallback +
+　- Added EsfButtonManagerUnregisterPressedCallback +
+　- Added EsfButtonManagerUnregisterReleasedCallback +
+　- Added EsfButtonManagerUnregisterLongPressedCallback +
+　- Added EsfButtonManagerEnableNotificationCallback +
+　- Added EsfButtonManagerDisableNotificationCallback +
+・API Definitions: +
+　- Added notes on mutual exclusion control for EsfButtonManagerOpen and EsfButtonManagerClose +
+　- Renamed `start_second` and `end_second` to `min_second` and `max_second`; moved description to EsfButtonManagerRegisterReleasedCallback +
+　- Moved <<#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered>> under EsfButtonManagerRegisterReleasedCallback +
+・General API Call Sequence Example: +
+　- Updated timing for detection callback registration/unregistration +
+　- Replaced RegisterNotificationCallback with individual register functions +
+　- Added execution of EnableNotificationCallback +
+　- Removed `opt` +
+・Updated <<#_API_Call_Example_From_Multiple_Modules>> to refer to <<#_Timing_Diagram_of_Button_Notification_Scope>>  
+・Special Notes and Component-Specific Details: +
+　- Revised text to reflect updated state transitions
+|v0.0.3
+|Changes: +
+・Renamed HAL to PL; renamed Hal_Timer to UtilityTimer +
+・Updated General API Call Sequence Example to follow changes in UtilityTimer specification
+|v0.0.4
+|Minor corrections to <<#_General_API_Call_Sequence_Example>>: +
+　- Changed caller/callee of UtilityTimer-related processes from PL to UtilityTimer +
+　- Corrected [Execute Release Notification Callback] to [Unregister Elapsed-Time Detection Callback]
+|===

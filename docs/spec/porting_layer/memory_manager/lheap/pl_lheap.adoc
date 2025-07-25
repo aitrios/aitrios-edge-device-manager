@@ -1,0 +1,1615 @@
+= PL Lheap (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+<<<
+
+== Purpose and Scope
+
+This document describes the specifications of the Memory impl layer, one of the impl layers of AITRIOS PL, specifically the <<#_words, Lheap area>>. +
+The Lheap area is primarily used when accessing large contiguous memory. +
+The purpose of PL Lheap is to abstract the interface differences caused by SoC or memory capacity and provide an access interface to large memory for the upper layers.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[options="header"]
+|===
+|Term |Description
+
+|himem
+|High memory
+
+|VnS APP
+|Vision and Sensing Application
+
+|WAMR
+|WebAssembly Micro Runtime
+
+|Lheap Area
+|Large Heap +
+This memory area is intended for use cases that require large contiguous memory, +
+and memory is released per use case to avoid (or mitigate) memory fragmentation. +
+In AITRIOS, this area is mainly assumed to be used for memory sizes of 64 KB or more, +
+such as for streaming data or OTA.
+
+|===
+
+<<<
+
+== Component Description
+
+=== Overview
+
+The following figure shows the software configuration centered around this block.
+
+.Overview Diagram
+image::./images/lheap_component.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Detailed Component Description
+
+<<<
+
+=== State Transitions
+The possible states of Lheap are shown in <<#_TableStates, Table 2>>.
+
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|PL_LHEAP_READY
+kPlLheapReady
+|Initial state of PL Lheap.
+
+|PL_LHEAP_RUNNING
+kPlLheapRunning
+|Executable state of PL Lheap.
+|===
+
+Lheap follows the state transitions shown in <<#_FIGURE_STATE>>. +
+In the case of an error in each API, state transition does not occur. +
+
+[#_FIGURE_STATE]
+.State Transition Diagram
+image::./images/lheap_state.png[scaledwidth="100%",align="center"]
+
+<<#_TABLE_STATE_TRANSITION>> shows which APIs are accepted in each state and the resulting state transitions. +
+The state names in the table represent the destination states after the API execution, +
+meaning that the API is accepted. +
+× indicates the API is not accepted; calling the API in this state results in an error and no state transition. +
+For details of the errors, refer to <<#_PlErrCode>>. +
+〇 indicates the API is accepted in the current state and no state transition occurs.
+
+[#_TABLE_STATE_TRANSITION]
+.State Transition Table
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|State
+|PL_LHEAP_READY |PL_LHEAP_RUNNING
+.9+|API Name
+
+|``**PlLheapInitialize**``  |PL_LHEAP_RUNNING |×
+|``**PlLheapFinalize**``    |×                |PL_LHEAP_READY
+|``**PlLheapAlloc**``       |×                |〇
+|``**PlLheapFree**``        |×                |〇
+|``**PlLheapMap**``         |×                |〇
+|``**PlLheapUnmap**``       |×                |〇
+|``**PlLheapPwrite**``      |×                |〇
+|``**PlLheapGetMeminfo**``  |×                |〇
+|``**PlLheapIsValid**``     |×                |〇
+
+|===
+
+<<<
+
+=== Component Function List
+The function list is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section Number
+
+|Initialization/Finalization of PL Lheap
+|Initializes and finalizes the PL Lheap functions.
+|<<#_Function1, 3.6.1.>>
+
+|Allocation/Deallocation of physical memory in the Lheap area
+|Allocates and deallocates physical memory in the Lheap area.
+|<<#_Function2, 3.6.2.>>
+
+|Mapping/Unmapping virtual memory to physical memory in the Lheap area
+|Maps and unmaps virtual memory to the physical memory in the Lheap area.
+|<<#_Function3, 3.6.3.>>
+
+|Validation of allocated physical memory
+|Checks whether the allocated physical memory is a valid Lheap area.
+|<<#_Function4, 3.6.4.>>
+
+|Read/Write access to physical memory in the Lheap area
+|Reads from and writes to the allocated physical memory in the Lheap area.
+|<<#_Function5, 3.6.5.>>
+
+|Memory information of the Lheap area
+|Provides memory information of the Lheap area.
+|<<#_Function6, 3.6.7.>>
+
+|Check for Map feature support
+|Determines whether the Map-related APIs (PlLheapMap, PlLheapUnmap, PlLheapPwrite) are available.
+|<<#_Function7, 3.6.8.>>
+|===
+
+<<<
+
+=== Component Function Description
+[#_Function1]
+==== Initialization/Finalization of PL Lheap Functions
+Function Overview::  
+Initializes and finalizes PL Lheap functions. +  
+Initialization enables the use of PL Lheap APIs.  
+Preconditions::  
+None.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapInitialize>> and <<#_PlLheapFinalize>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapInitialize>> and <<#_PlLheapFinalize>>.  
+Items to Consider::  
+None.
+
+[#_Function2]
+==== Allocation/Deallocation of Physical Memory in the Lheap Area
+Function Overview::  
+Allocates and deallocates physical memory in the Lheap area.  
+Preconditions::  
+PlLheapInitialize must have been executed.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapAlloc>> and <<#_PlLheapFree>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapAlloc>> and <<#_PlLheapFree>>.  
+Items to Consider::  
+None.
+
+[#_Function3]
+==== Mapping/Unmapping Virtual Memory to Physical Memory in the Lheap Area
+Function Overview::  
+Maps and unmaps virtual memory to the physical memory in the Lheap area allocated by this module.  
+Preconditions::  
+PlLheapInitialize must have been executed.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapMap>> and <<#_PlLheapUnmap>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapMap>> and <<#_PlLheapUnmap>>.  
+Items to Consider::  
+None.
+
+[#_Function4]
+==== Check Whether the Allocated Physical Memory is a Valid Lheap Area
+Function Overview::  
+Checks whether the allocated physical memory is a valid Lheap area.  
+Preconditions::  
+None.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapIsValid>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapIsValid>>.  
+Items to Consider::  
+None.
+
+[#_Function5]
+==== Read/Write Access to Physical Memory in the Lheap Area
+Function Overview::  
+Reads from and writes to the Lheap area.  
+Preconditions::  
+PlLheapInitialize must have been executed.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapPwrite>>,  
+<<#_PlLheapFopen>>,  
+<<#_PlLheapFclose>>,  
+<<#_PlLheapFwrite>>,  
+<<#_PlLheapFread>>,  
+<<#_PlLheapFseek>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapPwrite>>,  
+<<#_PlLheapFopen>>,  
+<<#_PlLheapFclose>>,  
+<<#_PlLheapFwrite>>,  
+<<#_PlLheapFread>>,  
+<<#_PlLheapFseek>>.  
+Items to Consider::  
+None.
+
+[#_Function6]
+==== Providing Memory Information of the Lheap Area
+Function Overview::  
+Provides memory information of the Lheap area.  
+Preconditions::  
+PlLheapInitialize must have been executed.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapGetMeminfo>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapGetMeminfo>>.  
+Items to Consider::  
+None.
+
+[#_Function7]
+==== Check for Map Feature Support
+Function Overview::  
+Determines whether the Map-related APIs (PlLheapMap, PlLheapUnmap, PlLheapPwrite) are available.  
+Preconditions::  
+PlLheapInitialize must have been executed.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlLheapIsMapSupport>>.  
+Behavior on Error and Recovery Method::  
+See <<#_PlLheapIsMapSupport>>.  
+Items to Consider::  
+None.
+
+=== Non-functional Requirements of the Component
+
+The non-functional requirements are listed in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Item |Description |Section
+|Maximum Stack Usage
+|Stack usage consumed within the component.
+|<<#_NonFunctionStack, 3.7.>>
+
+|Maximum Heap Usage
+|Heap usage consumed within the component.
+|<<#_NonFunctionHeap, 3.7.>>
+
+|Maximum Static Data Usage
+|Static data usage consumed within the component.
+|<<#_NonFunctionStatic, 3.7.>>
+
+|Performance
+|Performance of each API.
+|<<_NonFunctionPerformance, 3.7.>>
+|===
+
+=== Description of Non-functional Requirements
+The non-functional requirements of this component are described below.
+
+[#_NonFunctionStack]
+==== Maximum Stack Usage
+128 Bytes
+
+[#_NonFunctionHeap]
+==== Maximum Heap Usage
+80 Bytes per call to PlLheapAlloc
+
+[#_NonFunctionStatic]
+==== Maximum Static Data Usage
+128 Bytes
+
+[#_NonFunctionPerformance]
+==== Performance
+All APIs operate within 1 ms.
+
+<<<
+
+== API Specification
+=== Definition List
+==== Data Type List
+The data types are listed in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type |Description |Section
+|enum PlErrCode |Enumeration defining the result of API execution. |<<#_PlErrCode, 4.2.1.>>
+|PlLheapHandle |Handle to access memory. |<<#_PlLheapHandle, 4.2.2.>>
+|struct PlLheapMeminfo |Structure representing memory information of the Lheap area. |<<#_PlLheapMeminfo, 4.2.3.>>
+|===
+
+==== API List
+The available APIs are listed in <<#_TablePublicAPI>>.
+
+[#_TablePublicAPI]
+.List of APIs
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Description |Section
+|PlLheapInitialize
+|Initializes the PL Lheap functions.
+|<<#_PlLheapInitialize, 4.3.1.>>
+
+|PlLheapFinalize
+|Finalizes the PL Lheap functions.
+|<<#_PlLheapFinalize, 4.3.2.>>
+
+|PlLheapAlloc
+|Allocates a handle to access memory in the Lheap area.
+|<<#_PlLheapAlloc, 4.3.3.>>
+
+|PlLheapFree
+|Frees memory allocated in the Lheap area.
+|<<#_PlLheapFree, 4.3.4.>>
+
+|PlLheapMap
+|Performs mapping and returns a pointer to the memory specified by the handle.
+|<<#_PlLheapMap, 4.3.5.>>
+
+|PlLheapUnmap
+|Unmaps a memory block allocated from the Lheap area.
+|<<#_PlLheapUnmap, 4.3.6.>>
+
+|PlLheapPwrite
+|Writes data from a buffer to the Lheap area.
+|<<#_PlLheapPwrite, 4.3.7.>>
+
+|PlLheapGetMeminfo
+|Retrieves memory information of the Lheap area.
+|<<#_PlLheapGetMeminfo, 4.3.8.>>
+
+|PlLheapIsValid
+|Determines whether the given handle refers to a valid Lheap area.
+|<<#_PlLheapIsValid, 4.3.9.>>
+
+|PlLheapIsMapSupport
+|Checks if Map-related APIs (PlLheapMap, PlLheapUnmap, PlLheapPwrite) are supported.
+|<<#_PlLheapIsMapSupport, 4.3.10.>>
+
+|PlLheapFopen
+|Opens a descriptor for FileIO access to the Lheap.
+|<<#_PlLheapFopen, 4.3.11.>>
+
+|PlLheapFclose
+|Closes the descriptor for FileIO access to the Lheap.
+|<<#_PlLheapFclose, 4.3.12.>>
+
+|PlLheapFread
+|Reads data from the Lheap using a descriptor obtained from PlLheapFopen.
+|<<#_PlLheapFread, 4.3.13.>>
+
+|PlLheapFwrite
+|Writes data to the Lheap using a descriptor obtained from PlLheapFopen.
+|<<#_PlLheapFwrite, 4.3.14.>>
+
+|PlLheapFseek
+|Sets the read/write position in the Lheap using a descriptor obtained from PlLheapFopen.
+|<<#_PlLheapFseek, 4.3.15.>>
+|===
+
+<<<
+
+=== Data Type Definitions
+
+[#_PlErrCode]
+==== PlErrCode
+Enumeration type that defines the result of API execution.  
+(T.B.D.)
+
+[#_PlLheapHandle]
+==== PlLheapHandle
+A handle used to access allocated memory.  
+It is obtained by executing PlLheapAlloc.
+
+[source, C]
+....
+typedef void *PlLheapHandle;
+....
+
+<<<
+
+[#_PlLheapMeminfo]
+==== PlLheapMeminfo
+Structure that stores memory information of the Lheap area.  
+All values are in bytes.
+
+[source, C]
+....
+typedef struct {
+  uint32_t total;
+  uint32_t used;
+  uint32_t free;
+  uint32_t linear_free;
+} PlLheapMeminfo;
+....
+
+.PlLheapMeminfo Fields
+[width="100%", cols="20%,60%",options="header"]
+|===
+|Field |Description
+|total
+|Total memory size of the Lheap area.
+
+|used
+|Used memory size in the Lheap area.
+
+|free
+|Total amount of unused memory in the Lheap area.
+
+|linear_free
+|The largest amount of memory that can be allocated at once in the Lheap area.
+|===
+
+WARNING: As of 2024/10/17, the value of linear_free is returned as equal to free.
+
+<<<
+
+[#_api_info]
+=== API Descriptions
+
+[#_PlLheapInitialize]
+==== PlLheapInitialize
+
+* *Function* +
+Initializes the PL Lheap functions.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapInitialize(void);
+....
+
+* *Parameters* +
+-
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result of execution.
+
+* *Description* +
+** Performs initialization of the PL Lheap module.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error (mutex lock/unlock failure)
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapFinalize]
+==== PlLheapFinalize
+
+* *Function* +
+Finalizes the PL Lheap functions.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapFinalize(void);
+....
+
+* *Parameters* +
+-
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result of execution.
+
+* *Description* +
+** This API can be used after <<#_PlLheapInitialize, PlLheapInitialize>> has been called.  
+** Performs finalization processing of the PL Lheap module.  
+** If any handles or virtual addresses are still in use,  
+   they will not be detected by this module. Be sure to release them before calling this API.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error (mutex lock/unlock failure)
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapAlloc]
+==== PlLheapAlloc
+
+* *Function* +
+Allocates a handle to access memory in the Lheap area.
+
+* *Prototype* +
+[source, C]
+....
+PlLheapHandle PlLheapAlloc(uint32_t size)
+....
+
+* *Parameter Description* +
+**[IN] uint32_t size**::  
+** Memory size to allocate [Byte].  
+** If 0 is specified, NULL is returned.
+
+* *Return Value* +
+** Returns a handle on success.  
+** Returns NULL on failure.
+
+* *Description* +
+** This API is available after <<#_PlLheapInitialize, PlLheapInitialize>> is executed.  
+** Allocates a handle to access memory in the Lheap area.  
+** Returns NULL when a size larger than <<#_PlLheapMeminfo, linear_free>> is specified.  
+** Note that the maximum allocatable size depends on the SoC.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|NULL
+|Invalid parameter or invalid state
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapFree]
+==== PlLheapFree
+
+* *Function* +
+Frees the memory in the Lheap area that was allocated.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapFree(PlLheapHandle handle)
+....
+
+* *Parameter Description* +
+**[IN] PlLheapHandle handle**::  
+** Handle to access memory in the Lheap area. (Return value from PlLheapAlloc)  
+** Returns an error if the handle is NULL or invalid.
+
+* *Return Value* +
+** Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after <<#_PlLheapInitialize, PlLheapInitialize>> is executed.  
+** Frees the specified memory in the Lheap area.  
+** Returns an error if the handle has not been unmapped via PlLheapUnmap or closed via PlLheapFclose.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapMap]
+==== PlLheapMap
+
+* *Function* +
+Performs a memory map and creates a pointer to access the memory specified by the handle.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapMap(const PlLheapHandle handle, void **vaddr)
+....
+
+* *Parameter Description* +
+**[IN] const PlLheapHandle handle**::  
+** Handle to access the allocated memory. (Return value from PlLheapAlloc)  
+**[OUT] void **vaddr**::  
+** Destination for the mapped virtual address.
+
+* *Return Value* +
+** Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after <<#_PlLheapInitialize, PlLheapInitialize>> is executed.  
+** Maps the memory specified by the handle and returns a pointer to it.  
+** The mapped size is the same as the size when the handle was allocated.  
+** Returns an error if there is no available virtual address space.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+
+|kPlErrMemory (tentative)
+|Invalid parameter or no space left in virtual address area
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapUnmap]
+==== PlLheapUnmap
+* *Function* +
+Unmaps the memory block allocated from the Lheap area.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapUnmap(void *vaddr)
+....
+
+* *Parameter Description* +
+**[IN] void *vaddr**::  
+Virtual address of the mapped memory to be unmapped.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** This API unmaps the Lheap area mapped to the specified virtual address.  
+** Only the mapping is released; the handle used to access the memory remains valid.  
+** To release the handle, call PlLheapFree.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapPwrite]
+==== PlLheapPwrite
+* *Function* +
+Writes data from the buffer to the memory area specified by the handle and offset.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapPwrite(const PlLheapHandle handle, const char *buf, uint32_t count, uint32_t offset)
+....
+
+* *Parameter Description* +
+**[IN] const PlLheapHandle handle**::  
+Handle for accessing the destination memory. (Return value from PlLheapAlloc)
+
+**[IN] const char *buf**::  
+Pointer to the buffer containing the data to write.
+
+**[IN] uint32_t count**::  
+Number of bytes to write.
+
+**[IN] uint32_t offset**::  
+Offset in the Lheap memory area to begin writing.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** Writes `count` bytes of data from the buffer pointed to by `buf` to the memory region starting at the specified `offset`.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapGetMeminfo]
+==== PlLheapGetMeminfo
+* *Function* +
+Retrieves memory information for the Lheap area.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapGetMeminfo(PlLheapMeminfo *info)
+....
+
+* *Parameter Description* +
+**[OUT] PlLheapMeminfo *info**::  
+Structure containing memory information for the Lheap area.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** Retrieves memory information for the Lheap area (see <<#_PlLheapMeminfo>>).  
+** Typically used before memory allocation or after an error occurs to check current memory state.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidValue (tentative)
+|Invalid value in arguments
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapIsValid]
+==== PlLheapIsValid
+* *Function* +
+Determines whether the given handle points to a valid Lheap memory region.
+
+* *Prototype* +
+[source, C]
+....
+bool PlLheapIsValid(const PlLheapHandle handle)
+....
+
+* *Parameter Description* +
+**[IN] const PlLheapHandle handle**::  
+Handle for accessing the memory. (Return value from PlLheapAlloc)
+
+* *Return Value* +
+Returns true if the handle is for a valid Lheap memory region.  
+Returns false otherwise.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** Checks whether the provided handle is valid for an allocated Lheap memory region.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|true/false
+|Returns true if the handle is valid. Returns false if invalid.
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapIsMapSupport]
+==== PlLheapIsMapSupport
+* *Function* +
+Determines whether the specified Lheap region supports the Map functionality.
+
+* *Prototype* +
+[source, C]
+....
+bool PlLheapIsMapSupport(const PlLheapHandle handle);
+....
+
+* *Parameter Description* +
+**[IN] const PlLheapHandle handle**::  
+Handle for accessing memory. (Returned from PlLheapAlloc)  
+Returns an error for NULL or invalid values.
+
+* *Return Value* +
+Returns `true` if Map-related APIs are available.  
+Returns `false` otherwise.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** Determines whether Map-related APIs (PlLheapMap, PlLheapUnmap, PlLheapPwrite) are available.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|true/false
+|Returns `true` if Map is supported; otherwise returns `false`.
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapFopen]
+==== PlLheapFopen
+* *Function* +
+Opens a descriptor for File I/O access to the Lheap.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapFopen(const PlLheapHandle handle, int *pfd);
+....
+
+* *Parameter Description* +
+**[IN] const PlLheapHandle handle**::  
+Handle for accessing memory. (Returned from PlLheapAlloc)  
+Returns an error for NULL or invalid values.
+
+**[OUT] int *pfd**::  
+Descriptor for File I/O access.  
+Used with PlLheapFread, PlLheapFwrite, PlLheapFseek, and PlLheapFclose.  
+Returns an error if NULL.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** Opens a descriptor for File I/O access to the Lheap.  
+** Multiple descriptors can be opened for the same handle.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapFclose]
+==== PlLheapFclose
+* *Function* +
+Closes a descriptor used for File I/O access to the Lheap.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlLheapFclose(const PlLheapHandle handle, int fd);
+....
+
+* *Parameter Description* +
+**[IN] const PlLheapHandle handle**::  
+Handle for accessing memory. (Returned from PlLheapAlloc)  
+Returns an error for NULL or invalid values.
+
+**[IN] int fd**::  
+Descriptor for File I/O access.  
+Must specify a descriptor obtained from PlLheapFopen.  
+Returns an error for invalid values.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>.  
+** Closes a descriptor used for File I/O access to the Lheap.  
+** Returns an error if the handle has already been closed via PlLheapFclose.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Yes
+|Thread-safe
+|Yes
+|Task-safe
+|Yes
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlLheapFread]
+==== PlLheapFread
+* *Function* +
+Reads data from the Lheap region using a file descriptor obtained from PlLheapFopen.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlLheapFread(const PlLheapHandle handle, int fd, void *buf, size_t size, size_t *rsize);
+....
+
+* *Parameter Descriptions* +
+**[IN] const PlLheapHandle handle**:: 
+** Handle to access the memory (returned by PlLheapAlloc). +
+** Returns an error if NULL or an invalid value.
+
+**[IN] int fd**:: 
+** File descriptor for FileIO access. +
+** Must be obtained via PlLheapFopen. +
+** Returns an error if an invalid value is specified.
+
+**[OUT] void *buf**:: 
+** Destination buffer for data read from the Lheap region. +
+** `size` bytes will be copied. +
+** Returns an error if NULL.
+
+**[IN] size_t size**:: 
+** Number of bytes to read. +
+** Returns an error if 0 or less. +
+
+WARNING: Since `size_t` is defined as unsigned in most compilers, be careful not to pass negative values.
+
+**[OUT] size_t *rsize**:: 
+** The actual number of bytes read. +
+** Returns an error if NULL.
+
+* *Return Value* +
+** Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API can be used after executing <<#_PlLheapInitialize, PlLheapInitialize>>. +
+** Returns an error if the specified handle has not been opened with PlLheapFopen. +
+** Reads data from the Lheap region using the file descriptor obtained from PlLheapFopen. +
+** If a `size` exceeding the Lheap's maximum size (e.g., 4259840 bytes on T3P) is specified from the current seek position, the function will read up to the available area and then return an error. +
+*** Example: If the Lheap size is 3 and its content is "ABC", and `SEEK_SET=2` is set followed by `PlLheapFread`, only "C" will be read and PlLheapFread will return an error.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Allowed
+|Multi-threaded Calls
+|Allowed
+|Multi-task Calls
+|Allowed
+|Blocking
+|Yes
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+[#_PlLheapFwrite]
+==== PlLheapFwrite
+* *Function* +
+Writes data to the Lheap using a file descriptor obtained by PlLheapFopen.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlLheapFwrite(const PlLheapHandle handle, int fd, const void *buf, size_t size, size_t *rsize);
+....
+
+* *Parameter Descriptions* +
+**[IN] const PlLheapHandle handle**:: 
+** Handle to access memory (returned by PlLheapAlloc). +
+** Returns an error if NULL or invalid.
+
+**[IN] int fd**:: 
+** File descriptor for FileIO access. +
+** Must be obtained with PlLheapFopen. +
+** Returns an error if invalid.
+
+**[IN] const void *buf**:: 
+** Data to write to the Lheap region. +
+** Writes `size` bytes. +
+** Returns an error if NULL.
+
+**[IN] size_t size**:: 
+** Amount of data to write. +
+** Returns an error if 0 or less.
+
+WARNING: Since `size_t` is typically defined as unsigned in most compilers, take care not to pass a negative value.
+
+**[OUT] size_t *rsize**:: 
+** Number of bytes actually written. +
+** Returns an error if NULL.
+
+* *Return Value* +
+** Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after <<#_PlLheapInitialize, PlLheapInitialize>> has been executed. +
+** Returns an error if the specified handle is not opened via PlLheapFopen. +
+** Writes data to the Lheap using the file descriptor obtained by PlLheapFopen. +
+** If `size` causes the write operation to exceed the maximum Lheap size (e.g., 4259840 bytes for T3P), only writable data will be written and an error will be returned. +
+*** Example: If the Lheap size is 3 and contains "ABC", and `SEEK_SET=2` followed by PlLheapFwrite("ABC") is executed, the Lheap becomes "ABA" and PlLheapFwrite returns an error.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Allowed
+|Multi-threaded Calls
+|Allowed
+|Multi-task Calls
+|Allowed
+|Blocking
+|Yes
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+[#_PlLheapFseek]
+==== PlLheapFseek
+* *Function* +
+Sets the read/write position in Lheap using a file descriptor obtained by PlLheapFopen.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlLheapFseek(const PlLheapHandle handle, int fd, off_t offset, int whence, off_t *roffset);
+....
+
+* *Parameter Descriptions* +
+**[IN] const PlLheapHandle handle**:: 
+** Handle to access memory (returned by PlLheapAlloc). +
+** Returns an error if NULL or invalid.
+
+**[IN] int fd**:: 
+** File descriptor for FileIO access. +
+** Must be obtained with PlLheapFopen. +
+** Returns an error if invalid.
+
+**[IN] off_t offset**:: 
+** Offset value to set the seek position.
+
+**[IN] int whence**:: 
+** Seek method. Choose from the following:
+*** SEEK_SET
+**** Offset is set to `offset` bytes from the beginning.
+*** SEEK_CUR
+**** Offset is set to current position plus `offset` bytes.
+*** SEEK_END
+**** Offset is set to file size plus `offset` bytes.
+
+**[OUT] off_t *roffset**:: 
+** The actual position after seeking. +
+** Returns an error if NULL.
+
+* *Return Value* +
+** Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** This API is available after executing <<#_PlLheapInitialize, PlLheapInitialize>>. +
+** Returns an error if the specified handle has not been opened with PlLheapFopen. +
+** Seek positions beyond the maximum size of the Lheap (e.g., 4259840 bytes for T3P) do not result in an error. +
+*** However, an error will be returned if PlLheapFread or PlLheapFwrite is executed at that position. +
+** Allows setting the read/write position for Lheap using the descriptor obtained from PlLheapFopen.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Concurrent Calls
+|Allowed
+|Multi-threaded Calls
+|Allowed
+|Multi-task Calls
+|Allowed
+|Blocking
+|Yes
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|kPlErrInvalidState (tentative)
+|Invalid state
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Invalid parameter
+|-
+|No impact
+|Not required
+|===
+
+== API Usage Examples
+The following shows API procedures and the corresponding memory map states.
+
+** When PlLheapIsMapSupport is true
+
+.Flow from LheapAlloc to LheapFree
+image::./images/lheap_alloc_map.png[scaledwidth="30%",align="center"]
+
+.Sequence diagram and memory map from LheapAlloc to LheapFree
+image::./images/lheap_seq_alloc_map.png[scaledwidth="30%",align="center"]
+
+** When PlLheapIsMapSupport is false
+
+.Flow from LheapAlloc to LheapFree
+image::./images/lheap_seq_alloc_file.png[scaledwidth="30%",align="center"]
+
+== Special Notes and Component-Specific Descriptions
+=== ESP32-S3 Specifications
+The memory map is shown below.
+
+.Memory Map and Address Information
+image::./images/memorymap_esp32s3.png[scaledwidth="30%",align="center"]
+
+.Memory Definitions
+|====
+|Name |Size
+|Lheap Region (Virtual Address) |4 MB - 256 KB
+|Lheap Region (Physical Address) |12 MB
+|====
+
+=== ESP32 Specifications
+The memory map is shown below.
+
+.Memory Map and Address Information
+image::./images/memorymap_esp32.png[scaledwidth="30%",align="center"]
+
+.Memory Definitions
+|====
+|Name |Size
+|Lheap Region (Virtual Address) |4 MB
+|Lheap Region (Physical Address) |2 MB
+|====
+
+<<<
+
+== List of OSS Used
+None
+
+<<<
+
+[#_ReferenceDocuments]
+== Reference Documents
+[width="100%", cols="10%,30%,60%",options="header"]
+|===
+|No. |Document |Link 
+
+|1
+|ESP32-S3 Technical Reference Manual
+|https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf
+
+|===
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|Initial version
+
+|0.0.2
+|- Global: Inserted half-width spaces around English words (for readability) +
+- Added PL prefix to terms +
+- Changed OSAL (Osal) notation to PL (Pl) +
+- Changed READY/RUNNING to PL_LHEAP_READY/PL_LHEAP_RUNNING +
+- Removed description of hal_overview.adoc and changed HalErrCode to PlErrCode +
+- Added PlErrCode to data types +
+- Moved PlLheapInitialize/PlLheapFinalize APIs to the beginning +
+- Documented error codes for PlLheapInitialize +
+- Documented error codes for PlLheapFinalize +
+- Added error codes for PlLheapFree +
+- Added error codes for PlLheapMap and changed kPlErrCodeError to kPlErrMemory +
+- Added error codes for PlLheapUnmap +
+- Added error codes for PlLheapPwrite +
+- Added error codes for PlLheapGetMemInfo +
+- Updated error codes for PlLheapIsValid +
+- Changed diagrams (*.png) to English notation
+
+|0.0.3
+|- Added new APIs: PlLheapIsMapSupport, PlLheapFopen, PlLheapFclose, PlLheapFread, PlLheapFwrite, PlLheapFseek
+
+|0.0.4
+|- Updated PlLheapFopen specification to allow multiple opens
+|===

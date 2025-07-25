@@ -1,0 +1,1078 @@
+= AITRIOS ESF Main Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.7
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This specification describes the Main module, which has the primary functions of the device. +
+This document covers the provisional implementation. +
+In the provisional implementation, intermittent drive processing is not supported.
+
+<<<
+
+== Terminology
+This section will be replaced once a common terminology is defined. +
+
+=== ESF
+ESF (AITRIOS Edge Software Framework) +
+
+* A layer that provides AITRIOS-standard APIs executable from various applications.
+* It is generally not affected by changes to the OS, chip, etc.
+* As it forms the core functionality of applications, it is managed by SSS.
+* The components are modularized to minimize the impact of sensor changes and similar modifications.
+
+<<<
+
+== Component Description
+=== Component Overview
+
+As shown in <<#_FigureOverview>>, this component manages the initialization, termination, and system shutdown of the ESF module. +
+In the provisional implementation, the framework for each function is provided, while the actual required processing is implemented by each module or application.
+
+[#_FigureOverview]
+.Structural Diagram
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    main[ESF Main]
+    style main fill:#f9f
+    modules[ESF Modules]
+    hal[HAL/Utility]
+    pl[PL Main]
+  end
+  evp_runtime[EVP Runtime, etc.]
+
+os --> |Startup/Shutdown| main
+main --> |Initialization/Termination| hal
+main --> |Message Send/Receive| hal
+main --> |"Initialization/Termination{mermaid_br}System Shutdown{mermaid_br}(Reboot/Shutdown/Factory Reset)"| modules
+main --> |"Initialization/Termination{mermaid_br}System Shutdown{mermaid_br}(Reboot/Shutdown/Factory Reset)"| evp_runtime
+main --> |"Device-dependent Initialization/Termination{mermaid_br}Downgrade"| pl
+modules --> |System Shutdown Notification| main
+....
+
+<<<
+
+=== Detailed Component Description
+==== Initialization Management
+Provides the initialization management function for the ESF module. +
+Executes initialization processes described by each module, application, or HAL, and sets the state in the Led Manager. +
+A detailed diagram is shown in <<#_FigureDetailBoot>>.
+[#_FigureDetailBoot]
+.ESF Module Initialization Detail Diagram
+[{mermaid_block}]
+....
+graph TB;
+  os[OS]
+  subgraph ESF
+    hal[HAL/Utility]
+    style main fill:#f9f
+    subgraph main
+      event[System Shutdown Management]
+      msg[System Shutdown Notification]
+      main_entry[Main]
+      boot[Initialization Management]
+      finish[Termination Management]
+    end
+    modules[Modules]
+    pl[PL Main]
+  end
+  evp_runtime[EVP Runtime, etc.]
+
+os --> |Startup| main_entry
+main_entry --> |Initialization Process| boot
+boot --> |Initialization Process| hal
+boot --> |"Initialization Process (User Defined)"| hal
+boot --> |"Initialization Process (User Defined){mermaid_br}State Setting (LedManager)"| modules
+boot --> |"Initialization Process (User Defined)"| evp_runtime
+boot --> |Initialization Process| pl
+....
+
+==== Termination Management
+Provides the termination management function for the ESF module. +
+Executes termination processes described by each module, application, or HAL. +
+A detailed diagram is shown in <<#_FigureDetailFinish>>.
+[#_FigureDetailFinish]
+.ESF Module Termination Detail Diagram
+[{mermaid_block}]
+....
+graph TB;
+  os[OS]
+  subgraph ESF
+    hal[HAL/Utility]
+    style main fill:#f9f
+    subgraph main
+      event[System Shutdown Management]
+      msg[System Shutdown Notification]
+      main_entry[Main]
+      boot[Initialization Management]
+      finish[Termination Management]
+    end
+    modules[Modules]
+    pl[PL Main]
+  end
+  evp_runtime[EVP Runtime, etc.]
+
+os --> |Shutdown Signal| main_entry
+main_entry --> |Termination Process| finish
+finish --> |Termination Process| hal
+finish --> |"Termination Process (User Defined)"| hal
+finish --> |"Termination Process (User Defined)"| modules
+finish --> |"Termination Process (User Defined)"| evp_runtime
+finish --> |Termination Process| pl
+....
+
+==== System Shutdown Management
+Handles system reboot, shutdown, and factory reset processing. +
+After executing processes described by each module, application, and HAL, the system performs either a reboot or shutdown. +
+Also provides the system shutdown notification function that notifies the Main of a system shutdown trigger. +
+A detailed diagram is shown in <<#_FigureDetailEvent>>.
+
+[#_FigureDetailEvent]
+.System Shutdown Management Detail Diagram
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph utility
+      hal_msg[UtilityMsg]
+    end
+    style main fill:#f9f
+    subgraph main
+      event[System Shutdown Management]
+      msg[System Shutdown Notification]
+    end
+    modules[Modules]
+  end
+  evp_runtime[EVP Runtime]
+  app[App]
+
+modules --> |Send Message| msg
+msg --> |Send Message| hal_msg
+event --> |Receive Message| msg
+msg --> |Receive Message| hal_msg
+event --> |"System Shutdown Process (User Defined)"| modules
+event --> |"System Shutdown Process (User Defined)"| utility
+event --> |"System Shutdown Process (User Defined)"| evp_runtime
+event --> |"System Shutdown Process (User Defined)"| app
+....
+
+<<<
+
+=== State Transitions
+The possible states of Main are shown in <<#_TableStates>>. +
+Additionally, no state transitions occur when an error is returned by any API. +
+
+[#_TableStates]
+.Initialization State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|UNINIT
+|Uninitialized state. Functions other than the startup process cannot be used.
+
+|INIT
+|Initialized state.
+
+|===
+
+[#_FigureStateTransition]
+.State Transition Diagram
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> UNINIT
+    UNINIT --> INIT : Initialization
+    INIT --> UNINIT : Termination
+    INIT --> INIT : System Shutdown Management{mermaid_br}System Shutdown Notification
+----
+
+The availability of process execution and the destination states for each state are shown in <<#_TableStateTransition, State Transition Table>>. +
+The state names in the table indicate the transition destination after successful processing, meaning the operation is allowed. +
+× indicates the operation is not accepted. In such cases, calling the API will return a ``**kEsfMainErrorInternal**`` error and no state transition will occur. +
+For error details, refer to <<#_DataType_EsfMainError>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|State
+|UNINIT |INIT
+.5+|Operation
+
+|Initialization
+|INIT
+|×
+
+|Termination
+|×
+|UNINIT
+
+|System Shutdown Management / System Shutdown Notification
+|×
+|INIT
+
+|===
+
+<<<
+
+=== List of Component Functions
+A list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+
+|OS Entry Function
+|Handles startup and shutdown requests from the OS. +
+|<<#_Function0>>
+
+|Initialization Management
+|Performs system initialization processing. +
+|<<#_Function1>>
+
+|Termination Management
+|Performs system termination processing. +
+|<<#_Function2>>
+
+|System Shutdown Management
+|Handles system reboot, shutdown, and factory reset processing. +
+|<<#_Function3>>
+
+|System Shutdown Notification
+|Provides the function to notify System Shutdown Management of shutdown triggers. +
+|<<#_Function4>>
+
+|===
+
+<<<
+
+=== Component Function Descriptions
+[#_Function0]
+==== OS Entry Function
+* Function Overview +
+    Handles startup and shutdown requests from the OS. +
+
+* Prerequisites +
+    None.
+
+* Function Details
+    ** Startup +
+    Triggered by the OS, performs internal resource initialization, then executes Main processing using <<#_Function1, Initialization Management>> and <<#_Function3, System Shutdown Management>>.
+    ** Shutdown +
+    Upon receiving a shutdown signal from the OS, executes module shutdown via <<#_Function2, Termination Management>>. +
+    Afterwards, releases internal resources and terminates the process.
+
+* Behavior on Error / Recovery Method +
+    The process will terminate. +
+    Please restart the process or the system.
+
+[#_Function1]
+==== Initialization Management
+* Function Overview +
+    Manages initialization of the ESF module. +
+    When adding modules, refer to <<#_ModuleRegistration, Module Registration Method>> and implement the corresponding initialization procedures. +
+
+* Prerequisites +
+    None.
+
+* Function Details
+    ** Initializes ESFMain. +
+      Initializes internal state and allocates necessary resources. +
+      Initializes HAL and UtilityMsg. +
+    ** Executes the initialization procedures described by each module. +
+    ** Sets the state in the Led Manager.
+
+* Behavior on Error / Recovery Method +
+    The system cannot start. +
+    Please restart the system.
+
+[#_Function2]
+==== Termination Management
+* Function Overview +
+    Provides the termination management function for the ESF module. +
+    When adding modules, refer to <<#_ModuleRegistration, Module Registration Method>> and implement the corresponding termination procedures. +
+
+* Prerequisites +
+    Initialization must be completed. +
+
+* Function Details
+    ** Executes the termination procedures described by each module. +
+    ** Executes ESFMain's termination process. +
+      Clears internal state and releases allocated resources. +
+      Terminates HAL and UtilityMsg.
+
+* Behavior on Error / Recovery Method +
+    Normal termination is not possible. +
+    Please restart the system.
+
+[#_Function3]
+==== System Shutdown Management
+* Function Overview +
+    Handles system reboot, shutdown, and factory reset processing. +
+    If additional operations besides <<#_Function2, Termination Management>> are required during system reboot, shutdown, or factory reset, refer to <<#_ModuleRegistration, Module Registration Method>> and implement the necessary procedures. +
+
+* Prerequisites +
+    Initialization must be completed. +
+
+* Function Details
+    ** Executes the shutdown-related procedures described by each module. +
+    ** Uses <<#_Function2, Termination Management>> to sequentially invoke each module’s termination function. +
+    ** Uses PowerManager to perform system reboot or shutdown. +
+
+* Behavior on Error / Recovery Method +
+    System shutdown processing failed. +
+    Please restart the system.
+
+[#_Function4]
+==== System Shutdown Notification
+* Function Overview +
+  Provides the function to notify System Shutdown Management of a shutdown trigger. +
+
+* Prerequisites +
+    Startup process must be completed. +
+
+* Function Details
+    ** By calling ``**EsfMainNotifyMsg**``, a shutdown trigger is notified to System Shutdown Management.
+
+** For behavior on error and recovery method, please refer to the API-specific documentation. <<#EsfMainNotifyMsg>>
+
+<<<
+
+=== List of Non-Functional Requirements
+
+A list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+Target performance and memory usage values are provided as reference.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="20%,10%,50%,10%",options="header"]
+|===
+|Requirement |Value |Description |Section
+
+|Continuous Execution Time
+|10 msec
+|Maximum processing time required.
+|<<#_NonFunction1>>
+
+|Stack Memory Usage
+|320 bytes
+|Maximum stack memory size used.
+|<<#_NonFunction2>>
+
+|Heap Memory Usage
+|4 bytes
+|Maximum heap memory size used.
+|<<#_NonFunction3>>
+
+|Number of Threads Used
+|0
+|Number of threads used.
+|<<#_NonFunction4>>
+
+|Static Memory Usage
+|64 bytes
+|Maximum static memory size used.
+|<<#_NonFunction5>>
+|===
+
+<<<
+
+=== Non-Functional Requirement Descriptions
+[#_NonFunction1]
+==== Continuous Execution Time
+10 msec excluding mutual exclusion and external API wait time.
+
+[#_NonFunction2]
+==== Stack Memory Usage
+320 bytes
+
+[#_NonFunction3]
+==== Heap Memory Usage
+4 bytes
+
+[#_NonFunction4]
+==== Number of Threads Used
+No threads are used.
+
+[#_NonFunction5]
+==== Static Memory Usage
+64 bytes
+
+<<<
+
+== API Specifications
+
+=== Configuration Settings
+[#_TableConfig]
+.Configuration Settings
+[width="100%", cols="30%,20%,50%",options="header"]
+|===
+|Configuration Name |Default Value |Description
+|EXTERNAL_MAIN_LOCKTIME_MS
+|1000
+|Maximum wait time for mutual exclusion (ms).
+
+|EXTERNAL_MAIN_OSAL_MSG_WAITTIME_MS
+|100
+|UtilityMsgRecv receive wait time (ms).
+
+|EXTERNAL_MAIN_APP_MEM_DIV_NUM
+|1
+|The number of divisions for AppMemory to be set in EsfMemoryManagerInitialize.
+
+|EXTERNAL_MAIN_SYSTEMAPP_STUB
+|n
+|Defines whether the System App stub module is enabled or disabled.
+
+|EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB
+|n
+|Defines whether the EsfSensor stub is enabled or disabled.
+
+|EXTERNAL_MAIN_WAIT_SYSTEM_APP_TERM_TIME
+|3000000
+|System App termination wait time (usec). 
+(*) To avoid potential unresponsiveness with waitpid, termination wait is performed using usleep.
+
+|EXTERNAL_MAIN_FIRMWARE_MANAGER_STUB
+|n
+|Defines whether the FirmwareManager stub is enabled or disabled.
+
+|EXTERNAL_MAIN_ENABLE_LOG
+|y
+|Defines whether the log control API is enabled or disabled.
+If set to "n", logs are output to standard output.
+
+|===
+
+=== Data Type List
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description  |Section Number
+|EsfMainError
+|An enumeration defining the results of the API execution.
+|<<#_DataType_EsfMainError>>
+
+|EsfMainMsgType
+|An enumeration defining the system stop notification types.
+|<<#_DataType_EsfMainMsgType>>
+
+|===
+
+
+=== List of Definitions
+==== API List
+A list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="20%,50%,20%",options="header"]
+|===
+|API Name |Description |Section Number
+|EsfMainNotifyMsg
+|Performs the system shutdown notification process. +
+Notifies the System Shutdown Management of the trigger to start the specified process.
+|<<#EsfMainNotifyMsg>>
+
+|===
+
+<<<
+
+=== Data Type Definitions
+[#_DataType_EsfMainError]
+==== EsfMainError
+An enumeration that defines the result of API execution.
+
+* *Format* 
+
+[source, C]
+....
+typedef enum EsfMainError {
+    kEsfMainOk,
+    kEsfMainErrorInvalidArgument,
+    kEsfMainErrorResourceExhausted,
+    kEsfMainErrorInternal,
+    kEsfMainErrorUninitialize,
+    kEsfMainErrorExternal,
+    kEsfMainErrorTimeout,
+    kEsfMainErrorNotSupport,
+} EsfMainError;
+....
+
+* *Values* 
+
+[#_Table_EsfMainError]
+.Description of EsfMainError Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfMainOk
+|Success.
+
+|kEsfMainErrorInvalidArgument
+|Invalid argument.
+
+|kEsfMainErrorResourceExhausted
+|Memory exhausted.
+
+|kEsfMainErrorInternal
+|Internal processing failure.
+
+|kEsfMainErrorUninitialize
+|Uninitialized state.
+
+|kEsfMainErrorExternal
+|External API execution error.
+
+|kEsfMainErrorTimeout
+|Timeout occurred.
+
+|kEsfMainErrorNotSupport
+|Not supported.
+
+|===
+
+[#_DataType_EsfMainMsgType]
+==== EsfMainMsgType
+An enumeration that defines the types of system shutdown notifications.
+
+* *Format*
+
+[source, C]
+....
+typedef enum EsfMainMsgType {
+    kEsfMainMsgTypeReboot,
+    kEsfMainMsgTypeShutdown,
+    kEsfMainMsgTypeFactoryReset,
+    kEsfMainMsgTypeFactoryResetForDowngrade,
+} EsfMainMsgType;
+....
+
+* *Values* 
+
+[#_Table_EsfMainMsgType]
+.Description of EsfMainMsgType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfMainMsgTypeReboot
+|Reboot notification.
+
+|kEsfMainMsgTypeShutdown
+|Shutdown notification.
+
+|kEsfMainMsgTypeFactoryReset
+|Factory reset notification.
+
+|kEsfMainMsgTypeFactoryResetForDowngrade
+|Factory reset (Downgrade) notification.
+
+|===
+
+<<<
+
+=== API Definition
+[#EsfMainNotifyMsg]
+==== EsfMainNotifyMsg
+* *Function* 
++
+Performs the system shutdown notification process. +
+Notifies the System Shutdown Management of the trigger to start the specified process.
+
+* *Format* +
++
+``** EsfMainError EsfMainNotifyMsg(EsfMainMsgType type)**``  
+
+* *Argument Description* +
++
+**``[IN] EsfMainMsgType type``**::  
+Specifies the type of notification message. +
+For details, refer to <<#_DataType_EsfMainMsgType>>.
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values defined in <<#_Table_EsfMainError, EsfMainError>> based on the execution result.
+
+* *Description* +
+** Sends the specified message to the System Shutdown Management in the Main module. +
+    Uses ``**UtilityMsgSend**`` for message transmission.
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API internally performs mutual exclusion control when accessing <<#_TableStates, states>>. +
+
+* *Error Information*
+
+[#_TableEsfMainNotifyMsg]
+.EsfMainNotifyMsg Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfMainOk
+|Success
+|Successful execution
+|None
+
+|kEsfMainErrorInvalidArgument
+|Invalid argument
+|An invalid value was specified for **``type``**
+|Specify a valid argument and retry
+
+|kEsfMainErrorTimeout
+|Timeout error 
+|Timeout occurred during mutual exclusion control
+|Retry; if not resolved, restart the system
+
+|kEsfMainErrorUninitialize
+|Uninitialized error
+|Error occurred due to ESFMain not being initialized
+|Retry; if not resolved, restart the system
+
+|kEsfMainErrorExternal
+|External error
+|Error occurred in an external API
+|Retry; if not resolved, restart the system
+
+|kEsfMainErrorInternal
+|Internal processing error 
+|Other internal error occurred
+|Retry; if not resolved, restart the system
+
+|kEsfMainErrorNotSupport
+|Unsupported error 
+|**``kEsfMainMsgTypeFactoryResetForDowngrade``** was specified for **``type``** in a non-T3P system
+|None
+
+|===
+
+<<<
+
+== API Usage Example
+Examples of how to call each API are provided below.
+
+=== Initialization and Termination Sequence
+[#_Initialization_and_Termination_Sequence_Example]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant OS
+    participant esf_main as Main
+    participant HAL as HAL/Utility
+
+  OS ->> +esf_main : Startup
+  rect rgba(200, 150, 255,0.5)
+    Note left of esf_main: Initialization process (EsfMainBoot)
+    esf_main ->> +HAL : Utility***Initialize
+    HAL -->> -esf_main : -
+    esf_main ->> +HAL : Hal***Initialize
+    HAL -->> -esf_main : -
+    Note over esf_main : Executes startup processes described by each module
+    Note over esf_main : Enables input disabled state in Led Manager
+    esf_main ->> +HAL : UtilityMsgOpen
+    HAL -->> -esf_main : -
+    esf_main ->> esf_main : Allocate resources
+  end
+
+  rect rgba(238, 220, 179, 0.5)
+    Note left of esf_main: Wait for system shutdown notification
+    loop Until shutdown signal is received
+      esf_main ->> +HAL : UtilityMsgRecv
+      HAL -->> -esf_main : -
+      OS -) esf_main : Shutdown signal
+    end
+  end
+
+  rect rgba(200, 150, 255,0.5)
+    Note left of esf_main: Termination process (EsfMainFinish)
+    esf_main ->> +HAL : UtilityMsgClose
+    HAL -->> -esf_main : -
+    Note over esf_main : Executes termination processes described by each module
+    esf_main ->> +HAL : Hal***Finalize
+    HAL -->> -esf_main : -
+    esf_main ->> +HAL : Utility***Finalize
+    HAL -->> -esf_main : -
+    esf_main ->> esf_main : Release resources
+  end
+  esf_main -->> -OS : Termination
+  
+....
+
+=== System Shutdown Management Sequence
+[#_System_Shutdown_Management_Sequence_Example]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant OS
+    participant esf_main as Main
+    participant esf_main_api as MainAPI
+    participant esf_modules as ESF_MODULES
+    participant HAL as Utility
+
+  Activate esf_main
+
+  esf_modules ->> +esf_main_api : EsfMainNotifyMsg(Reboot)
+  esf_main_api ->> +HAL : UtilityMsgSend (Reboot Event)
+  HAL -->> -esf_main_api : -
+  esf_main_api -->> -esf_modules : -
+
+  rect rgba(238, 220, 179, 0.5)
+    Note left of esf_main: System Shutdown Management
+    loop Until shutdown signal is received
+      esf_main ->> +HAL : UtilityMsgRecv
+      HAL -->> -esf_main : Reboot Message
+      rect rgba(200, 150, 255,0.5)
+        Note left of esf_main: Reboot Process (EsfMainProcessReboot)
+        Note over esf_main : Executes processes described by each module
+        esf_main ->> esf_main : EsfMainFinish (Termination Process)
+        esf_main ->> +esf_modules : EsfPwrMgrExecuteReboot (Execute Reboot)
+        Note over OS, HAL : OS Reboot
+        Deactivate esf_main
+      end
+    end
+  end
+....
+
+<<<
+
+== Special Notes and Component-Specific Descriptions
+
+=== Constraints
+* Intermittent drive functionality is not supported.
+
+=== List of Required Functions from HAL and Other Modules
+.Required Functions from HAL and Other Modules
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|Module Name |Required Function |Description
+|Utility
+|Message send/receive function
+|Function for sending and receiving messages.
+
+|ESF (PowerManager)
+|Reboot/Shutdown function
+|Function for executing reboot and shutdown.
+
+|PL (Main)
+|Device-dependent initialization/termination
+|Function for performing initialization and termination.
+
+|===
+
+[#_ModuleRegistration]
+=== Module Registration Method
+This module provides functionality to execute processing of each module during initialization, termination, and system shutdown. +
+This section describes how to add necessary processing when registering a new module. +
+If no processing is needed for initialization, termination, reboot, shutdown, or factory reset, no action is required. +
+
+==== Writing the Required Process +
+Modules that require processing for initialization, termination, or system shutdown (reboot, shutdown, factory reset) should perform the following:
+
+* Add Processing +
+  Implement the required processing for each function. +
+  Enclose the processing for each module in { } to limit the scope. +
+
+The following table lists the additional processing required by management function:
+
+[#_TableUserFuncList]
+.List of Additional Processing
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|Management Function |Function to Modify |Details
+|Initialization
+|EsfMainBoot
+|Invoke each module's initialization function. +
+Add any other necessary processing. +
+Modules that need to retain resources should define global variables to store them.
+
+|Termination
+|EsfMainFinish
+|Invoke each module's termination function. +
+Add any other necessary processing. +
+Even if an error occurs, the termination process should proceed without interruption. +
+Modules that retained resources during initialization must release them.
+
+|Reboot
+|EsfMainProcessReboot
+|Implement processing required for reboot, excluding termination. +
+Even if an error occurs, the reboot process should proceed without interruption.
+
+|Shutdown
+|EsfMainProcessShutdown
+|Implement processing required for shutdown, excluding termination. +
+Even if an error occurs, the shutdown process should proceed without interruption.
+
+|Factory Reset
+|EsfMainProcessFactoryReset
+|Implement processing required for factory reset, excluding termination. +
+Even if an error occurs, the factory reset process should proceed without interruption.
+
+|===
+
+Below are examples of adding initialization and termination processing.
+
+* Initialization +
+  Example of adding initialization processing. +
+  Sample module registration example.
++
+[source, C]
+....
+EsfMainError EsfMainBoot(void) {
+  // Initialize main
+  HalErrCode hal_ret = HalInitialize();
+  if (hal_ret != kHalErrCodeOk) {
+    // log output
+    return kEsfMainErrorExternal;
+  }
+  ・・・
+
+  {
+    // Initialize SampleModule
+    EsfSampleResult result = EsfSampleInit();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      return kEsfMainErrorExternal;
+    }
+  }
+
+  return kEsfMainOk;
+}
+....
+
+* Termination +
+  Example of adding termination processing. +
+  Sample module registration example.
++
+[source, C]
+....
+EsfMainError EsfMainFinish(void) {
+・・・
+  {
+    // Deinitialize SampleModule
+    EsfSampleResult result = EsfSampleDeinit();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  // Deinitialize main
+  HalErrCode hal_ret = HalFinalize();
+  if (hal_ret != kHalErrCodeOk) {
+    // log output
+    // fallthrough
+  }
+
+  return kEsfMainOk;
+}
+....
+
+* Reboot +
+  Example of adding reboot processing. +
+  Sample module registration example.
++
+[source, C]
+....
+EsfMainError EsfMainProcessReboot(void) {
+・・・
+  {
+    // Reboot SampleModule
+    EsfSampleResult result = EsfSamplePreReboot();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  EsfMainError main_result = EsfMainFinish();
+  if (main_result != kEsfMainOk) {
+    // log output
+    // fallthrough
+  }
+
+  EsfPwrMgrExecuteReboot();
+
+  return kEsfMainOk;
+}
+....
+
+* Shutdown +
+  Example of adding shutdown processing. +
+  Sample module registration example.
++
+[source, C]
+....
+EsfMainError EsfMainProcessShutdown(void) {
+・・・
+  {
+    // Reboot SampleModule
+    EsfSampleResult result = EsfSamplePreShutdown();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  EsfMainError main_result = EsfMainFinish();
+  if (main_result != kEsfMainOk) {
+    // log output
+    // fallthrough
+  }
+
+  EsfPwrMgrExecuteShutdown();
+
+  return kEsfMainOk;
+}
+....
+
+* Factory Reset +
+  Example of adding factory reset processing. +
+  Sample module registration example.
++
+[source, C]
+....
+EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
+・・・
+  {
+    // Reboot SampleModule
+    EsfSampleResult result = EsfSampleFactoryReset();
+    if (result != kEsfSampleResultSuccess) {
+      // log output
+      // fallthrough
+    }
+  }
+・・・
+
+  EsfMainError main_result = EsfMainFinish();
+  if (main_result != kEsfMainOk) {
+    // log output
+    // fallthrough
+  }
+
+  EsfPwrMgrExecuteReboot();
+
+  return kEsfMainOk;
+}
+....
+
+=== Nonstandard Extensions
+This module uses the following nonstandard extensions. +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|Extension |Description |Usage
+|**``##\\__VA_ARGS__``**
+|Nonstandard gcc extension of **``\\__VA_ARGS__``**. +
+Allows macros with variable arguments to support empty arguments.
+|Used for switching log output targets.
+
+|===
+
+<<<
+
+== List of Used OSS
+No OSS is used.
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|0.1.0
+|Initial release
+
+|0.1.1
+|Updated to make SsfMain contain the main function
+
+* Component Overview +
+  Initialization Management +
+  OS Entry Function +
+  Initialization/Termination Sequence
+  ** Updated diagrams, sequences, and text to show SsfMain launched by the OS
+
+* API List +
+  API Definition: SsfMainLoop
+  ** Removed mention of SsfMainLoop
+
+|0.1.2
+|Renaming changes
+
+* Global
+  ** Changed all occurrences:
+    *** SSF -> ESF
+
+|0.1.3
+|Update for LedManager API changes
+
+* Initialization Process
+  ** Added processing to set state to LedManager during initialization
+
+|0.1.4
+|Support for Downgrade
+
+* Data Type Definitions
+  ** Added `kEsfMainErrorNotSupport` to `EsfMainError`
+  ** Added `kEsfMainMsgTypeFactoryResetForDowngrade` to `EsfMainMsgType`
+* API Definition
+  ** Added `kEsfMainErrorNotSupport` to EsfMainNotifyMsg error definitions
+
+|0.1.5
+|Removed LedManager setting
+
+* Initialization Process
+  ** Removed setting “Not Connected (no internet)” state in LedManager during initialization
+
+|0.1.6
+|Content update
+
+* Replaced OSAL with Utility where applicable
+* 6.3. Module Registration Method
+  ** Removed note about enclosing each module's code in a CONFIG macro
+
+|0.1.7
+|Separated device-dependent processing into PL Main
+
+* Added PL Main to overview and detail diagrams
+* Added PL Main to list of required module functions
+* Added Configuration Settings
+
+|===

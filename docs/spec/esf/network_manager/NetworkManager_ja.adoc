@@ -1,0 +1,4268 @@
+= AITRIOS Edge Device ESF Network Manager機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.14
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source, mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOSのNetwork Managerを定義します。
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+=== Ethernet
+Ethernet（イーサネット）は機器をLAN(Local Area Network)ケーブルなどで有線接続し、
+ネットワーク上で信号のやり取りをする際に使われている通信規格です。 +
+本機能では、Normalモードで起動したデバイスを有線接続する場合に使用します。 +
+Normalモードについては、<<#_ComponentConnectMode, ネットワーク接続モード>>を参照ください。 +
+本ドキュメントでは、「Eth」と記載します。
+
+=== Wi-Fi
+Wi-Fi（ワイファイ）は機器を無線接続し、ネットワーク上で信号のやり取りをする際に使われている通信規格です。 +
+
+==== Wi-Fi Station Mode
+Wi-Fi Station ModeとはWi-Fi機器の動作モードの一つで、端末としてWiFiアクセスポイントに接続するモードのことです。 +
+本機能では、Normalモードで起動したデバイスを無線接続する場合に使用します。 +
+Normalモードについては、<<#_ComponentConnectMode, ネットワーク接続モード>>を参照ください。 +
+本ドキュメントでは、「WiFi STA」と記載します。
+
+==== Wi-Fi Access Point Mode
+Wi-Fi Access Point ModeとはWi-Fiルータの動作モードの一つで、ルータ機能を停止してWi-Fiアクセスポイントとしてのみ振る舞うモードのことです。 +
+本機能では、AccessPointモードで起動したデバイスで無線接続を待ち受ける場合に使用します。 +
+AccessPointモードについては、<<#_ComponentConnectMode, ネットワーク接続モード>>を参照ください。 +
+本ドキュメントでは、「WiFi AP」と記載します。
+
+=== RSSI
+RSSI（Received Signal Strength Indicator） とは「受信信号強度」のことです。受信信号強度は数値で表します。 +
+本機能では、NormalモードでWi-Fi Station Modeで起動したデバイスで、Wi-Fi Access Pointまたはルータからの受信信号強度を取得します。 +
+本機能のRSSIについては、<<#_FunctionGetInfo, ネットワーク情報取得>>を参照ください。 +
+
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+Network Managerは、デバイスのネットワーク関連を制御する機能を提供します。 +
+OSおよび、HWの持つネットワーク関連構成が変更されたときは、Network Managerで対応します。 +
+以下に概要構成図の一例を記載します。 +
+
+.概要図
+image::./images/Network_1_overview.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+[#_ComponentConnectMode]
+==== ネットワーク接続モード
+Network Managerは、接続形態を指定して制御ネットワークを選択することができます。 +
+クライアント端末としてネットワークに接続する形式と、
+WiFi Access Pointとして動作して、外部端末からの接続を待ち受ける形式の2種類を提供し、
+ネットワーク接続モードで指定できます。 +
+以下にネットワーク接続モード一覧を記載します。 +
+
+NOTE: WiFi Access Point動作は未サポートです。 +
+
+[#_ComponentTableConnectMode]
+.ネットワーク接続モード一覧
+[width="100%", cols="50%,50%",options="header"]
+|===
+|ネットワーク接続モード名 |ネットワーク接続種類
+|Normalモード
+|WiFi STA、Eth
+
+|AccessPointモード(未サポート)
+|WiFi AP
+|===
+
+[#_ComponentProcess]
+==== ネットワーク処理
+Network Managerではネットワークインタフェースの操作・情報取得およびIPアドレス操作を行います。 +
+操作には以下3種類を提供します。 +
+
+* 上位から指定された情報を指定して行う操作 +
+* Parameter Storage Managerから設定情報を取得して行う操作 +
+* 保存情報（Network ManagerのRAM上に保持）を使用して行う操作 +
+
+詳細は、<<#_DFD_StartSet, データフロー図 Network起動 (Parameter Storage Managerから設定情報を取得して行う場合)>>と
+<<#_DFD_StartRAM, データフロー図 Network起動 (保存情報(RAM上のネットワーク情報)を使用する場合)>>を参照ください。 +
+
+[#_ComponentWiFiStatus]
+==== ネットワーク状態通知
+ネットワーク接続状態および操作エラー内容に応じてLED Managerに状態を通知します。 +
+通知内容については、<<#_StatusWiFiStatus, LedManager状態通知>>を参照してください。 +
+
+[#_ComponentNotifyInfo]
+==== ネットワーク接続状態通知コールバック
+ネットワーク接続状態に応じて登録された状態通知コールバック関数を呼び出します。 +
+通知される状態については、<<#_StatusNotifyInfo, ネットワーク接続状態通知>>を参照してください。 +
+
+[#_ComponentDFD]
+==== データフロー図
+Normalモードで起動、停止する場合のネットワークのデータフロー図を記載します。 +
+AccessPointモードについても、データフローは同じです。 +
+
+* Network起動 (Parameter Storage Manager経由でネットワーク情報を設定する場合) +
+
+[#_DFD_StartSet]
+.データフロー図 ネットワーク起動 (Parameter Storage Managerから設定情報を取得して行う場合)
+image::./images/Network_2-1_set_start.png[scaledwidth="100%",align="center"]
+
+* ネットワーク起動 (RAM上の設定情報を設定する場合) +
+
+[#_DFD_StartRAM]
+.データフロー図 ネットワーク起動 (保存情報(RAM上のネットワーク情報)を使用する場合)
+image::./images/Network_2-2_ram_start.png[scaledwidth="100%",align="center"]
+
+* ネットワーク停止 +
+
+[#_DFD_Stop]
+.データフロー図 ネットワーク停止
+image::./images/Network_2-3_stop.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== 状態遷移
+Network Managerは、以下の状態遷移があります。
+
+* <<#_Status1, Network Manager初期化状態遷移>> +
+Network Managerの初期化状態遷移です。 +
+* <<#_Status2, ネットワーク接続状態遷移>> +
+ネットワーク接続状態の遷移です。 +
+ネットワーク開始・停止、PLからのイベント通知受信を契機とした状態遷移です。 +
+本状態遷移に伴い、アプリへのコールバック通知およびLED Managerへの状態通知を行います。
+
+[#_Status1]
+==== Network Manager初期化状態遷移
+Network Manager初期化状態を<<#_TableStates1>>に示します。
+
+[#_TableStates1]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|UNINIT
+|未初期化の状態です。初期化処理以外の機能を利用できません。
+
+|INIT
+|初期化済みの状態です。
+|===
+
+Network Managerでは各APIを呼び出すことで<<#_FigureState1>>に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureState1]
+.状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> UNINIT
+    UNINIT --> INIT : EsfNetworkManagerInit
+    INIT --> UNINIT : EsfNetworkManagerDeinit
+    INIT --> INIT : その他API
+----
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition1>>に示します。表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+×はAPI受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。 +
+
+[#_TableStateTransition1]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|状態 
+|UNINIT |INIT
+.5+|API名
+
+|``**EsfNetworkManagerInit**``
+|INIT
+|INIT
+
+|``**EsfNetworkManagerDeinit**``
+|×
+|UNINIT
+
+|その他API
+|×
+|INIT
+|===
+
+[#_Status2]
+==== ネットワーク接続状態遷移
+ネットワーク接続状態一覧を<<#_TableStates2>>に示します。
+
+[#_TableStates2]
+.ネットワーク接続状態一覧
+[width="100%", cols="25%,25%,50%",options="header"]
+|===
+|ネットワーク接続状態 |説明 |備考
+|Connecting
+|接続試行中
+|EsfNetworkManagerStart実行後、接続確立中。
+
+|Connected
+|接続
+|接続確立完了。 +
+接続完了後に切断されるとConnectingに遷移する。
+|Disconnecting
+|切断中
+|EsfNetworkManagerStop実行後、切断完了前。
+
+|Disconnected
+|切断
+|EsfNetworkManagerOpen後EsfNetworkManagerStart実行前。 +
+もしくはEsfNetworkManagerStop実行後、切断完了。
+|===
+
+ネットワーク接続開始・停止APIの呼び出し、受信イベントから図に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合や、対象外のイベントでは状態遷移は起こりません。 +
+
+[#_FigureState2_1]
+.状態遷移図（Normalモード接続 Eth）
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting : EsfNetworkManagerStart
+    Connecting --> Disconnecting : EsfNetworkManagerStop（ifup状態）
+    Connecting --> Disconnected : EsfNetworkManagerStop（ifdown状態）
+    Connecting --> Connected : kPlNetworkEventIfUp（Linkup状態）\n kPlNetworkEventLinkUp（ifup状態）
+    Connected --> Connecting : kPlNetworkEventLinkDown
+    Connected --> Disconnecting : EsfNetworkManagerStop
+    Disconnecting --> Disconnected : kPlNetworkEventIfDown
+----
+
+[#_FigureState2_2]
+.状態遷移図（Normalモード接続 WiFi STA）
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting : EsfNetworkManagerStart
+    Connecting --> Disconnected : EsfNetworkManagerStop
+    Connecting --> Connected : kPlNetworkEventWifiStaConnected
+    Connected --> Connecting : kPlNetworkEventWifiStaDisconnected
+    Connected --> Disconnected : EsfNetworkManagerStop
+----
+
+[#_FigureState2_3]
+.状態遷移図（AccessPointモード接続）
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting : EsfNetworkManagerStart
+    Connecting --> Disconnected : EsfNetworkManagerStop
+    Connecting --> Connected : kPlNetworkEventWifiApConnected
+    Connected --> Connecting : kPlNetworkEventWifiApDisconnected\n（接続数が0の場合）
+    Connected --> Disconnected : EsfNetworkManagerStop
+----
+
+各状態でのAPI受け付け可否、受信イベントと状態遷移先を<<#_TableStateTransition2_1_1>>,<<#_TableStateTransition2_1_2>>,<<#_TableStateTransition2_2>>に示します。 +
+表中の状態名は、イベント受信後の遷移先状態を示します。イベントがAPIの場合は呼び出し可能であることを示します。 +
+×はAPI受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。 + 
+エラーの詳細は <<#_SampleResult>>を参照してください。 
+－は状態遷移無しを示します。 +
+
+[#_TableStateTransition2_1_1]
+.状態遷移表（Normalモード Eth接続）
+[width="100%", cols="2%,23%,15%,15%,15%,15%"]
+|===
+2.2+|イベント 4+|状態
+|Disconnected |Connecting |Connected| Disconnecting
+.2+|API実行
+
+|``**EsfNetworkManagerStart**``
+|Connecting
+|×
+|×
+|×
+
+|``**EsfNetworkManagerStop**``
+|×
+|Ifup状態：Disconnecting +
+Ifdown状態：Disconnected
+|Disconnecting
+|×
+
+.5+|PLイベント
+|``**kPlNetworkEventIfUp**``
+|－
+|Linkup状態：Connected +
+Linkdown状態：Connecting
+|－
+|－
+
+|``**kPlNetworkEventLinkUp**``
+|－
+|Ifup状態：Connected +
+Ifdown状態：Connecting
+|－
+|－
+
+|``**kPlNetworkEventIfDown**``
+|－
+|－
+|－(*1)
+|Disconnected
+
+|``**kPlNetworkEventLinkDown**``
+|－
+|－
+|Connecting
+|－
+
+|その他PLイベント
+|－
+|－
+|－
+|－
+|===
+(*1) EsfNetworkManagerStop実行後以外は来ないはずなので、ConnectedからのIFDOWNイベントは破棄とします。
+
+
+[#_TableStateTransition2_1_2]
+.状態遷移表（Normalモード WiFi STA接続）
+[width="100%", cols="2%,23%,15%,15%,15%,15%"]
+|===
+2.2+|イベント 4+|状態
+|Disconnected |Connecting |Connected| Disconnecting
+.2+|API実行
+
+|``**EsfNetworkManagerStart**``
+|Connecting
+|×
+|×
+|×
+
+|``**EsfNetworkManagerStop**``
+|×
+|Disconnected(*1)
+|Disconnected(*2)
+|×
+
+.5+|PLイベント
+|``**kPlNetworkEventWifiStaConnected**``
+|－
+|Connected +
+|－
+|－
+
+|``**kPlNetworkEventWifiStaDisconnected**``
+|－
+|－
+|Connecting
+|－
+
+|その他PLイベント
+|－
+|－
+|－
+|－
+|===
+(*1) kPlNetworkEventWifiStaStart, kPlNetworkEventWifiStaStopをサポートしないカメラがあるため、Disconnecting遷移条件が無い。 +
+(*2) ConnectedからStopした場合にkPlNetworkEventWifiStaDisconnectedが来る保証がないのでEsfNetworkManagerStopでDisconnectedに遷移する。
+
+[#_TableStateTransition2_2]
+.状態遷移表（AccessPointモード接続）
+[width="100%", cols="2%,23%,15%,15%,15%,15%"]
+|===
+2.2+|イベント 4+|状態
+|Disconnected |Connecting |Connected| Disconnecting
+.2+|API実行
+
+|``**EsfNetworkManagerStart**``
+|Connecting
+|×
+|×
+|×
+
+|``**EsfNetworkManagerStop**``
+|×
+|Disconnected(*1)
+|Disconnected(*2)
+|×
+
+.5+|PLイベント
+|``**kPlNetworkEventWifiApConnected**``
+|－
+|Connected +
+接続数加算(*3)
+|－ +
+接続数加算
+|－
+
+|``**kPlNetworkEventWifiApDisconnected**``
+|－
+|－
+|接続数減算 +
+接続数0：Connecting +
+接続数0以外：－
+|－
+
+|その他PLイベント
+|－
+|－
+|－
+|－
+|===
+(*1) kPlNetworkEventWifiApStopをサポートしないカメラがあるため、Disconnecting遷移条件が無い。 +
+(*2) ConnectedからStopした場合にkPlNetworkEventWifiApDisconnectedが来る保証がないのでEsfNetworkManagerStopでDisconnectedに遷移する。 +
+(*3) APへの接続・切断発生毎にイベント受信するため、1つでも接続していたらConnectedとします。
+
+
+[#_StatusWiFiStatus]
+===== ネットワーク状態通知
+接続状態に対応する状態をLED Managerに通知します。 +
+
+.通知内容一覧
+[width="100%", cols="20%,20%,20%,40%",options="header"]
+|===
+|発生事象 |意味 |対象LED種別 |操作契機
+|SSID/Password Loading
+|SSID/パスワードの読み込み中。
+|WiFi LED
+a|* 点灯
+** WiFi STでの接続開始要求で接続情報正常性確認後
+* 消灯
+** WiFi STでの接続開始失敗時
+** 接続停止成功時
+** 他状態のWiFi LED点灯時
+
+|AP Found And Doing Authentication
+|AP認証中。
+|WiFi LED
+a|* 点灯
+** WiFi STでの接続開始成功時
+* 消灯
+** 接続停止成功時
+** 他状態のWiFi LED点灯時
+
+|Link Established
+|リンク確立。
+|WiFi LED
+a|* 点灯
+** WiFi STでAccessPointとの通信開始時
+* 消灯
+** 接続停止成功時
+** 接続済APとの切断検出時
+** 他状態のWiFi LED点灯時
+
+|Disconnected, Establishing Network Link On Physical Layer
+|未接続（物理リンク確立中）。
+|Service LED
+a|* 点灯
+** 接続開始成功時
+* 消灯
+** 接続停止成功時
+** 他状態のService LED点灯時
+
+|Disconnected, No Internet Connection
+|未接続（インターネット接続なし）。
+|Service LED
+a|* 点灯
+** DHCP IPアドレス取得開始時
+* 消灯
+** 接続停止成功時
+** 接続済APとの切断検出時
+** 物理Link切断時
+** IF断検出時
+
+|Disconnected, Connecting DNS and NTP
+|未接続（DNS,NTP接続試行中）。
+|Service LED
+a|* 点灯
+** WiFi STでAccessPointとの通信開始時
+** EtherでIF/Link両UP時
+* 消灯
+** 接続停止成功時
+** 接続済APとの切断検出時
+** 物理Link切断時
+** IF断検出時
+
+|===
+
+[#_StatusNotifyInfo]
+===== ネットワーク接続状態通知
+ネットワーク接続状態に応じて登録された状態通知コールバック関数を呼び出します。 +
+通知内容および契機は基本的に<<#_TableStates2, ネットワーク接続状態>>の遷移に連動します。 +
+<<#_StatusTableNotifyInfo, ネットワーク接続状態通知情報一覧>>に状態遷移と通知内容を記載します。 +
+通知情報詳細については、<<#_SampleNotifyInfo, EsfNetworkManagerNotifyInfo>>を参照ください。
+
+[#_StatusTableNotifyInfo]
+.ネットワーク接続状態通知情報一覧
+[width="100%", cols="10%,30%,20%,20%,20%,20%"]
+|===
+2.2+|新状態/イベント 4+|旧状態
+|Disconnected |Connecting |Connected| Disconnecting
+.4+|新状態
+|Disconnected +
+|－
+|－
+|kEsfNetworkManagerNotifyInfoDisconnected
+|kEsfNetworkManagerNotifyInfoDisconnected
+
+|Connecting +
+|－
+|－
+|kEsfNetworkManagerNotifyInfoDisconnected
+|－
+
+|Connected +
+|－
+|kEsfNetworkManagerNotifyInfoConnected
+|－
+|－
+
+|Disconnecting +
+|－
+|－
+|－
+|－
+
+.5+|イベント
+|kPlNetworkEventWifiApStart +
+|－
+|kEsfNetworkManagerNotifyInfoApStart
+|－
+|－
+
+|===
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="35%,57%,8%",options="header"]
+|===
+|機能名 |概要  |節番号
+|初期化機能
+|Network Managerの初期化機能を提供します。
+|<<#_FunctionInitialize>>
+
+|ハンドル機能
+|Network Managerのハンドルに関する機能を提供します。
+|<<#_FunctionHandle>>
+
+|ネットワーク接続制御
+|ネットワークの接続制御を行う機能を提供します。
+|<<#_FunctionConnection>>
+
+|ネットワーク情報取得
+|ネットワークの各種情報を取得する機能を提供します。
+|<<#_FunctionGetInfo>>
+
+|コールバック通知制御
+|ネットワーク接続状態を通知するコールバック関数を登録・解除する機能を提供します。
+|<<#_FunctionCallback>>
+
+|ネットワーク接続情報保存機能
+|ネットワーク接続情報の保存および取得を行います。
+|<<#_FunctionNetworkSetting>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_FunctionInitialize]
+==== 初期化機能
+* 機能概要 +
+Network Managerを初期化します。 +
+Network Managerの他APIを呼び出す前に実行してください。
+* 前提条件 +
+前提条件はありません。
+* 機能詳細
+    ** 詳細挙動 +
+        ``**EsfNetworkManagerInit**``を呼び出すことで内部状態を初期化し、必要なリソースを確保します。 +
+        使用するPL機能の初期化を行います。 +
+        初期化後はNetwork ManagerのAPIを呼び出すことができます。 +
+        ``**EsfNetworkManagerDeinit**``を呼び出すことで、リソースを解放し、内部状態が未初期化の状態に戻ります。 +
+        使用するPL機能の終了を行います。 +
+        これらのAPIを同時に呼び出さないでください。
+
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionInit, 初期化機能API>>
+
+[#_FunctionHandle]
+==== ハンドル機能
+* 機能概要 +
+Network ManagerのAPIを使用するためのハンドルを管理します。
+* 前提条件 +
+Network Managerが初期化されていること。
+* 機能詳細
+    ** 詳細挙動 +
+        ``**EsfNetworkManagerOpen**``を呼び出すことでハンドルが確保され、Network ManagerのAPIを使用できるようになります。 +
+        ハンドルは<<#_SampleMode, 接続モード>>および<<#_SampleHandleType, ハンドル種別>>単位で取得し、以降のAPI使用時には、指定した接続モードのネットワークに対する操作が、指定したハンドル種別の許容する内容で実施されます。 +
+        不要となったハンドルは``**EsfNetworkManagerClose**``で解放してください。 +
+        この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionOpen, ハンドル機能API>>
+
+[#_FunctionConnection]
+==== ネットワーク接続制御
+* 機能概要 +
+ネットワークの接続開始・停止を行います。
+* 前提条件 +
+ハンドル種別「制御ハンドル」のハンドルを取得していること。
+* 機能詳細
+    ** 詳細挙動 +
+        *** ``**EsfNetworkManagerStart**``を呼び出すことで、ハンドル取得時に指定した接続モードのネットワーク接続を開始します。 +
+        ユーザが指定した接続情報を使用してネットワーク接続を行います。 +
+        ネットワーク接続状態に応じてLED Managerへの状態通知を行います。 +
+        PLとOS Network Utilityを使用してネットワーク接続します。 +
+        DHCP機能の使用やIP情報の設定には、OS Network Utility使用し、以下についてはPLを使用します。 +
+        **** イベントハンドラの登録・実行 +
+        **** WiFi情報の設定 +
+        **** ネットワーク有効化 +
+
+        *** ``**EsfNetworkManagerStop**``を呼び出すことで、ハンドル取得時に指定した接続モードのネットワーク切断を開始します。 +
+        ネットワーク接続状態に応じてLED Managerへの状態通知を行います。 +
+        PLとOS Network Utilityを使用してネットワーク切断を行います。
+        DHCP機能の使用やIP情報の設定には、OS Network Utility使用し、以下についてはPLを使用します。 +
+        **** ネットワーク無効化 +
+
+        *** WiFi STA指定で接続開始している状況で切断を検知した場合、PLを使用して再接続を行います。
+
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionStart, ネットワーク接続制御API>>
+
+[#_FunctionGetInfo]
+==== ネットワーク情報取得
+* 機能概要 +
+ネットワークの各種情報を取得します。
+* 前提条件 +
+ハンドル種別「制御ハンドル」もしくは「情報ハンドル」のハンドルを取得していること。
+* 機能詳細
+    ** 詳細挙動 +
+        *** ``**EsfNetworkManagerGetIFStatus**``を呼び出すことで、ハンドル取得時に指定した接続モードのネットワーク状態を取得します。 +
+        *** ``**EsfNetworkManagerGetIFInfo**``を呼び出すことで、ハンドル取得時に指定した接続モードのネットワーク情報を取得します。 +
+        *** ``**EsfNetworkManagerGetNetstat**``を呼び出すことで、Netstat情報を取得します。 +
+        *** ``**EsfNetworkManagerGetRssi**``を呼び出すことで、RSSI情報を取得します。 +
+        RSSI情報はNormalモードかつWiFi接続時のみ取得することができます。 +
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionGetIFStatus, ネットワーク情報取得API>>
+
+[#_FunctionCallback]
+==== コールバック通知制御
+* 機能概要 +
+ネットワーク接続状態を通知するコールバック関数を登録・解除します。
+* 前提条件 +
+ハンドル種別「制御ハンドル」もしくは「情報ハンドル」のハンドルを取得していること。
+* 機能詳細
+    ** 詳細挙動 +
+    *** ``**EsfNetworkManagerRegisterCallback**``を呼び出すことで、ハンドル取得時に指定した接続モードの接続状態通知受信コールバック関数を登録します。 +
+    コールバック関数で通知する情報については、<<#_ComponentNotifyInfo, ネットワーク接続状態通知>>を参照してください。 +
+    *** ``**EsfNetworkManagerUnregisterCallback**``を呼び出すことで、ハンドル取得時に指定した接続モードの接続状態通知受信コールバック関数登録を解除します。 +
+
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionReg, コールバック通知制御API>>
+
+[#_FunctionNetworkSetting]
+==== ネットワーク接続情報保存機能
+* 機能概要 +
+ネットワーク接続情報の保存および取得を行います。
+* 前提条件 +
+ありません。
+* 機能詳細
+    ** 詳細挙動 +
+    *** ``**EsfNetworkManagerSaveParameter**``、``**EsfNetworkManagerSaveVariantParameter**``を呼び出すことで、ネットワーク接続情報をParameter Storage Manager経由で保存します。 +
+    *** ``**EsfNetworkManagerLoadParameter**``、``**EsfNetworkManagerLoadVariantParameter**``を呼び出すことで、ネットワーク接続情報をParameter Storage Manager経由で取得します。 +
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionSaveParameter, ネットワーク接続情報保存API>>
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|使用するStack領域の最大サイズを示します。
+|<<#_NonFunction1>>
+
+|ヒープ最大使用量
+|使用するヒープ領域の最大サイズを示します。
+|<<#_NonFunction2>>
+
+|staticメモリ最大使用量
+|staticに確保するメモリの最大サイズを示します。
+|<<#_NonFunction3>>
+
+|スレッド使用数
+|使用するスレッド数を示します。
+|<<#_NonFunction4>>
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_NonFunction1]
+==== Stack最大使用量
+Stackは 512Byte使用します。
+
+[#_NonFunction2]
+==== ヒープ最大使用量
+ヒープ領域は、4kByte使用します。
+
+[#_NonFunction3]
+==== staticメモリ最大使用量
+staticメモリは 128 byte使用します。
+
+[#_NonFunction4]
+==== スレッドの使用数
+スレッドは未使用です。
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfNetworkManagerResult
+|APIの実行結果を定義する列挙型です。
+|<<#_SampleResult>>
+
+|EsfNetworkManagerHandle
+|Network Managerのハンドル定義です。
+|<<#_EsfNetworkManagerHandle>>
+
+|EsfNetworkManagerMode
+|接続モードを定義する列挙型です。
+|<<#_SampleMode>>
+
+|EsfNetworkManagerHandleType
+|ハンドル種別を定義する列挙型です。
+|<<#_SampleHandleType>>
+
+|EsfNetworkManagerNotifyInfo
+|ネットワーク接続状態を定義する列挙型です。EsfNetworkManagerNotifyInfoCallbackで使用します。
+|<<#_SampleNotifyInfo>>
+
+|EsfNetworkManagerStartType
+|ネットワーク接続開始種別を定義する列挙型です。
+|<<#_SampleStartType>>
+
+|EsfNetworkManagerParameterType
+|ネットワーク接続情報種別を定義する列挙型です。
+|<<#_SampleParameterType>>
+
+|ESF_NETWORK_MANAGER_IP_ADDRESS_LEN
+|IPアドレス長を定義するマクロです。
+|<<#_SampleIpAddrLen>>
+
+|ESF_NETWORK_MANAGER_WIFI_SSID_LEN
+|WiFi SSID長を定義するマクロです。
+|<<#_SampleWifiSsidLen>>
+
+|ESF_NETWORK_MANAGER_WIFI_PASSWORD_LEN
+|WiFi Password長を定義するマクロです。
+|<<#_SampleWifiPasswordLen>>
+
+|ESF_NETWORK_MANAGER_PROXY_URL_LEN
+|Proxy Url長を定義するマクロです。
+|<<#_SampleProxyUrlLen>>
+
+|ESF_NETWORK_MANAGER_PROXY_USER_NAME_LEN
+|Proxy User Name長を定義するマクロです。
+|<<#_SampleProxyUserNameLen>>
+
+|ESF_NETWORK_MANAGER_PROXY_PASSWORD_LEN
+|Proxy Password長を定義するマクロです。
+|<<#_SampleProxyPasswordLen>>
+
+|EsfNetworkManagerOSInfo
+|OSシステム用情報共用体です。
+|<<#_SampleOSInfo>>
+
+|EsfNetworkManagerNormalMode
+|Normalモード情報構造体です。
+|<<#_SampleNormal>>
+
+|EsfNetworkManagerAccessPointMode
+|AccessPointモード情報構造体です。
+|<<#_SampleAccessPoint>>
+
+|EsfNetworkManagerIPInfo
+|IP情報構造体です。
+|<<#_SampleIP>>
+
+|EsfNetworkManagerWiFiStaInfo
+|WiFi STA情報構造体です。
+|<<#_SampleWiFiSta>>
+
+|EsfNetworkManagerWiFiApInfo
+|WiFi AP情報構造体です。
+|<<#_SampleWiFiAp>>
+
+|EsfNetworkManagerStatusInfo
+|ネットワーク接続状態の構造体です。
+|<<#_SampleStatus>>
+
+|EsfNetworkManagerNotifyInfoCallback
+|ネットワーク接続状態通知用のコールバック関数のポインタ型です。
+|<<#_SampleFunctionCallbackNotify>>
+
+|EsfNetworkManagerParameter
+|ネットワーク接続情報構造体です。
+|<<#_SampleParameter>>
+
+|EsfNetworkManagerParameterMask
+|ネットワーク接続情報のマスク構造体です。 +
+|<<#_SampleParameterMask>>
+
+|EsfNetworkManagerVariantParameter
+|ネットワーク接続情報共用体です。
+|<<#_SampleVariantParameter>>
+
+|EsfNetworkManagerVariantParameterMask
+|ネットワーク接続情報のマスク共用体です。
+|<<#_SampleVariantParameterMask>>
+
+|EsfNetworkManagerNormalModeMask
+|Normalモード情報のマスク構造体です。 +
+|<<#_SampleNormalMask>>
+
+|EsfNetworkManagerAccessPointModeMask
+|AccessPointモード情報のマスク構造体です。 +
+|<<#_SampleAccessPointMask>>
+
+|EsfNetworkManagerIPInfoMask
+|IP情報のマスク構造体です。 +
+|<<#_SampleIPMask>>
+
+|EsfNetworkManagerWiFiStaInfoMask
+|WiFi STA情報のマスク構造体です。 +
+|<<#_SampleWiFiStaMask>>
+
+|EsfNetworkManagerWiFiApInfoMask
+|WiFi AP情報のマスク構造体です。 +
+|<<#_SampleWiFiApMask>>
+
+|EsfNetworkManagerProxy
+|Proxy情報構造体です。
+|<<#_SampleProxy>>
+
+|EsfNetworkManagerProxyMask
+|Proxy情報のマスク構造体です。
+|<<#_SampleProxyMask>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfNetworkManagerInit
+|Network Managerを初期化します。
+|<<#_SampleFunctionInit>>
+
+|EsfNetworkManagerDeinit
+|Network Managerを終了します。
+|<<#_SampleFunctionDeinit>>
+
+|EsfNetworkManagerOpen
+|Network Managerのハンドルを取得します。
+|<<#_SampleFunctionOpen>>
+
+|EsfNetworkManagerClose
+|Network Managerのハンドルを解放します。
+|<<#_SampleFunctionClose>>
+
+|EsfNetworkManagerStart
+|ネットワーク接続を開始します。
+|<<#_SampleFunctionStart>>
+
+|EsfNetworkManagerStop
+|ネットワーク接続を停止します。
+|<<#_SampleFunctionStop>>
+
+|EsfNetworkManagerGetIFStatus
+|ネットワーク接続状態を取得します。
+|<<#_SampleFunctionGetIFStatus>>
+
+|EsfNetworkManagerGetIFInfo
+|ネットワーク情報を取得します。
+|<<#_SampleFunctionGetIFInfo>>
+
+|EsfNetworkManagerGetNetstat
+|Netstat情報を取得します。
+|<<#_SampleFunctionGetNetstat>>
+
+|EsfNetworkManagerGetRssi
+|RSSI情報を取得します。
+|<<#_SampleFunctionGetRssi>>
+
+|EsfNetworkManagerRegisterCallback
+|ネットワーク接続状態通知コールバック関数を登録します。
+|<<#_SampleFunctionReg>>
+
+|EsfNetworkManagerUnregisterCallback
+|ネットワーク接続状態通知コールバック関数登録を解除します。
+|<<#_SampleFunctionUnRegister>>
+
+|ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_WIFI
+|OSシステム用情報共用体を以下内容で初期化します。 +
+・Normalモード +
+・dhcp有効 +
+・接続種別WiFi
+|<<#_SampleFunctionInitNormalWiFi>>
+
+|ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_ETH
+|OSシステム用情報共用体を以下内容で初期化します。 +
+・Normalモード +
+・dhcp有効 +
+・接続種別Eth
+|<<#_SampleFunctionInitNormalEth>>
+
+|ESF_NETWORK_MANAGER_INIT_INFO_AP
+|OSシステム用情報共用体を以下内容で初期化します。 +
+・AccessPointモード +
+・使用IPアドレスデフォルト値 +
+・指定SSID, Passwordを設定
+|<<#_SampleFunctionInitAccessPoint>>
+
+|ESF_NETWORK_MANAGER_MASK_ENABLE_ALL
+|マスク構造体の全要素にアクセス有効(1)を設定します。 +
+|<<#_ESF_NETWORK_MANAGER_MASK_ENABLE_ALL>>
+
+|ESF_NETWORK_MANAGER_MASK_DISABLE_ALL
+|マスク構造体の全要素にアクセス無効(0)を設定します。 +
+|<<#_ESF_NETWORK_MANAGER_MASK_DISABLE_ALL>>
+
+|EsfNetworkManagerSaveParameter
+|ネットワーク接続情報をParameter Storage Manager経由で保存します。
+|<<#_SampleFunctionSaveParameter>>
+
+|EsfNetworkManagerLoadParameter
+|ネットワーク接続情報をParameter Storage Manager経由で取得します。
+|<<#_SampleFunctionLoadParameter>>
+
+|EsfNetworkManagerSaveVariantParameter
+|ネットワーク接続情報をParameter Storage Manager経由で保存します。 +
+ネットワーク接続情報は共用体で指定します。
+|<<#_SampleFunctionSaveVariantParameter>>
+
+|EsfNetworkManagerLoadVariantParameter
+|ネットワーク接続情報をParameter Storage Manager経由で取得します。 +
+ネットワーク接続情報は共用体で指定します。
+|<<#_SampleFunctionLoadVariantParameter>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_SampleResult]
+==== EsfNetworkManagerResult
+Network Manager APIの実行結果を定義する列挙型です。 +
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfNetworkManagerResult {
+    kEsfNetworkManagerResultSuccess = 0,
+    kEsfNetworkManagerResultHWIFError,
+    kEsfNetworkManagerResultUtilityDHCPServerError,
+    kEsfNetworkManagerResultUtilityIPAddressError,
+    kEsfNetworkManagerResultExternalError,
+    kEsfNetworkManagerResultStatusUnexecutable,
+    kEsfNetworkManagerResultStatusAlreadyRunning,
+    kEsfNetworkManagerResultInvalidParameter,
+    kEsfNetworkManagerResultNoConnectInfo,
+    kEsfNetworkManagerResultAlreadyCallbackRegistered,
+    kEsfNetworkManagerResultAlreadyCallbackUnregistered,
+    kEsfNetworkManagerResultResourceExhausted,
+    kEsfNetworkManagerResultInternalError,
+    kEsfNetworkManagerResultNotFound,
+    kEsfNetworkManagerResultInvalidHandleType,
+    kEsfNetworkManagerResultFailedPrecondition,
+} EsfNetworkManagerResult;
+....
+
+
+* *値* 
+
+[#_TableReturnValueResult]
+.EsfNetworkManagerResultの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfNetworkManagerResultSuccess
+|処理が成功しました。
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIの実行エラーです。
+
+|kEsfNetworkManagerResultUtilityDHCPServerError
+|DHCPサーバエラーです。
+
+|kEsfNetworkManagerResultUtilityIPAddressError
+|IPアドレス操作エラーです。
+
+|kEsfNetworkManagerResultExternalError
+|外部APIの実行エラーです。
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|実行可能な状態ではありません。
+
+|kEsfNetworkManagerResultStatusAlreadyRunning
+|既に実行されています。
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常です。
+
+|kEsfNetworkManagerResultNoConnectInfo
+|接続情報がありません。
+
+|kEsfNetworkManagerResultAlreadyCallbackRegistered
+|コールバック関数は既に登録されています。
+
+|kEsfNetworkManagerResultAlreadyCallbackUnregistered
+|コールバック関数は既に解除されています。
+
+|kEsfNetworkManagerResultResourceExhausted
+|リソースが不足しています。
+
+|kEsfNetworkManagerResultInternalError
+|内部エラーです。
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致エラーです。
+
+|kEsfNetworkManagerResultInvalidHandleType
+|ハンドル種別エラーです。
+
+|kEsfNetworkManagerResultFailedPrecondition
+|操作が拒否されました。
+
+|===
+
+[#_EsfNetworkManagerHandle]
+==== EsfNetworkManagerHandle
+Network Managerのハンドル定義です。
+
+* *書式*
+
+[source, C]
+....
+typedef int32_t EsfNetworkManagerHandle;
+#define ESF_NETWORK_MANAGER_INVALID_HANDLE (-1)
+....
+
+
+[#_SampleMode]
+==== EsfNetworkManagerMode
+接続モードを定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfNetworkManagerMode {
+    kEsfNetworkManagerModeNormal,
+    kEsfNetworkManagerModeAccessPoint,
+    kEsfNetworkManagerModeNum,
+} EsfNetworkManagerMode;
+....
+
+
+* *値* 
+
+[#_TableReturnValueMode]
+.EsfNetworkManagerStatusの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfNetworkManagerModeNormal
+|Normalモードです。
+
+|kEsfNetworkManagerModeAccessPoint
+|AccessPointモードです。(未サポート)
+
+|kEsfNetworkManagerModeNum
+|Enum定義数です。
+|===
+
+[#_SampleHandleType]
+==== EsfNetworkManagerHandleType
+ハンドル種別を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfNetworkManagerHandleType {
+    kEsfNetworkManagerHandleTypeControl,
+    kEsfNetworkManagerHandleTypeInfo,
+    kEsfNetworkManagerHandleTypeNum,
+} EsfNetworkManagerHandleType;
+....
+
+
+* *値* 
+
+[#_TableHandleType]
+.EsfNetworkManagerHandleTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfNetworkManagerHandleTypeControl
+|制御ハンドルです。 +
+全ての操作が実行可能なハンドル。
+
+|kEsfNetworkManagerHandleTypeInfo
+|情報ハンドルです。 +
+ネットワーク情報取得、コールバック通知制御が可能なハンドル。 +
+ネットワーク接続制御は実行不可。
+
+|kEsfNetworkManagerHandleTypeNum
+|Enum定義数です。
+|===
+
+[#_SampleNotifyInfo]
+==== EsfNetworkManagerNotifyInfo
+ネットワーク接続状態を定義する列挙型です。EsfNetworkManagerNotifyInfoCallbackで使用します。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfNetworkManagerNotifyInfo {
+    kEsfNetworkManagerNotifyInfoConnected = 0,
+    kEsfNetworkManagerNotifyInfoDisconnected,
+    kEsfNetworkManagerNotifyInfoApStart,
+    kEsfNetworkManagerNotifyInfoNum
+} EsfNetworkManagerNotifyInfo;
+....
+
+
+* *値* 
+
+[#_TableReturnValueNotifyInfo]
+.EsfNetworkManagerNotifyInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfNetworkManagerNotifyInfoConnected
+|接続しました。
+
+|kEsfNetworkManagerNotifyInfoDisconnected
+|切断しました。
+
+|kEsfNetworkManagerNotifyInfoApStart
+|WiFi APが動作開始しました。（AccessPointモードの時だけ使用します）
+
+|kEsfNetworkManagerNotifyInfoNum
+|Enum定義数です。
+|===
+
+[#_SampleStartType]
+==== EsfNetworkManagerStartType
+ネットワーク接続開始種別を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfNetworkManagerStartType {
+    kEsfNetworkManagerStartTypeFuncParameter = 0,
+    kEsfNetworkManagerStartTypeSaveParameter,
+    kEsfNetworkManagerStartTypeLastStartSuccessParameter,
+    kEsfNetworkManagerStartTypeNum
+} EsfNetworkManagerStartType;
+....
+
+
+* *値* 
+
+[#_TableStartType]
+.EsfNetworkManagerStartTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfNetworkManagerStartTypeFuncParameter
+|関数指定パラメーターを使用します。
+
+|kEsfNetworkManagerStartTypeSaveParameter
+|保存されているパラメーターを使用します。
+
+|kEsfNetworkManagerStartTypeLastStartSuccessParameter
+|前回Startに成功したパラメーターを使用します。
+
+|kEsfNetworkManagerStartTypeNum
+|Enum定義数です。
+|===
+
+[#_SampleParameterType]
+==== EsfNetworkManagerParameterType
+ネットワーク接続情報種別を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfNetworkManagerParameterType {
+    kEsfNetworkManagerParameterTypeNormal,
+    kEsfNetworkManagerParameterTypeAccessPoint,
+    kEsfNetworkManagerParameterTypeProxy,
+    kEsfNetworkManagerParameterTypeNum,
+} EsfNetworkManagerParameterType;
+....
+
+
+* *値* 
+
+[#_TableParameterType]
+.EsfNetworkManagerParameterTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfNetworkManagerParameterTypeNormal
+|Normal情報です。
+
+|kEsfNetworkManagerParameterTypeAccessPoint
+|AccessPoint情報です。(未サポート)
+
+|kEsfNetworkManagerParameterTypeProxy
+|Proxy情報です。
+
+|kEsfNetworkManagerParameterTypeNum
+|Enum定義数です。
+|===
+
+[#_SampleIpAddrLen]
+==== ESF_NETWORK_MANAGER_IP_ADDRESS_LEN
+IPアドレス長を定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_IP_ADDRESS_LEN (39+1)
+....
+
+
+* *値* 
+
+[#_TableIpAddrLen]
+.ESF_NETWORK_MANAGER_IP_ADDRESS_LENの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|ESF_NETWORK_MANAGER_IP_ADDRESS_LEN
+|IPアドレス長です。IPv6最大サイズの39+NULL文字、40バイト定義です。
+|===
+
+[#_SampleWifiSsidLen]
+==== ESF_NETWORK_MANAGER_WIFI_SSID_LEN
+WiFi SSID長を定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_WIFI_SSID_LEN (32+1)
+....
+
+
+* *値* 
+
+[#_TableWifiSsidLen]
+.ESF_NETWORK_MANAGER_WIFI_SSID_LENの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|ESF_NETWORK_MANAGER_WIFI_SSID_LEN
+|WiFi SSID長です。32+NULL文字、33バイト定義です。 +
+|===
+
+
+[#_SampleWifiPasswordLen]
+==== ESF_NETWORK_MANAGER_WIFI_PASSWORD_LEN
+WiFi Password長を定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_WIFI_PASSWORD_LEN (64+1)
+....
+
+
+* *値* 
+
+[#_TableWifiPasswordLen]
+.ESF_NETWORK_MANAGER_WIFI_PASSWORD_LENの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|ESF_NETWORK_MANAGER_WIFI_PASSWORD_LEN
+|WiFi Password長です。64+NULL文字、65バイト定義です。 +
+|===
+
+[#_SampleProxyUrlLen]
+==== ESF_NETWORK_MANAGER_PROXY_URL_LEN
+Proxy Url長を定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_PROXY_URL_LEN (256+1)
+....
+
+
+* *値* 
+
+[#_TableProxyUrlLen]
+.ESF_NETWORK_MANAGER_PROXY_URL_LENの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|ESF_NETWORK_MANAGER_PROXY_URL_LEN
+|Proxy Url長です。256+NULL文字、257バイト定義です。 +
+|===
+
+[#_SampleProxyUserNameLen]
+==== ESF_NETWORK_MANAGER_PROXY_USER_NAME_LEN
+Proxy User Name長を定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_PROXY_USER_NAME_LEN (32+1)
+....
+
+
+* *値* 
+
+[#_TableProxyUserNameLen]
+.ESF_NETWORK_MANAGER_PROXY_USER_NAME_LENの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|ESF_NETWORK_MANAGER_PROXY_USER_NAME_LEN
+|Proxy User Name長です。32+NULL文字、33バイト定義です。 +
+|===
+
+[#_SampleProxyPasswordLen]
+==== ESF_NETWORK_MANAGER_PROXY_PASSWORD_LEN
+Proxy Password長を定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_PROXY_PASSWORD_LEN (32+1)
+....
+
+
+* *値* 
+
+[#_TableProxyPasswordLen]
+.ESF_NETWORK_MANAGER_PROXY_PASSWORD_LENの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|ESF_NETWORK_MANAGER_PROXY_PASSWORD_LEN
+|Proxy Password長です。32+NULL文字、33バイト定義です。 +
+|===
+
+[#_SampleOSInfo]
+==== EsfNetworkManagerOSInfo
+ネットワークOSシステム用情報共用体です。
+
+* *書式*
+
+[source, C]
+....
+typedef union EsfNetworkManagerOSInfo {
+    EsfNetworkManagerNormalMode normal_mode;
+    EsfNetworkManagerAccessPointMode accesspoint_mode;
+} EsfNetworkManagerOSInfo;
+....
+
+
+* *値* 
+
+[#_TableOSInfo]
+.EsfNetworkManagerOSInfoの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|normal_mode
+|Normalモードのネットワーク情報です。 +
+
+|accesspoint_mode
+|AccessPointモードのネットワーク情報です。(未サポート) +
+|===
+
+[#_SampleNormal]
+==== EsfNetworkManagerNormalMode
+Normalモード情報構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerNormalMode {
+    EsfNetworkManagerIPInfo dev_ip;
+    EsfNetworkManagerIPInfo dev_ip_v6;
+    EsfNetworkManagerWiFiStaInfo wifi_sta;
+    int32_t ip_method;
+    int32_t netif_kind;
+} EsfNetworkManagerNormalMode;
+....
+
+
+* *値* 
+
+[#_TableReturnValueNormal]
+.EsfNetworkManagerNormalModeの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|dev_ip
+|Normalモードのデバイス固定IP情報です。 +
+
+|dev_ip_v6
+|Normalモードのデバイス固定IPv6 IP情報です。(未サポート)  +
+IPv6のコンフィグ有効時に使用可能です。 +
+
+|wifi_sta
+|NormalモードのWiFi STAの場合のWiFi接続情報です。 +
+
+|ip_method
+|デバイスIPのDHCP使用の選択です。 +
+0: dhcp +
+1: static
+
+|netif_kind
+|デバイスのネットワークIF種別の選択です。 +
+0: WiFi +
+1: Eth +
+|===
+
+
+[#_SampleAccessPoint]
+==== EsfNetworkManagerAccessPointMode
+AccessPointモード情報構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerAccessPointMode {
+    EsfNetworkManagerIPInfo dev_ip;
+    EsfNetworkManagerWiFiApInfo wifi_ap;
+} EsfNetworkManagerAccessPointMode;
+....
+
+
+* *値* 
+
+[#_TableReturnValueAccessPoint]
+.EsfNetworkManagerAccessPointModeの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|dev_ip
+|AccessPointモードのデバイス固定IP情報です。(IPv4) +
+未設定(ESF_NETWORK_MANAGER_INIT_INFO_AP設定のまま)の場合、Networkは以下のデフォルト値を使用します。 +
+dev_ip.ip[192.168.4.1] +
+dev_ip.subnet_mask[255.255.255.0] +
+dev_ip.gateway[192.168.4.1] +
+dev_ip.dns[0.0.0.0] +
+
+|wifi_ap
+|AccessPointモードのWiFi AP情報です。 +
+|===
+
+
+[#_SampleIP]
+==== EsfNetworkManagerIPInfo
+IP情報構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerIPInfo {
+    char ip[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+    char subnet_mask[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+    char gateway[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+    char dns[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+} EsfNetworkManagerIPInfo;
+....
+
+
+* *値* 
+
+[#_TableReturnValueIP]
+.EsfNetworkManagerIPInfoの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|ip
+|IPアドレスです。 +
+
+|subnet_mask
+|サブネットマスクです。 +
+IPアドレス形式で指定してください。
+
+|gateway
+|Gatewayです。 +
+IPアドレス形式で指定してください。
+
+|dns
+|DNSです。 +
+IPアドレス形式で指定してください。
+|===
+
+[#_SampleWiFiSta]
+==== EsfNetworkManagerWiFiStaInfo
+WiFi STA情報構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerWiFiStaInfo {
+    char ssid[ESF_NETWORK_MANAGER_WIFI_SSID_LEN];
+    char password[ESF_NETWORK_MANAGER_WIFI_PASSWORD_LEN];
+    int32_t encryption;
+} EsfNetworkManagerWiFiStaInfo;
+....
+
+
+* *値* 
+
+[#_TableWiFiSta]
+.EsfNetworkManagerWiFiStaInfoの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|ssid
+|WiFiのSSIDです。
+
+|password
+|WiFiのPasswordです。
+
+|encryption
+|WiFi暗号化方式です。(未サポート) +
+0: WPA2-PSK +
+1: WPA3-PSK +
+2: WPA2_WPA3_PSK +
+|===
+
+[#_SampleWiFiAp]
+==== EsfNetworkManagerWiFiApInfo
+WiFi AP情報構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerWiFiApInfo {
+    char ssid[ESF_NETWORK_MANAGER_WIFI_SSID_LEN];
+    char password[ESF_NETWORK_MANAGER_WIFI_PASSWORD_LEN];
+    int32_t encryption;
+    int32_t channel;
+} EsfNetworkManagerWiFiApInfo;
+....
+
+
+* *値* 
+
+[#_TableWiFiAp]
+.EsfNetworkManagerWiFiApInfoの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|ssid
+|WiFiのSSIDです。
+
+|password
+|WiFiのPasswordです。
+
+|encryption
+|WiFi暗号化方式です。(未サポート) +
+0: WPA2-PSK +
+1: WPA3-PSK +
+2: WPA2_WPA3_PSK +
+
+|channel
+|WiFiチャンネル番号です。(未サポート) 
+
+|===
+
+[#_SampleStatus]
+==== EsfNetworkManagerStatusInfo
+ネットワーク接続状態の構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerStatusInfo {
+    bool is_if_up;
+    bool is_link_up;
+} EsfNetworkManagerStatusInfo;
+....
+
+
+* *値* 
+
+[#_TableReturnValueStatus]
+.EsfNetworkManagerStatusInfoの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|is_if_up
+|ネットワーク起動状態です。 +
+true: up +
+false: down +
+
+|is_link_up
+|ネットワークリンク状態です。 +
+対象がEthの場合の時のみ有効です。 +
+true: up +
+false: down +
+
+|===
+
+[#_SampleFunctionCallbackNotify]
+==== EsfNetworkManagerNotifyInfoCallback
+ネットワーク接続状態通知用のコールバック関数のポインタ型です。 +
+EsfNetworkManagerRegisterCallbackで使用します。 +
+このコールバック関数でネットワーク接続状態を上位アプリに通知します。 +
+コールバック関数内からNetwork ManagerのAPIを実行することは出来ませんので注意してください。
+
+* *書式*
+
+``**typedef void (*EsfNetworkManagerNotifyInfoCallback)(EsfNetworkManagerMode mode, EsfNetworkManagerNotifyInfo info, void *private_data)**``
+
+
+* *値* 
+
+``** [IN] EsfNetworkManagerMode mode **``:::
+EsfNetworkManagerRegisterCallbackで指定されたハンドルを取得した際に``**mode**``に指定した値です。 +
+詳細は<<#_SampleMode, EsfNetworkManagerMode>>を参照ください。 +
+
+``** [IN] EsfNetworkManagerNotifyInfo info **``:::
+ネットワーク接続状態です。 +
+詳細は<<#_SampleNotifyInfo, EsfNetworkManagerNotifyInfo>>を参照ください。 +
+
+``** [IN] void *private_data **``:::
+EsfNetworkManagerRegisterCallbackで指定された``**private_data**``を設定します。
+
+[#_SampleParameter]
+==== EsfNetworkManagerParameter
+ネットワーク接続情報構造体です。 +
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerParameter {
+    EsfNetworkManagerNormalMode normal_mode;
+    EsfNetworkManagerAccessPointMode accesspoint_mode;
+    EsfNetworkManagerProxy proxy;
+} EsfNetworkManagerParameter;
+....
+
+
+* *値* 
+
+[#_TableNetworkParameter]
+.EsfNetworkManagerParameterの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|normal_mode
+|Normalモードのネットワーク情報です。 +
+
+|accesspoint_mode
+|AccessPointモードのネットワーク情報です。(未サポート) +
+
+|proxy
+|Proxy情報です。 +
+本情報は接続情報の保存・取得のみに使用します。 +
+Network Managerで接続開始した通信にProxyが使用されるわけではありません。 +
+Proxy利用が必要な場合は接続情報取得でProxy情報を取得し、別途個別にProxy利用した通信を行ってください。
+|===
+
+[#_SampleParameterMask]
+==== EsfNetworkManagerParameterMask
+ネットワーク接続情報のマスク構造体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerParameterMask {
+  EsfNetworkManagerNormalModeMask normal_mode;
+  EsfNetworkManagerAccessPointModeMask accesspoint_mode;
+  EsfNetworkManagerProxyMask proxy;
+} EsfNetworkManagerParameterMask;
+....
+
+* *値*  +
+    <<#_TableNetworkParameter, EsfNetworkManagerParameterの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+[#_SampleVariantParameter]
+==== EsfNetworkManagerVariantParameter
+ネットワーク接続情報共用体です。 +
+
+* *書式*
+
+[source, C]
+....
+typedef union EsfNetworkManagerVariantParameter {
+    EsfNetworkManagerNormalMode normal_mode;
+    EsfNetworkManagerAccessPointMode accesspoint_mode;
+    EsfNetworkManagerProxy proxy;
+} EsfNetworkManagerVariantParameter;
+....
+
+
+* *値* 
+
+[#_TableNetworkVariantParameter]
+.EsfNetworkManagerVariantParameterの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|normal_mode
+|Normalモードのネットワーク情報です。 +
+
+|accesspoint_mode
+|AccessPointモードのネットワーク情報です。(未サポート) +
+
+|proxy
+|Proxy情報です。 +
+本情報は接続情報の保存・取得のみに使用します。 +
+Network Managerで接続開始した通信にProxyが使用されるわけではありません。 +
+Proxy利用が必要な場合は接続情報取得でProxy情報を取得し、別途設定を行ってください。
+|===
+
+[#_SampleVariantParameterMask]
+==== EsfNetworkManagerVariantParameterMask
+ネットワーク接続情報のマスク共用体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef union EsfNetworkManagerVariantParameterMask {
+  EsfNetworkManagerNormalModeMask normal_mode;
+  EsfNetworkManagerAccessPointModeMask accesspoint_mode;
+  EsfNetworkManagerProxyMask proxy;
+} EsfNetworkManagerVariantParameterMask;
+....
+
+* *値*  +
+    <<#_TableNetworkVariantParameter, EsfNetworkManagerVariantParameterの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+[#_SampleNormalMask]
+==== EsfNetworkManagerNormalModeMask
+Normalモード情報のマスク構造体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerNormalModeMask {
+    EsfNetworkManagerIPInfoMask dev_ip;
+    EsfNetworkManagerIPInfoMask dev_ip_v6;
+    EsfNetworkManagerWiFiStaInfoMask wifi_sta;
+    uint8_t ip_method : 1;
+    uint8_t netif_kind : 1;
+} EsfNetworkManagerNormalModeMask;
+....
+
+
+* *値*  +
+    <<#_TableReturnValueNormal, EsfNetworkManagerNormalModeの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+
+[#_SampleAccessPointMask]
+==== EsfNetworkManagerAccessPointModeMask
+AccessPointモード情報のマスク構造体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerAccessPointModeMask {
+    EsfNetworkManagerIPInfoMask dev_ip;
+    EsfNetworkManagerWiFiApInfoMask wifi_ap;
+} EsfNetworkManagerAccessPointModeMask;
+....
+
+
+* *値* +
+    <<#_TableReturnValueAccessPoint, EsfNetworkManagerAccessPointModeの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+[#_TableReturnValueAccessPoint]
+
+
+[#_SampleIPMask]
+==== EsfNetworkManagerIPInfoMask
+IP情報構造のマスク構造体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerIPInfoMask {
+    uint8_t ip : 1;
+    uint8_t subnet_mask : 1;
+    uint8_t gateway : 1;
+    uint8_t dns : 1;
+} EsfNetworkManagerIPInfoMask;
+....
+
+* *値*  +
+    <<#_TableReturnValueIP, EsfNetworkManagerIPInfoの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+[#_SampleWiFiStaMask]
+==== EsfNetworkManagerWiFiStaInfoMask
+WiFi STA情報構造のマスク構造体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerWiFiStaInfoMask {
+    uint8_t ssid : 1;
+    uint8_t password : 1;
+    uint8_t encryption : 1;
+} EsfNetworkManagerWiFiStaInfoMask;
+....
+
+* *値*  +
+    <<#_TableWiFiSta, EsfNetworkManagerWiFiStaInfoの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+[#_SampleWiFiApMask]
+==== EsfNetworkManagerWiFiApInfoMask
+WiFi AP情報構造のマスク構造体です。 +
+Parameter Storage Manager経由保存・取得実施時のデータ有効無効を設定します。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerWiFiApInfoMask {
+    uint8_t ssid : 1;
+    uint8_t password : 1;
+    uint8_t encryption : 1;
+    uint8_t channel : 1;
+} EsfNetworkManagerWiFiApInfoMask;
+....
+
+* *値*  +
+    <<#_SampleWiFiAp, EsfNetworkManagerWiFiApInfoの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+[#_SampleProxy]
+==== EsfNetworkManagerProxy
+Proxy情報構造体です。 +
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerProxy {
+    char url[ESF_NETWORK_MANAGER_PROXY_URL_LEN];
+    int32_t port;
+    char username[ESF_NETWORK_MANAGER_PROXY_USER_NAME_LEN];
+    char password[ESF_NETWORK_MANAGER_PROXY_PASSWORD_LEN];
+} EsfNetworkManagerProxy;
+....
+
+* *値* 
+
+[#_TableProxy]
+.EsfNetworkManagerProxyの値の説明
+[width="100%", cols="20%,80%",options="header"]
+|===
+|メンバ名  |説明
+|url
+|Proxy Urlです。
+
+|port
+|Proxy Portです。
+
+|username
+|Proxy Usernameす。
+
+|password
+|Proxy Passwordです。
+
+|===
+
+[#_SampleProxyMask]
+==== EsfNetworkManagerProxyMask
+Proxy情報のマスク構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfNetworkManagerProxyMask {
+    uint8_t url : 1;
+    uint8_t port : 1;
+    uint8_t username : 1;
+    uint8_t password : 1;
+} EsfNetworkManagerProxyMask;
+....
+
+* *値*  +
+    <<#_SampleProxy, EsfNetworkManagerProxyの値の説明>>の同名のメンバを参照してください。 +
+    ビットフィールドに0を設定すると処理しません。 +
+    1を設定すると処理します。
+
+
+<<<
+
+=== API定義
+[#_SampleFunctionInit]
+==== EsfNetworkManagerInit
+* *機能* 
++
+Network Managerを初期化します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerInit(void)**``  
+
+* *引数の説明* +
++
+引数はありません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 詳細挙動 +
+*** 内部リソースを確保します。 +
+*** 使用するPL機能の初期化を行います。PL機能の初期化失敗は無視します。 +
+*** PLからネットワークIF情報を取得し、内部領域に保存します。 +
+*** 内部状態を初期化します。 +
+*** 初期化状態で再度本APIを呼んだ場合、何もせずに``**kEsfNetworkManagerResultSuccess**``を返します。 +
+** 備考
+*** 同時に呼び出し不可。
+*** 複数のスレッドからの呼び出し不可。
+*** 複数のタスクからの呼び出し不可。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+
+
+** エラー情報
++
+[#_ErrorTableInit]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|初期化成功
+|なし
+
+|kEsfNetworkManagerResultResourceExhausted
+|メモリ確保エラー
+|メモリ確保失敗
+|不要メモリを解放してリトライ
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+|===
+
+[#_SampleFunctionDeinit]
+==== EsfNetworkManagerDeinit
+* *機能* 
++
+Network Managerを終了します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerDeinit(void)**``  
+
+* *引数の説明* +
++
+引数はありません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 詳細挙動 +
+*** PLの全Network接続を停止します。 +
+*** PLに登録済みの全てのイベントハンドラ登録を解除します。 +
+*** 使用するPL機能の終了を行います。PL機能の終了失敗は無視します。 +
+*** 確保済のリソースを解放します。 +
+*** 内部状態を未初期化に更新します。 +
+** 備考
+*** 同時に呼び出し不可。
+*** 複数のスレッドからの呼び出し不可。
+*** 複数のタスクからの呼び出し不可。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** ハンドルアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableDeinit]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|終了成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|実行不要
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+|===
+
+[#_SampleFunctionOpen]
+==== EsfNetworkManagerOpen
+* *機能* 
++
+Network Managerのハンドルを取得します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerOpen(EsfNetworkManagerMode mode, EsfNetworkManagerHandleType handle_type, EsfNetworkManagerHandle *handle)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerMode mode``**:: 
+ネットワーク接続モードを指定します。 +
+指定可能な``**mode**``については、<<#_SampleMode, EsfNetworkManagerMode>>を参照ください。
+
+**``[IN] EsfNetworkManagerHandleType handle_type``**:: 
+ハンドル種別を指定します。 +
+指定可能な``**handle_type**``については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。
+
+**``[OUT] EsfNetworkManagerHandle *handle``**:: 
+取得したハンドルです。 +
+NULLを指定しないでください。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 詳細挙動 +
+*** 指定されたモード、種別のハンドルを取得します。 +
+*** ハンドルの数が上限を超えていた場合、``**kEsfNetworkManagerResultResourceExhausted**``を返します。 +
+** 備考
+*** 同時に呼び出し可能。
+*** 複数のスレッドからの呼び出し可能。
+*** 複数のタスクからの呼び出し可能。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** ハンドル管理の排他制御のため +
+
+** エラー情報
++
+[#_ErrorTableOpen]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|指定されたパラメータが異常
+|パラメータを見直しリトライ
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化後にリトライ
+
+|kEsfNetworkManagerResultResourceExhausted
+|リソース不足
+|ハンドル上限数を超過
+|不要なハンドルを解放後リトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+|===
+
+[#_SampleFunctionClose]
+==== EsfNetworkManagerClose
+* *機能* 
++
+Network Managerのハンドルを解放します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerClose(EsfNetworkManagerHandle handle)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+解放するハンドルです。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 詳細挙動 +
+*** 指定されたハンドルを解放します。 +
+*** ハンドルを使用したAPI実行中は解放できません。API実行終了後に実施してください。 +
+*** ハンドル種別が「制御ハンドル」の場合、該当ハンドルでネットワーク接続中は解放できません。 +
+ネットワークを切断してから実施してください。 +
+** 備考
+*** 同時に呼び出し可能。
+*** 複数のスレッドからの呼び出し可能。
+*** 複数のタスクからの呼び出し可能。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** ハンドル管理の排他制御のため +
+
+** エラー情報
++
+[#_ErrorTableClose]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|実行不要
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|実行不要
+
+|kEsfNetworkManagerResultFailedPrecondition
+|操作拒否
+|指定ハンドル使用中
+|ハンドル使用完了後にリトライ
+
+|kEsfNetworkManagerResultFailedPrecondition
+|操作拒否
+|指定ハンドルネットワーク接続中
+|ネットワーク切断実施後にリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+[#_SampleFunctionStart]
+==== EsfNetworkManagerStart
+* *機能* 
++
+ネットワーク接続を開始します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerStart(EsfNetworkManagerHandle handle, EsfNetworkManagerStartType start_type, EsfNetworkManagerOSInfo *os_info)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+**``[IN] EsfNetworkManagerStartType start_type``**:: 
+ネットワーク接続開始種別を指定してください。 +
+詳細は<<#_SampleStartType, EsfNetworkManagerStartType>>を参照ください。 +
+
+**``[IN] EsfNetworkManagerOSInfo *os_info``**:: 
+ネットワーク接続情報を指定してください。 +
+ハンドル確保時の接続モードに該当するメンバに情報を設定してください。 +
+詳細は<<#_SampleOSInfo, EsfNetworkManagerOSInfo>>を参照ください。 +
+接続開始種別が**``kEsfNetworkManagerStartTypeFuncParameter``**の場合はNULLを指定しないでください。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 詳細挙動 +
+*** ハンドル確保時に指定した接続モードでネットワーク接続を行います。 +
+*** start_typeが**``kEsfNetworkManagerStartTypeFuncParameter``**の場合、os_infoを使用して接続を行います。 +
+    APIが成功した場合、指定されたos_infoはNetwork Manager内部に保存します。 +
+*** start_typeが**``kEsfNetworkManagerStartTypeSaveParameter``**の場合、Parameter Storage Managerから保存されている情報を取得して接続を行います。 +
+    APIが成功した場合、Parameter Storage Managerから取得した情報はNetwork Manager内部に保存します。 +
+*** start_typeが**``kEsfNetworkManagerStartTypeLastStartSuccessParameter``**の場合、Network Manager内部に保存している情報で接続を行います。 +
+*** PLを使用して接続モードに該当するI/Fのイベントハンドラ登録を行います。 +
+    IPアドレス、ネットマスク、Gateway、DNSを設定します。 +
+    以下に固定IP、DHCPでのIPアドレス設定操作を記載します。 +
+*** **``kEsfNetworkManagerStop``**で接続停止した直後に**``kEsfNetworkManagerStart``**を実行すると**``kEsfNetworkManagerResultStatusAlreadyRunning``**を応答する場合があります。 +
+その場合、しばらく待ってからリトライしてください。
++
+[#_TableAPIStartIP]
+.IPアドレス設定操作
+[width="100%", cols="20%,40%,40%",options="header"]
+|===
+|分類 |設定操作 |備考
+|Normalモード +
+固定IP
+|対象I/FにIPアドレス、ネットマスク、Gateway、DNSを設定します。
+|PLへのネットワーク接続開始前に実行します。
+
+|Normalモード +
+DHCP
+|対象I/Fに無効(0.0.0.0)IPアドレス、ネットマスク、Gateway、DNSを設定します。 +
+|PLへのネットワーク接続開始前に実行します。
+
+|Normalモード +
+DHCP
+|DHCPCを使用してIPアドレスを取得し、対象I/Fに取得したIPアドレス、ネットマスク、Gateway、DNSを設定します。 +
+|ネットワーク接続開始し、IFUP後に実行します。
+
+|AccessPointモード
+|DHCP払い出しアドレスを設定します。 +
+対象I/FにIPアドレス、ネットマスク、Gateway、DNSを設定します。
+|PLへのネットワーク接続開始前に実行します。
+
+|AccessPointモード
+|DHCPサーバを開始します。
+|ネットワーク接続開始し、IFUP後に実行します。
+|===
++
+*** PLを使用して接続モードに該当するI/Fにネットワーク情報の設定を行います。 +
+*** PLを使用して接続モードに該当するI/Fのネットワーク接続を開始します。 +
+*** 接続開始成功後は接続状態に応じてLED Managerへの状態通知を行います。 +
+    詳細は、<<#_ComponentWiFiStatus, LedManager状態通知>>を参照ください。 +
+
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1000ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+**** Parameter Storage Manager同時アクセス実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableStart]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultExternalError
+|外部APIエラー
+|Parameter Storage ManagerのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|制御ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidHandleType
+|ハンドル種別異常
+|指定ハンドルが制御ハンドルではない
+|制御ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultFailedPrecondition
+|ハンドル制御実行中
+|指定ハンドルで制御操作実行中
+|制御操作完了後にリトライ
+
+|kEsfNetworkManagerResultStatusAlreadyRunning
+|ネットワーク開始済
+|ネットワーク接続が既に開始されている
+|実行不要 +
+EsfNetworkManagerStop実行直後の場合はしばらく待ってからリトライ
+
+|kEsfNetworkManagerResultNoConnectInfo
+|接続情報が存在しない
+|``**start_type**``に``**kEsfNetworkManagerStartTypeSaveParameter**``を指定かつ前回接続情報保存データなし
+|``**start_type**``を変更してリトライ
+
+|kEsfNetworkManagerResultUtilityDHCPServerError
+|DHCPサーバの操作に失敗
+|DHCPサーバ操作APIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultUtilityIPAddressError
+|IPアドレスの操作に失敗
+|IPアドレス操作APIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+
+[#_SampleFunctionStop]
+==== EsfNetworkManagerStop
+* *機能* 
++
+ネットワーク切断を開始します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerStop(EsfNetworkManagerHandle handle)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 詳細挙動 +
+*** ハンドル確保時に指定した接続モードのネットワーク切断を行います。 +
+*** AccessPointモードで動作していた場合、DHCPサーバを停止します。 +
+*** PLを使用して接続モードに該当するI/Fのネットワーク切断を開始します。 +
+*** 切断開始成功後は接続状態に応じてLED Managerへの状態通知を行います。 +
+詳細は、<<#_ComponentWiFiStatus, LedManager状態通知>>を参照ください。 +
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableStop]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|制御ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidHandleType
+|ハンドル種別異常
+|指定ハンドルが制御ハンドルではない
+|制御ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultFailedPrecondition
+|ハンドル制御実行中
+|指定ハンドルで制御操作実行中
+|制御操作完了後にリトライ
+
+|kEsfNetworkManagerResultStatusAlreadyRunning
+|ネットワーク停止済
+|ネットワーク接続が既に停止されている
+|実行不要
+
+|kEsfNetworkManagerResultUtilityDHCPServerError
+|DHCPサーバの操作に失敗
+|DHCPサーバ操作APIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+[#_SampleFunctionGetIFStatus]
+==== EsfNetworkManagerGetIFStatus
+* *機能* 
++
+ネットワーク接続状態を取得します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerGetIFStatus(EsfNetworkManagerHandle handle, EsfNetworkManagerStatusInfo *status)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」もしくは「情報ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+
+**``[OUT] EsfNetworkManagerStatusInfo *status``**:: 
+取得したネットワーク接続状態です。 +
+NULLを指定してはいけません。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ハンドル操作対象の接続モードのネットワーク接続状態を取得します。 +
+*** PLを使用してネットワーク状態を取得します。 +
+*** ネットワーク接続開始済の場合、開始ネットワークの接続状態を取得します。 +
+*** Network Manager内部に接続情報が保存されている場合、保存情報に対応するネットワークの接続状態を取得します。 +
+*** Network Manager内部に接続情報が保存されていない場合、WiFiを優先して接続状態を取得します。 +
+WiFi未実装の場合、Etherの接続状態を取得します。
+
+** 備考
+*** 同時に呼び出し可能。
+*** 複数のスレッドからの呼び出し可能。
+*** 複数のタスクからの呼び出しが可能。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableGetIFStatus]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+
+[#_SampleFunctionGetIFInfo]
+==== EsfNetworkManagerGetIFInfo
+* *機能* 
++
+ネットワーク情報を取得します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerGetIFInfo(EsfNetworkManagerHandle handle, EsfNetworkManagerOSInfo *ifinfo)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」もしくは「情報ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+**``[OUT] EsfNetworkManagerOSInfo *ifinfo``**:: 
+取得したネットワーク情報です。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleOSInfo, EsfNetworkManagerOSInfo>>を参照ください。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ハンドル操作対象の接続モードのネットワーク情報を取得します。 +
+*** ネットワーク接続開始済の場合、接続開始時に使用した情報を取得します。 +
+*** Network Manager内部に接続情報が保存されている場合、保存情報を取得します。 +
+*** Network Manager内部に接続情報が保存されていない場合、``**kEsfNetworkManagerResultNoConnectInfo**``を応答します。 +
+*** IPアドレス情報はDHCP指定で払い出しアドレス使用中の場合は、使用しているIPアドレスを取得します。 +
+** 備考
+*** 同時に呼び出し可能。
+*** 複数のスレッドからの呼び出し可能。
+*** 複数のタスクからの呼び出しが可能。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+
+** エラー情報
++
+[#_ErrorTableGetIFInfo]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultNoConnectInfo
+|接続情報なし
+|未接続かつ接続情報が保存されていない
+|接続開始後にリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+
+[#_SampleFunctionGetNetstat]
+==== EsfNetworkManagerGetNetstat
+* *機能* 
++
+Netstat情報を取得します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerGetNetstat(EsfNetworkManagerHandle handle, const int32_t netstat_buf_size, char *netstat_buf)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」もしくは「情報ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+**``[IN] const int32_t netstat_buf_size``**:: 
+``**netstat_buf**``のサイズを指定します。 +
+
+**``[OUT] char *netstat_buf``**:: 
+Netstat情報取得結果格納用バッファを指定します。 +
+NULLを指定してはいけません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+PLを使用してNetstatを取得します。
+** 備考
+*** 同時に呼び出し可能。
+*** 複数のスレッドからの呼び出し可能。
+*** 複数のタスクからの呼び出しが可能。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableGetNetstat]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+|===
+
+
+[#_SampleFunctionGetRssi]
+==== EsfNetworkManagerGetRssi
+* *機能* 
++
+RSSI情報を取得します。(Normalモードのみ対応)
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerGetRssi(EsfNetworkManagerHandle handle, int8_t *rssi_buf)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」もしくは「情報ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+**``[OUT] int8_t *rssi_buf``**:: 
+RSSI情報取得の格納用バッファを指定します。 +
+NULLを指定してはいけません。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+PLを使用してrssiを取得します。 +
+ハンドルがNormalモードかつWiFiで接続開始状態でのみ実行可能です。 +
+** 備考
+*** 同時に呼び出し可能。
+*** 複数のスレッドからの呼び出し可能。
+*** 複数のタスクからの呼び出しが可能。
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** PL API同時実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableGetRssi]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|以下のいずれかに該当する +
+・未初期化状態 +
+・ハンドルがAccessPointモード +
+・WiFi接続未開始 +
+|状態異常を解消してリトライ
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|===
+
+
+[#_SampleFunctionReg]
+==== EsfNetworkManagerRegisterCallback
+* *機能* 
++
+ネットワーク接続状態を通知するコールバック関数を登録します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerRegisterCallback(EsfNetworkManagerHandle handle, EsfNetworkManagerNotifyInfoCallback notify_callback, void *private_data )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」もしくは「情報ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+**``[IN] EsfNetworkManagerNotifyInfoCallback notify_callback``**:: 
+ネットワーク接続状態を通知するための、登録用のコールバック関数ポインタを設定します。 +
+NULLは指定できません。
+
+**``[IN] void *private_data``**:: 
+コールバック関数呼び出し時にパラメータとして引き渡すユーザーデータです。 +
+NULL指定可能です。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ハンドルの接続モードのネットワーク接続状態を通知するコールバック関数を登録します。 +
+*** コールバック関数は、ネットワーク接続状態の変更契機で呼び出します。 +
+*** 通知される状態については、<<#_StatusNotifyInfo, ネットワーク接続状態通知>>を参照してください。 +
+*** ``**private_data**``の設定がある場合は、コールバック関数実行時に指定します。 +
+*** 登録実施時に最新の状態を通知するコールバック関数呼び出しを行います。 +
+その際は本APIを実行したコンテキストで呼び出しを行います。 +
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** コールバック関数アクセスの排他制御のため +
+
+** エラー情報
++
+[#_ErrorTableFunctionReg]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態 +
+|初期化してリトライ
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultAlreadyCallbackRegistered
+|登録済
+|対象接続モードのコールバック関数が既に登録されている
+|登録済のコールバック関数を登録解除してリトライ
+
+|===
+
+
+[#_SampleFunctionUnRegister]
+==== EsfNetworkManagerUnregisterCallback
+* *機能* 
++
+ネットワーク接続状態を通知するコールバック関数を登録解除します。
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerUnregisterCallback(EsfNetworkManagerHandle handle)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerHandle handle``**:: 
+Network Managerのハンドルです。 +
+ハンドル種別が「制御ハンドル」もしくは「情報ハンドル」のハンドルを指定してください。 +
+ハンドル種別については、<<#_SampleHandleType, EsfNetworkManagerHandleType>>を参照ください。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+ハンドルの接続モードのネットワーク接続状態を通知するコールバック関数を登録解除します。 +
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** コールバック関数アクセスの排他制御のため +
+
+** エラー情報
++
+[#_ErrorTableFunctionUnReg]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態 +
+|初期化してリトライ
+
+|kEsfNetworkManagerResultNotFound
+|ハンドル不一致
+|指定ハンドルが確保されていない
+|ハンドルを確保してリトライ
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultAlreadyCallbackUnregistered
+|登録解除済
+|対象接続モードのコールバック関数が既に登録解除されている
+|実行不要
+
+|===
+
+
+[#_SampleFunctionInitNormalWiFi]
+==== ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_WIFI
+* *機能* 
++
+ネットワーク開始に使用する情報を初期化するマクロです。 +
+Normalモード接続、WiFi使用、DHCP使用として初期化します。 +
+
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_WIFI(_os_info_, _ssid_,        \
+                                                  _password_)               \
+  do {                                                                      \
+    memset((_os_info_), 0, sizeof(EsfNetworkManagerOSInfo));                \
+    snprintf((_os_info_)->normal_mode.wifi_sta.ssid,                        \
+             sizeof((_os_info_)->normal_mode.wifi_sta.ssid), "%s", _ssid_); \
+    snprintf((_os_info_)->normal_mode.wifi_sta.password,                    \
+             sizeof((_os_info_)->normal_mode.wifi_sta.password), "%s",      \
+             _password_);                                                   \
+    (_os_info_)->normal_mode.ip_method = 0;                                 \
+    (_os_info_)->normal_mode.netif_kind = 0;                                \
+  } while (0)
+....
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerOSInfo {asterisk}_os_info_``**:: 
+初期化対象データのポインタです。 +
+NULLを指定しないでください。
+
+**``[IN] const char {asterisk}_ssid_``**:: 
+初期設定に使用するSSIDです。 +
+NULLを指定しないでください。
+
+**``[IN] const char {asterisk}_password_``**:: 
+初期設定に使用するWiFi接続パスワードです。 +
+NULLを指定しないでください。
+
+* *説明* +
+本マクロは``**EsfNetworkManagerOSInfo**``構造体の初期化で使用されます。 +
+設定値はWiFi使用、DHCP使用、SSID/Passwordは指定値を設定します。 +
+Normalモード用の初期化を行いますので、Normalモードを指定した制御ハンドルを使用した``**EsfNetworkManagerStart**``に使用してください。
+
+
+[#_SampleFunctionInitNormalEth]
+==== ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_ETH
+* *機能* 
++
+ネットワーク開始に使用する情報を初期化するマクロです。 +
+Normalモード接続、Eth使用、DHCP使用として初期化します。 +
+
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_ETH(_os_info_)  \
+  do {                                                       \
+    memset((_os_info_), 0, sizeof(EsfNetworkManagerOSInfo)); \
+    (_os_info_)->normal_mode.ip_method = 0;                  \
+    (_os_info_)->normal_mode.netif_kind = 1;                 \
+  } while (0)
+....
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerOSInfo {asterisk}_os_info_``**:: 
+初期化対象データのポインタです。 +
+NULLを指定しないでください。
+
+* *説明* +
+本マクロは``**EsfNetworkManagerOSInfo**``構造体の初期化で使用されます。 +
+設定値はEth使用、DHCP使用を設定します。 +
+Normalモード用の初期化を行いますので、Normalモードを指定した制御ハンドルを使用した``**EsfNetworkManagerStart**``に使用してください。
+
+
+[#_SampleFunctionInitAccessPoint]
+==== ESF_NETWORK_MANAGER_INIT_INFO_AP
+* *機能* 
++
+ネットワーク開始に使用する情報を初期化するマクロです。 +
+AccessPointモード接続として初期化します。 +
+
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_INIT_INFO_AP(_os_info_, _ssid_, _password_)    \
+  do {                                                                     \
+    memset((_os_info_), 0, sizeof(EsfNetworkManagerOSInfo));               \
+    snprintf((_os_info_)->accesspoint_mode.wifi_ap.ssid,                   \
+             sizeof((_os_info_)->accesspoint_mode.wifi_ap.ssid), "%s",     \
+             _ssid_);                                                      \
+    snprintf((_os_info_)->accesspoint_mode.wifi_ap.password,               \
+             sizeof((_os_info_)->accesspoint_mode.wifi_ap.password), "%s", \
+             _password_);                                                  \
+  } while (0)
+....
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerOSInfo {asterisk}_os_info_``**:: 
+初期化対象データのポインタです。 +
+NULLを指定しないでください。
+
+**``[IN] const char {asterisk}_ssid_``**:: 
+初期設定に使用するSSIDです。 +
+NULLを指定しないでください。
+
+**``[IN] const char {asterisk}_password_``**:: 
+初期設定に使用するWiFi接続パスワードです。 +
+NULLを指定しないでください。
+
+* *説明* +
+本マクロは``**EsfNetworkManagerOSInfo**``構造体の初期化で使用されます。 +
+設定値はデバイス固定IP情報はデフォルト値使用、SSID/Passwordは指定値を設定します。 +
+AccessPointモード用の初期化を行いますので、AccessPointモードを指定した制御ハンドルを使用した``**EsfNetworkManagerStart**``に使用してください。
+
+[#_ESF_NETWORK_MANAGER_MASK_ENABLE_ALL]
+==== ESF_NETWORK_MANAGER_MASK_ENABLE_ALL
+* *機能* 
++
+マスク構造体の全要素にアクセス有効(1)を設定するマクロです。
+
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_MASK_ENABLE_ALL(obj) \
+  (memset((obj), 0xFF, sizeof(*(obj))))
+....
+
+* *引数の説明* +
++
+**``[OUT] obj``**:: 
+マスク構造体のポインタです。 +
+NULLを指定しないでください。
+
+* *戻り値* +
+ありません。
+
+* *説明* +
+本マクロは``**EsfNetworkManagerXXXMask**``構造体の初期化で使用されます。 +
+該当構造体の全要素にアクセス有効(1)を設定します。
+
+[#_ESF_NETWORK_MANAGER_MASK_DISABLE_ALL]
+==== ESF_NETWORK_MANAGER_MASK_DISABLE_ALL
+* *機能* 
++
+マスク構造体の全要素にアクセス無効(0)を設定するマクロです。
+
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_NETWORK_MANAGER_MASK_DISABLE_ALL(obj) \
+  (memset((obj), 0x00, sizeof(*(obj))))
+....
+
+* *引数の説明* +
++
+**``[OUT] obj``**:: 
+マスク構造体のポインタです。 +
+NULLを指定しないでください。
+
+* *戻り値* +
+ありません。
+
+* *説明* +
+本マクロは``**EsfNetworkManagerXXXMask**``構造体の初期化で使用されます。 +
+該当構造体の全要素にアクセス無効(0)を設定します。
+
+[#_SampleFunctionSaveParameter]
+==== EsfNetworkManagerSaveParameter
+* *機能* 
++
+ネットワーク接続情報をParameter Storage Manager経由で保存します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerSaveParameter(const EsfNetworkManagerParameterMask *mask, const EsfNetworkManagerParameter *parameter)**``  
+
+* *引数の説明* +
++
+**``[IN] const EsfNetworkManagerParameterMask *mask``**:: 
+ネットワーク接続情報のマスク構造体です。 +
+マスク設定が有効となっているデータのみ保存します。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleParameterMask, EsfNetworkManagerParameterMask>>を参照ください。 +
+
+**``[IN] const EsfNetworkManagerParameter *parameter``**:: 
+ネットワーク接続情報です。 +
+マスク設定が有効になっているデータに保存する情報を設定してください。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleParameter, EsfNetworkManagerParameter>>を参照ください。 +
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ``**mask**``が有効な``**parameter**``に指定された情報の正常性をチェックします。 +
+    チェック内容は<<#_CheckTableParameter, パラメータ正常性チェック内容>>を参照ください。
+*** ``**mask**``が有効な``**parameter**``をParameter Storage Manager経由で保存します。
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1000ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** Parameter Storage Manager同時アクセス実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableSaveParameter]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultExternalError
+|外部APIエラー
+|Parameter Storage ManagerのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+[#_SampleFunctionLoadParameter]
+==== EsfNetworkManagerLoadParameter
+* *機能* 
++
+ネットワーク接続情報をParameter Storage Manager経由で取得します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerLoadParameter(const EsfNetworkManagerParameterMask *mask, EsfNetworkManagerParameter *parameter)**``  
+
+* *引数の説明* +
++
+**``[IN] const EsfNetworkManagerParameterMask *mask``**:: 
+ネットワーク接続情報のマスク構造体です。 +
+マスク設定が有効となっているデータのみ取得します。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleParameterMask, EsfNetworkManagerParameterMask>>を参照ください。 +
+
+**``[OUT] EsfNetworkManagerParameter *parameter``**:: 
+取得した情報です。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleParameter, EsfNetworkManagerParameter>>を参照ください。 +
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ``**mask**``が有効なデータについてParameter Storage Manager経由で取得して``**parameter**``に設定します。
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1000ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** Parameter Storage Manager同時アクセス実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableLoadParameter]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultExternalError
+|外部APIエラー
+|Parameter Storage ManagerのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+[#_SampleFunctionSaveVariantParameter]
+==== EsfNetworkManagerSaveVariantParameter
+* *機能* 
++
+ネットワーク接続情報をParameter Storage Manager経由で保存します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerSaveVariantParameter(EsfNetworkManagerParameterType parameter_type, const EsfNetworkManagerVariantParameterMask *mask, const EsfNetworkManagerVariantParameter *parameter)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerParameterType parameter_type``**:: 
+使用するネットワーク接続情報を指定します。 +
+**``mask``**、**``parameter``**の指定された要素を保存します。
+詳細は<<#_SampleParameterType, EsfNetworkManagerParameterType>>を参照ください。 +
+
++
+**``[IN] const EsfNetworkManagerVariantParameterMask *mask``**:: 
+ネットワーク接続情報のマスク共用体です。 +
+マスク設定が有効となっているデータのみ保存します。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleVariantParameterMask, EsfNetworkManagerVariantParameterMask>>を参照ください。 +
+
+**``[IN] const EsfNetworkManagerVariantParameter *parameter``**:: 
+ネットワーク接続情報共用体です。 +
+マスク設定が有効になっているデータに保存する情報を設定してください。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleVariantParameter, EsfNetworkManagerVariantParameter>>を参照ください。 +
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ``**parameter_type**``で指定された``**mask**``、``**parameter**``共用体の要素を対象に処理を実施します。 +
+*** ``**mask**``が有効な``**parameter**``に指定された情報の正常性をチェックします。 +
+    チェック内容は<<#_CheckTableParameter, パラメータ正常性チェック内容>>を参照ください。
+*** ``**mask**``が有効な``**parameter**``をParameter Storage Manager経由で保存します。
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1000ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** Parameter Storage Manager同時アクセス実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableSaveParameter]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultExternalError
+|外部APIエラー
+|Parameter Storage ManagerのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+[#_SampleFunctionLoadVariantParameter]
+==== EsfNetworkManagerLoadVariantParameter
+* *機能* 
++
+ネットワーク接続情報をParameter Storage Manager経由で取得します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerLoadVariantParameter(EsfNetworkManagerParameterType parameter_type, const EsfNetworkManagerVariantParameterMask *mask, EsfNetworkManagerVariantParameter *parameter)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfNetworkManagerParameterType parameter_type``**:: 
+使用するネットワーク接続情報を指定します。 +
+**``mask``**、**``parameter``**の指定された要素を使用して情報を取得します。
+詳細は<<#_SampleParameterType, EsfNetworkManagerParameterType>>を参照ください。 +
+
++
+**``[IN] const EsfNetworkManagerVariantParameterMask *mask``**:: 
+ネットワーク接続情報のマスク共用体です。 +
+マスク設定が有効となっているデータのみ取得します。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleVariantParameterMask, EsfNetworkManagerVariantParameterMask>>を参照ください。 +
+
+**``[OUT] EsfNetworkManagerVariantParameter *parameter``**:: 
+取得した情報の共用体です。 +
+NULLを指定してはいけません。 +
+詳細は<<#_SampleVariantParameter, EsfNetworkManagerVariantParameter>>を参照ください。 +
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** ``**parameter_type**``で指定された``**mask**``、``**parameter**``共用体の要素を対象に処理を実施します。 +
+*** ``**mask**``が有効なデータについてParameter Storage Manager経由で取得して``**parameter**``に設定します。
+** 備考
+*** 同時に呼び出し可能。 +
+*** 複数のスレッドからの呼び出し可能。 +
+*** 複数のタスクからの呼び出し可能。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1000ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** Parameter Storage Manager同時アクセス実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableLoadParameter]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultExternalError
+|外部APIエラー
+|Parameter Storage ManagerのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInvalidParameter
+|パラメータ異常
+|入力パラメータ異常
+|パラメータ内容を確認してリトライ
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+<<<
+
+== API使用時の呼び出し例
+
+Normalモード WiFi STA接続の場合で、各APIを使用する場合の呼び出し例を以下に示します。
+
+[#_SequenceStart]
+=== 初期設定・ネットワーク接続・各情報取得API呼び出しシーケンスの例
+初期設定後にParameter Storage Manager経由でデータ保存を実施、保存データを使用してのネットワーク接続、各情報取得のAPI呼び出しを行うシーケンス例です。
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant App
+    participant esf_main as ESF Main
+    participant esf_network as Network Manager
+    participant esf_parameter_storage_manager as Parameter Storage Manager
+    participant esf_led_manager as LED Manager
+    participant util as NetUtils
+    participant pl as PL
+
+  Note over esf_main: ESF初期設定
+  esf_main ->> +esf_network : NetworkInit
+  esf_network -->> -esf_main : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: Network接続情報を保存
+  App ->> +esf_network : EsfNetworkManagerSaveParameter(&mask, &parameter)
+  esf_network ->> esf_network : パラメータ正常性チェック
+  esf_network ->> +esf_parameter_storage_manager : 情報保存
+  esf_parameter_storage_manager -->> -esf_network : 保存成功
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: NormalモードのNetwork接続状態を通知するコールバック関数 NormalNetworkNotifyFuncを登録
+  App ->> +esf_network : EsfNetworkManagerOpen(kEsfNetworkManagerModeNormal, kEsfNetworkManagerHandleTypeInfo, &info_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  App ->> +esf_network : EsfNetworkManagerRegisterCallback(info_handle, NormalNetworkNotifyFunc, NULL)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  App ->> +esf_network : EsfNetworkManagerClose(info_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: NormalモードでNetwork起動(保存パラメーター使用)
+  App ->> +esf_network : EsfNetworkManagerOpen(kEsfNetworkManagerModeNormal, kEsfNetworkManagerHandleTypeControl, &ctrl_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  App ->> +esf_network : EsfNetworkManagerStart(ctrl_handle, kEsfNetworkManagerStartTypeSaveParameter, NULL)
+  esf_network ->> +esf_parameter_storage_manager : 情報取得
+  esf_parameter_storage_manager -->> -esf_network : 取得成功
+
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+
+  esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+  Note right of esf_led_manager: WiFi LED：SSID/Password Loading
+  esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+
+  esf_network ->> +util : IPアドレス設定
+  util -->> -esf_network : 成功
+
+  esf_network ->> +pl : PlNetworkRegisterEventHandler(if_name, NormalEventHandlerFunc, NULL)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +pl : PlNetworkSetConfig(if_name, &config)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +pl : PlNetworkStart(if_name)
+  pl -->> -esf_network : PL Success
+
+  esf_network ->> esf_network : 接続情報をNetwork Manager内部に保存
+  Note over esf_network: 次回kEsfNetworkManagerStartTypeLastStartSuccessParameterを指定された際に使用する情報として保存
+
+  esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+  Note right of esf_led_manager: WiFi LED：AP認証中{mermaid_br}Service LED：物理リンク確立中
+  esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  opt Normalモード WiFi STA接続成功の場合
+    pl ->> +esf_network : PL NormalEventHandlerFunc(if_name, kPlNetworkEventWifiStaConnected, NULL)
+    opt DHCP
+      esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+      Note right of esf_led_manager: Service LED：未接続（インターネット接続なし）
+      esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+      esf_network ->> +util : DHCPアドレス取得
+      util -->> -esf_network : 成功
+      esf_network ->> +util : IPアドレス設定
+      util -->> -esf_network : 成功
+    end
+    esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+    Note right of esf_led_manager: WiFi LED：リンク確立{mermaid_br}Service LED：未接続（DNS,NTP接続試行中）
+    esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+    esf_network ->> +App : NormalNetworkNotifyFunc(kEsfNetworkManagerModeNormal, kEsfNetworkManagerNotifyInfoNormalConnected)
+    App -->> -esf_network : 戻り値無し
+    esf_network -->> -pl : 戻り値無し
+  end
+
+  App ->> +esf_network : EsfNetworkManagerOpen(kEsfNetworkManagerModeNormal, kEsfNetworkManagerHandleTypeInfo, &info_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  
+  Note over App,esf_network: ネットワーク接続状態を取得
+  App ->> +esf_network : EsfNetworkManagerGetIFStatus(info_handle, &netif_buf)
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+  esf_network ->> +pl : PlNetworkGetState(if_name)
+  pl -->> -esf_network : PL Success
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess, netif_buf.is_if_up = XXX, is_link_up = XXX
+
+  Note over App,esf_network: ネットワーク情報を取得
+  App ->> +esf_network : EsfNetworkManagerGetIFInfo(info_handle, &netinfo_buf)
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+  esf_network ->> +pl : PlNetworkGetConfig(if_name, &config)
+  pl -->> -esf_network : PL Success
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess, netinfo_buf.normal_mode = 各種情報を設定
+
+  Note over App,esf_network: Netstat情報を取得
+  App ->> +esf_network : EsfNetworkManagerGetNetstat(info_handle, &netstat_buf, netstat_buf_size)
+  esf_network ->> +pl : PlNetworkGetNetStat(&netstat_buf, netstat_buf_size)
+  pl -->> -esf_network : PL Success
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: RSSI情報を取得
+  App ->> +esf_network : EsfNetworkManagerGetRssi(info_handle, &rssi)
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+  esf_network ->> +pl : PlNetworkGetState(if_name, &state)
+  pl -->> -esf_network : PL Success
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess, *rssi = state.wifi.rssi
+
+  App ->> +esf_network : EsfNetworkManagerClose(info_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: Network接続情報を取得
+  App ->> +esf_network : EsfNetworkManagerLoadParameter(&mask, &parameter)
+  esf_network ->> +esf_parameter_storage_manager : 情報取得
+  esf_parameter_storage_manager -->> -esf_network : 取得成功
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+....
+
+
+[#_SequenceStop]
+=== ネットワーク切断から終了処理までのAPI呼び出しシーケンスの例
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant App
+    participant esf_main as ESF Main
+    participant esf_network as Network Manager
+    participant esf_parameter_storage_manager as Parameter Storage Manager
+    participant esf_led_manager as LED Manager
+    participant pl as PL
+
+  Note left of App: 終了処理
+
+  Note over App,esf_network: Network切断
+
+  Note over App: Network接続時に確保したctrl_handleを使用する
+  App ->> +esf_network : EsfNetworkManagerStop(ctrl_handle)
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+  esf_network ->> +pl : PlNetworkStop(if_name)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +App : NormalNetworkNotifyFunc(kEsfNetworkManagerModeNormal, kEsfNetworkManagerNotifyInfoNormalDisconnected)
+  App -->> -esf_network : 戻り値無し
+  esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status) 
+  Note right of esf_led_manager: WiFi LED：消灯{mermaid_br}Service LED：設定情報をfalse
+  esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: Normalモードのネットワーク接続状態を通知するコールバック関数を登録解除
+  App ->> +esf_network : EsfNetworkManagerUnregisterCallback(ctrl_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  App ->> +esf_network : EsfNetworkManagerClose(ctrl_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  esf_main ->> +esf_network : EsfNetworkManagerDeinit
+  esf_network ->> esf_network : 保存しているIF名を取得
+  esf_network ->> +pl : PlNetworkStop(if_name)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +pl : PlNetworkUnregisterEventHandler(if_name)
+  pl -->> -esf_network : PL Success
+  esf_network -->> -esf_main : kEsfNetworkManagerResultSuccess
+....
+
+
+[#_SequenceApp]
+=== パラメータを指定して直接ネットワーク接続・切断を行うAPI呼び出しシーケンスの例
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant App
+    participant esf_network as Network Manager
+    participant esf_led_manager as LED Manager
+    participant util as NetUtils
+    participant pl as PL
+
+  Note over App,esf_network: Normalモードのネットワーク接続状態を通知するコールバック関数 NormalNetworkNotifyFuncを登録
+  App ->> +esf_network : EsfNetworkManagerOpen(kEsfNetworkManagerModeNormal, kEsfNetworkManagerHandleTypeControl, &ctrl_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  App ->> +esf_network : EsfNetworkManagerRegisterCallback(ctrl_handle, NormalNetworkNotifyFunc, NULL)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: Normalモード、WiFi、DHCPでネットワーク接続
+  App ->> +esf_network : ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_WIFI(&os_info, "ssid", "password")
+  esf_network -->> -App : -
+
+  App ->> +esf_network : EsfNetworkManagerStart(ctrl_handle, kEsfNetworkManagerStartTypeFuncParameter, &os_info)
+
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+
+  esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+  Note right of esf_led_manager: WiFi LED：SSID/Password Loading
+  esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+
+  esf_network ->> +util : IPアドレス設定
+  util -->> -esf_network : 成功
+
+  esf_network ->> +pl : PlNetworkRegisterEventHandler(if_name, NormalEventHandlerFunc, NULL)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +pl : PlNetworkSetConfig(if_name, &config)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +pl : PlNetworkStart(if_name)
+  pl -->> -esf_network : PL Success
+
+  esf_network ->> esf_network : 接続情報をNetwork Manager内部に保存
+  Note over esf_network: 次回kEsfNetworkManagerStartTypeLastStartSuccessParameterを指定された際に使用する情報として保存
+
+  esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+  Note right of esf_led_manager: WiFi LED：AP認証中{mermaid_br}Service LED：物理リンク確立中
+  esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  opt Normalモード WiFi STA接続成功の場合
+    pl ->> +esf_network : PL NormalEventHandlerFunc(if_name, kPlNetworkEventWifiStaConnected, NULL)
+    opt DHCP
+      esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+      Note right of esf_led_manager: Service LED：未接続（インターネット接続なし）
+      esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+      esf_network ->> +util : DHCPアドレス取得
+      util -->> -esf_network : 成功
+      esf_network ->> +util : IPアドレス設定
+      util -->> -esf_network : 成功
+    end
+    esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status)
+    Note right of esf_led_manager: WiFi LED：リンク確立{mermaid_br}Service LED：未接続（DNS,NTP接続試行中）
+    esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+    esf_network ->> +App : NormalNetworkNotifyFunc(kEsfNetworkManagerModeNormal, kEsfNetworkManagerNotifyInfoNormalConnected)
+    App -->> -esf_network : 戻り値無し
+    esf_network -->> -pl : 戻り値無し
+  end
+
+  Note over App,esf_network: ネットワーク切断
+  App ->> +esf_network : EsfNetworkManagerStop(ctrl_handle)
+  esf_network ->> esf_network : Normalモードに対応するIF名を取得
+  esf_network ->> +pl : PlNetworkStop(if_name)
+  pl -->> -esf_network : PL Success
+  esf_network ->> +App : NormalNetworkNotifyFunc(kEsfNetworkManagerModeNormal, kEsfNetworkManagerNotifyInfoNormalDisconnected)
+  App -->> -esf_network : 戻り値無し
+  esf_network ->> +esf_led_manager : EsfLedManagerSetStatus(&status) 
+  Note right of esf_led_manager: WiFi LED：消灯{mermaid_br}Service LED：設定情報をfalse
+  esf_led_manager -->> -esf_network : kEsfLedManagerSuccess
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+
+  Note over App,esf_network: コールバック関数を解除
+  App ->> +esf_network : EsfNetworkManagerUnregisterCallback(ctrl_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+  App ->> +esf_network : EsfNetworkManagerClose(ctrl_handle)
+  esf_network -->> -App : kEsfNetworkManagerResultSuccess
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+=== 制限事項
+* ハンドル数上限 +
+  Network Managerのハンドル数はハンドル種別毎に以下上限があります。 +
+  ** 制御ハンドル
+     接続モード毎に1つ
+  ** 情報ハンドル
+     接続モード毎に2つ
+* 複数コールバック関数登録 +
+  ネットワーク接続状態通知コールバック関数は、複数登録には未対応です。 +
+  接続モード毎に1つ登録してください。
+* IPv6対応 +
+  IPv6には未対応です。IPv4を使用してください。
+* DHCPリース期間対応 +
+  DHCPリース期間が経過しても再取得は行いません。
+* WiFi暗号化方式指定 +
+  WiFi暗号化方式の指定には未対応です。PL固定値で動作します。
+* WiFi Channel指定 +
+  WiFi Channelの指定には未対応です。PL固定値で動作します。
+* Wi-Fi Access Point Mode +
+  Wi-Fi Access Point Modeには未対応です。 +
+  ネットワーク接続モードにはNormalモードを使用してください。 +
+  ネットワーク接続情報保存・取得でAccessPointモードのネットワーク情報にはアクセスしないでください。
+* Proxy +
+  Network ManagerではParameter Storage Manager経由での保存・取得のみを提供します。 +
+  Network Managerで接続開始した通信にProxyが使用されるわけではありません。 +
+  Proxy利用が必要な場合は接続情報取得でProxy情報を取得し、別途個別にProxy利用した通信を行ってください。
+
+[#_ValidateCheck]
+=== パラメータ正常性チェック
+**``EsfNetworkManagerSaveParameter``**、**``EsfNetworkManagerStart``**実行時、指定パラメータの正常性チェックを行います。 +
+チェック内容は以下の通りです。 +
+
+[#_CheckTableParameter]
+.パラメータ正常性チェック内容
+[width="100%", options="header"]
+|===
+|項目 |チェック内容(Save時)|チェック内容(接続時)|備考
+|normal_mode.dev_ip.*
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|inet_ptonで扱えるIPv4形式であること
+|
+
+|normal_mode.dev_ip_v6.*
+|空文字もしくはinet_ptonで扱えるIPv6形式であること
+|inet_ptonで扱えるIPv6形式であること
+|IPv6無効時はエラーとなる
+
+|normal_mode.wifi_sta.ssid
+|0～32文字の文字列
+|1～32文字の文字列
+|接続先SSIDを設定するため、内容はチェックしない
+
+|normal_mode.wifi_sta.password
+|0～64文字の文字列
+|同左
+|接続先Passwordを設定するため、内容はチェックしない +
+
+|normal_mode.wifi_sta.encryption
+|0～2の数値
+|同左
+|
+
+|normal_mode.ip_method
+|0～1の数値
+|同左
+|
+
+|normal_mode.netif_kind
+|0～1の数値
+|同左
+|T3Pの場合0(WiFi)は指定できない
+
+|accesspoint_mode.dev_ip.*
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|inet_ptonで扱えるIPv4形式であること
+|
+
+|accesspoint_mode.wifi_ap.ssid
+|0～32文字の英数記号文字列
+|1～32文字の英数記号文字列
+|ASCIIコード33(!)～126(~)の範囲の文字であること
+
+|accesspoint_mode.wifi_ap.password
+|空文字もしくは8～63文字の英数記号文字列または64文字の16進数文字列
+|8～63文字の英数記号文字列もしくは64文字の16進数文字列
+|英数記号の場合はASCIIコード33(!)～126(~)の範囲の文字であること
+
+|accesspoint_mode.wifi_ap.encryption
+|0～2の数値
+|同左
+|
+
+|accesspoint_mode.wifi_ap.channel
+|未チェック
+|同左
+|
+
+|proxy.url
+|0～256文字の文字列
+|同左
+|
+
+|proxy.port
+|0～65535の数値であること
+|同左
+|
+
+|proxy.username
+|0～32文字の文字列
+|同左
+|
+
+|proxy.password
+|0～32文字の文字列
+|同左
+|
+
+|===
+
+
+[#_Notice_NonstandardExtensions]
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|拡張名 |説明 |用途
+|**``##\\__VA_ARGS__``**
+|**``\\__VA_ARGS__``**のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|===
+
+=== 要検討項目
+* 間欠駆動実装時にDHCPのIPを覚えておく対応が必要
+
+=== PLおよび他モジュールに要求する機能の一覧
+.PLおよび他モジュールに要求する機能の一覧
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|モジュール名 |要求機能 |説明
+|LedManager
+|状態通知
+|以下状態通知を行う機能。 +
+・ SSID/Password Loading +
+・ AP Found And Doing Authentication +
+・ Link Established +
+・ Disconnected, Establishing Network Link On Physical Layer +
+・ Disconnected, No Internet Connection +
+・ Disconnected, Connecting DNS and NTP +
+
+|Parameter Storage Manager
+|保存・取得
+|データの保存・取得を行う機能。 +
+
+|PL
+|ネットワーク情報取得
+|システムが持つネットワーク情報を取得する機能。
+
+|PL
+|ネットワーク状態取得
+|ネットワークのUP/DOWN状態を取得する機能。
+
+|PL
+|Netstat取得機能
+|システム全体のNetstatを取得する機能。
+
+|PL
+|イベント通知機能
+|ネットワークイベントを通知する機能。
+
+|PL
+|ネットワーク設定機能
+|SSID等の接続情報を設定する機能。 +
+設定済み情報を取得する機能。
+
+|PL
+|ネットワーク有効・無効化機能
+|ネットワークのUP/DOWNを操作する機能。
+|===
+
+<<<
+
+== 使用しているOSSの一覧
+* nuttx-apps +
+netutilsをDHCP操作、IP情報設定・取得に使用
+
+<<<
+
+== 参考文献
+
+* ParameterStorageManager 機能仕様書
+** link:../../../spec/esf/parameter_storage_manager/ParameterStorageManager.adoc[ParameterStorageManager.adoc]
+
+* LedManager 機能仕様書
+** link:../../../spec/esf/led_manager/LedManager.adoc[LedManager.adoc]
+
+* PL Network機能仕様書
+** link:../../../spec/porting_layer/network_manager/pl_network.adoc[pl_network.adoc]
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+
+|v0.1.0
+|初版リリース
+
+|v0.1.1
+|詳細設計のフィードバック
+
+* 全体
+    ** コーディングルールに沿うように名称を修正
+    ** APIの同時呼び出し等の記載を備考として記載するように変更
+    ** 文書内リンク誤り修正
+
+* 状態の変更
+    ** WiFiの接続状態からDisconnecting状態を削除 +
+        *** ``**SsfNetworkStop**``実行でDisconnectedに遷移するように変更
+        *** ネットワーク接続状態通知のDisconnected通知契機を変更
+    ** ネットワーク状態通知整理
+        *** Normalモード、MobileAppモード別ではなく統一の状態に変更
+    ** ネットワーク接続状態通知
+        *** Normalモード、MobileAppモード別ではなく統一の状態に変更
+
+* 非機能要件の変更
+    ** ヒープ最大使用量を2kByteに変更
+* データ型の変更
+    ** ``**SsfNetworkResult**``を修正
+        *** 未使用定義を削除
+        *** ``**kSsfNetworkResultOSInfoNotFound**``を``**kSsfNetworkResultNoConnectInfo**``に名称変更
+        *** ``**kSsfNetworkResultInvalidHandleType**``、``**kSsfNetworkResultFailedPrecondition**``を追加
+    ** ``**SsfNetworkHandle**``の書式変更
+        *** 無効値定義の``**SSF_NETWORK_INVALID_HANDLE**``を追加
+    ** ``**SsfNetworkNotifyInfo**``変更
+        *** Normalモード、MobileAppモード別ではなく統一の状態に変更
+    ** ``**SSF_NETWORK_DNS_LEN**``を削除
+        *** ``**SSF_NETWORK_IP_ADDRESS_LEN**``を使用するように変更
+    ** ``**SSF_NETWORK_WIFI_INFO_LEN**``を``**SSF_NETWORK_WIFI_SSID_LEN**``と``**SSF_NETWORK_WIFI_PASSWORD_LEN**``に分割 +
+    HALのPasswordが最大64文字であるため分割定義するように変更した
+    ** ``**SsfNetworkNotifyInfoCallback**``の説明を追加
+        *** コールバック関数内からNetworkのAPIを使用することが出来ないことを記載
+* APIの変更
+    ** ``**SsfNetworkDeinit**``動作変更
+        *** ネットワークの切断記載を削除
+    ** ``**SsfNetworkClose**``動作変更
+        *** 該当ハンドルでネットワーク接続中は実行不可とするように変更
+        *** 該当ハンドル使用中は実行不可とする記載を追加
+    ** ``**SsfNetworkGetNetstat**``の引数順序を変更
+    ** ``**SsfNetworkValidateParameter**``のチェック内容記載を追加
+
+* 非標準拡張の記載を追加
+
+|v0.1.2
+|外部レビュー対応
+
+* 全体
+    ** MobileAppモードをAccessPointモードに名称変更
+
+* データフロー図
+    ** 記載内容の動作モードをMobileAppモードからNormalモードに変更
+
+* コンポーネントの詳細説明
+    ** Network接続モードの表から「ネットワーク接続形態」の記載を削除
+
+* DeviceSetting経由でのネットワーク切断から終了処理までのAPI呼び出しシーケンスの例
+    ** コールバック登録解除後にネットワーク切断を行う利用想定に即したシーケンスに変更
+
+* APIの変更
+    ** ``**SsfNetworkValidateParameter**``のチェック内容を修正
+        *** IPアドレスの正常性をinet_ptonで扱える形式であることに変更
+    ** 初期設定マクロに引数説明を追加
+
+|v0.1.3
+|実装フィードバック
+
+* 全体
+    ** 誤記修正
+
+* ネットワーク状態通知
+    ** Indicatorへの通知状態がNormalモード、Apモード別だったものを1つにまとめた
+
+* モジュールの機能説明
+    ** Network設定情報正常性チェック
+      *** 前提条件をなしに変更
+
+* APIの変更
+    ** SsfNetworkClose
+      *** エラーに「指定ハンドルネットワーク接続中」条件を追加
+    ** SsfNetworkStart
+      *** エラーにkSsfNetworkResultInvalidHandleTypeとkSsfNetworkResultFailedPreconditionを追加
+    ** SsfNetworkStop
+      *** エラーにkSsfNetworkResultInvalidHandleTypeとkSsfNetworkResultFailedPreconditionを追加
+    ** SSF_NETWORK_INIT_INFO_NORMAL_WIFI
+      *** 文字列設定をstrncpyからsnprintfに変更
+    ** SSF_NETWORK_INIT_INFO_AP
+      *** 文字列設定をstrncpyからsnprintfに変更
+    ** SsfNetworkValidateParameter
+      *** 戻り値説明を修正
+
+|v0.1.4
+|構成変更対応
+
+* 全体
+    ** 誤記修正
+    ** Parameter Storage ManagerからNetwork Managerを使用する記載を、アプリからNetwork Managerを使用、Network ManagerからParameter Storage Managerを使用する記載に変更
+    ** 名称変更対応
+      *** SSF -> ESF
+      *** Network -> Network Manager
+      *** Device Indicator -> LED Manager
+      *** Device Setting -> Parameter Storage Manager
+
+* コンポーネントの機能説明
+    ** ネットワーク接続情報保存機能を追加
+    ** ネットワーク設定情報正常性チェック機能を削除
+
+* データ型
+    ** 接続モード定義(EsfNetworkManagerMode)のAccessPointモードに未サポートの記載を追加
+    ** Network OSシステム用情報共用体(EsfNetworkManagerOSInfo)のaccesspoint_modeに未サポートの記載を追加
+    ** ネットワーク接続情報構造体(EsfNetworkManagerParameter)のaccesspoint_modeに未サポートの記載を追加
+    ** ネットワーク接続開始種別（EsfNetworkManagerStartType）を追加
+    ** Proxy関連文字列長定義を追加
+    ** Proxy関連構造体を追加
+    ** バリデーション関連構造体を接続情報構造体に名称変更
+    ** エラー定義にkEsfNetworkManagerResultExternalErrorを追加
+
+* APIの変更
+    ** EsfNetworkManagerStart
+      *** 引数にネットワーク接続開始種別を追加
+      *** エラーにkEsfNetworkManagerResultExternalErrorを追加
+    ** EsfNetworkManagerSaveParameter
+      *** 新規追加
+    ** EsfNetworkManagerLoadParameter
+      *** 新規追加
+
+* API使用時の呼び出し例
+    ** アプリからNetwork Managerを使用し、Network ManagerがParameter Storage Managerを使用するシーケンスに変更
+
+* 特記事項やコンポーネントごとの特有の説明事項
+    ** 制限事項にWi-Fi Access Point Mode未対応であることを追記
+    ** 制限事項にProxy記載を追加
+    ** パラメータ正常性チェック内容をこの章に移動
+    ** パラメータ正常性チェック内容にProxy関連記載を追加
+
+* HALおよび他モジュールに要求する機能の一覧
+    ** Parameter Storage Manager記載を追加
+
+|v0.1.5
+|HAL機能初期化・終了記載追加
+
+* コンポーネントの機能説明
+    ** 初期化機能
+      *** HAL初期化終了記載を追加
+
+* API
+    ** EsfNetworkManagerInit
+      *** HAL初期化処理記載を追加
+    ** EsfNetworkManagerDeinit
+      *** HAL終了処理記載を追加
+
+|v0.1.6
+|実装フィードバック
+
+* データ型定義
+    ** EsfNetworkManagerProxy
+      *** 文字列要素がuint8_t配列だったものをchar配列に修正
+* API定義
+    ** ESF_NETWORK_MANAGER_MASK_ENABLE_ALL
+      *** 新規追加
+    ** ESF_NETWORK_MANAGER_MASK_DISABLE_ALL
+      *** 新規追加
+
+|v0.1.7
+|Parameter Storage Managerの生データ型変更対応
+
+* 制限事項 +
+  現状は0文字のパラメータを許容しないことを記載
+
+|v0.1.8
+|WiFi STA再接続対応
+
+* 全体 +
+    ** 名称変更対応
+      *** HAL -> PL
+* コンポーネントの説明
+    ** データフロー図
+      *** WiFi STA切断検知時の再接続について反映
+    ** ネットワーク接続制御
+      *** WiFi STA切断検知時の再接続動作を追記
+* API定義
+    ** ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_WIFI
+      *** __os_info__パラメータを()付きで扱うように変更
+    ** ESF_NETWORK_MANAGER_INIT_INFO_NORMAL_ETH
+      *** __os_info__パラメータを()付きで扱うように変更
+    ** ESF_NETWORK_MANAGER_INIT_INFO_AP
+      *** __os_info__パラメータを()付きで扱うように変更
+
+|v0.1.9
+|LedManager仕様変更に伴う修正
+
+* LedManagerへ通知する状態更新
+  ** エラー関係は通知せず、Wifiの接続状態のみ通知するように変更
+
+|v0.1.10
+|Deinit処理修正
+
+* API
+    ** EsfNetworkManagerDeinit
+      *** PLの全Network接続を停止することを記載。
+
+|v0.1.11
+|Save時文字列のNULL文字指定許容
+
+* 特記事項やコンポーネントごとの特有の説明事項
+    ** パラメータ正常性チェック内容をSave時と接続時に分離し、Save時は0文字許容するように変更
+
+|v0.1.12
+|Service LED操作を追加
+
+* 状態遷移
+    ** ネットワーク状態通知
+        *** Service LED操作内容を追加
+
+* API使用時の呼び出し例
+    ** Service LED操作概要を記載
+
+|v0.1.13
+|全体見直し
+
+* ネットワーク状態通知
+    ** LED操作契機の欄を追加
+* API
+    ** 動作詳細を・区切りでの記載に統一
+    ** EsfNetworkManagerStart
+        *** Stop直後に実施するとAlreadyRunningとなる場合があることを追記
+    ** EsfNetworkManagerOpen
+        *** *handle説明にNULL指定不可を追記
+* API使用時の呼び出し例
+    ** 操作対象LEDがわかりにくかったので記載修正
+    ** ネットワーク切断から終了処理までのAPI呼び出しシーケンスの例
+        *** 先頭でHandle確保していたが、Startで使用したものを使う形に修正
+* 制限事項
+    ** パラメータの文字数制限補足の記載を削除
+* パラメータの正常性チェック
+    ** IPv6アドレスの形式誤記を修正
+* PLおよび他モジュールに要求する機能の一覧
+    ** LedManager
+        *** ServiceLED操作状態記載が漏れていたので追記
+
+|v0.1.13
+|Stackサイズ削減版のSave/Load APIを追加
+
+* データ型定義
+  ** 以下定義を追加
+    *** EsfNetworkManagerParameterType
+    *** EsfNetworkManagerVariantParameter
+    *** EsfNetworkManagerVariantParameterMask
+
+* API定義
+  ** 以下APIを追加
+    *** EsfNetworkManagerSaveVariantParameter
+    *** EsfNetworkManagerLoadVariantParameter
+
+|v0.1.14
+|Save/Load時の排他制御追加
+
+* 非機能要件
+    *** 最新内容に更新
+
+* API定義
+  ** 以下APIのブロッキング記載を変更
+    *** EsfNetworkManagerSaveParameter
+    *** EsfNetworkManagerLoadParameter
+
+|===
+

@@ -1,0 +1,1544 @@
+= UtilityLog Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.11
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document defines the UtilityLog module, which processes log output requests for abnormal device states and device status in AITRIOS. +
+It applies to XX version XX.
+
+<<<
+
+== Terminology
+This section lists the terms used in this document.
+
+=== Dlog
+A debug log (Debug Log) used by internal system developers of AITRIOS for anomaly analysis.
+
+=== Elog
+An event log (Event Log) used to notify AITRIOS users of events that occurred on the device.
+
+=== EVP
+A platform (Edge Virtualization Platform) responsible for authentication and communication between devices and the cloud (including on-premise servers).
+
+=== Module ID
+Module IDs are used for the purposes described below. For the module-specific IDs to assign, refer to the following file: +
+
+** Module ID Definition Header +
+
+*** src/utility/log/include/utility_log_module_id.h +
+
+** Purpose of Use +
+*** Added as identification information for the log source in the log output content. +
+*** Used by the log filter function to determine whether to output logs or not.
+
+=== Event ID
+Event IDs are used to identify events that occur on devices. Each module can define its own Event IDs.
+
+<<<
+
+== Component Description
+
+=== Component Overview
+UtilityLog is a block that processes log output requests and handles notifying specified output destinations for logs that meet certain conditions.
+
+- UtilityLog Processing Overview Diagram +
+  Each arrow indicates the flow of data and input/output.
+
+[{mermaid_block}]
+....
+graph LR;
+subgraph master
+subgraph master2
+UtilityLog["UtilityLog"]
+end
+style master2 color:#fff, fill:#fff, stroke:#fff 
+log["LogManager"]
+Module["Module"]
+repo[("Data Storage Area")]
+OS["OS Functions"]
+
+Module -->|"Log Output<br>(UART/Forced UART/Log Storage/Bulk Log Transmission)"| UtilityLog
+UtilityLog -->|"UART Output"| skeleton
+UtilityLog -->|"Forced UART Output"| OS
+UtilityLog -->|"Log Data (Dlog/Elog)"| log
+log -->|"Log Data Storage"| repo
+log -->|"Log Data Transmission"| cloud
+style master color:#fff, fill:#fff, stroke:#fff 
+style skeleton color:#fff, fill:#fff, stroke:#fff 
+end
+....
+
+- Log Level Setting Processing Overview Diagram +
+  Each arrow indicates the flow of data and input/output.
+
+[{mermaid_block}]
+....
+graph LR;
+subgraph master
+subgraph master2
+Module["Module"]
+UtilityLog["UtilityLog"]
+end
+style master2 color:#fff, fill:#fff, stroke:#fff 
+log["LogManager"]
+
+Module -->|"Log Level Setting Callback Function<br>(Register/Unregister)"| UtilityLog
+UtilityLog -.->|"Log Level Setting Callback Execution Function / Log Level"| Module
+
+UtilityLog -->|"Log Level Change Notification Callback Registration at Startup"| log
+log -.->|"Callback Notification on Log Level Change / Log Level"| UtilityLog
+
+style master color:#fff, fill:#fff, stroke:#fff 
+end
+....
+
+=== Detailed Component Description
+The relationships between UtilityLog and other modules are represented in the following component diagram. +
+Each arrow indicates the flow of data and input/output.
+
+.Component Diagram
+[{mermaid_block}]
+....
+flowchart TB
+subgraph master
+  direction LR
+  subgraph left
+    subgraph Module
+      Module_WriteCtrl[Log Recording]
+      Module_logLevel[Log Level<br>Managed as Needed]
+    end
+  end
+  style left color:#fff, fill:#fff, stroke:#fff 
+
+  subgraph center
+    direction TB
+    subgraph UtilityLog
+      LOG_Write[Log Writing]
+      LOG_level_update[Log Level Setting Callback Execution]
+    end
+    subgraph LogManager
+    end
+    style UtilityLog fill:#f9f
+  end
+  style center color:#fff, fill:#fff, stroke:#fff 
+
+  subgraph right
+    subgraph OS
+      OS_func[UART Operations]
+    end
+
+  end
+  style right color:#fff, fill:#fff, stroke:#fff 
+  style master color:#fff, fill:#fff, stroke:#fff 
+
+Module --> |Initialization/Finalization Requests<br>Dlog Output/Elog Output/Forced UART Output Requests/Bulk Dlog Transmission<br>Register/Unregister Log Level Setting Callback Functions| UtilityLog
+UtilityLog -.-> |Log Level| Module
+
+UtilityLog
+
+UtilityLog --> |Get Dlog Output Destination/Dlog Level/Dlog Filter Setting Requests<br>Dlog Storage Requests/Bulk Dlog Transmission Requests/Elog Output Requests| LogManager
+UtilityLog --> |UART Output| id4((UART))
+UtilityLog --> |Forced UART Output| OS_func
+LogManager --> |Dlog Output Destination/Dlog Level/Dlog Filter Settings| UtilityLog 
+
+end
+....
+<<<
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Comments
+
+|Module
+|・Starts and stops UtilityLog. +
+・Performs DLog/ELog/Forced UART output. +
+・Registers and unregisters log level setting callback functions.
+|
+
+|LogManager
+|・Registers log level change notification callbacks and, via callback notifications, receives Dlog output destinations, Dlog levels, and Dlog filter values. +
+・Stores log data.
+|
+
+|===
+
+<<<
+
+=== State Transitions
+The possible states of UtilityLog are shown in <<#_TableStates>>.
+
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|inactive
+|UtilityLog uninitialized state.
+
+|active
+|UtilityLog operational state.
+|===
+
+UtilityLog transitions between states as shown in <<#_StateTransitionDiagram>> when its APIs are called. +
+If an error occurs in an API, no state transition will take place. +
+
+[#_StateTransitionDiagram]
+.State Transition Diagram
+[{mermaid_block}]
+....
+stateDiagram-v2
+    [*] --> inactive
+    inactive --> active : UtilityLogInit
+    active --> inactive : UtilityLogDeinit
+    active --> active : Other APIs
+....
+
+API acceptance and the resulting state transitions for each state are shown in <<#_TableStateTransition>>. In the table, the state names indicate the resulting state after API execution, meaning the API call is permitted. × indicates that the API is not accepted, and such API calls return an error with no state transition. For details on errors, see <<#_UtilityLogStatus>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|State
+|inactive |active
+.10+|API Name
+
+|``**UtilityLogInit**``
+|active
+|×
+
+|``**UtilityLogDeinit**``
+|×
+|inactive
+
+|``**Other APIs**``
+|×
+|active
+|===
+
+<<<
+
+
+=== Component Function List
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section Number
+
+|Initialization Function
+|Initializes UtilityLog.
+|<<#_InitializationFunction>>
+
+|Finalization Function
+|Finalizes UtilityLog.
+|<<#_FinalizationFunction>>
+
+|UART Log Output
+|Outputs Dlog data to UART.
+|<<#_UARTLogOutput>>
+
+|Dlog Storage
+|Stores Dlog data.
+|<<#_DlogStorage>>
+
+|Forced UART Log Output
+|Forcibly outputs logs to UART.
+|<<#_ForcedUARTLogOutput>>
+
+|Bulk Log Output/Transmission Function
+|Outputs a large volume of logs to UART or transmits them to the cloud.
+|<<#_BulkLogOutputTransmissionFunction>>
+
+|Elog Output
+|Outputs Elog data.
+|<<#_ElogOutput>>
+
+|Module-Specific Log Level Management
+|Manages log levels for each module individually.
+|<<#_ModuleSpecificLogLevelManagement>>
+|===
+
+<<<
+
+=== Component Function Descriptions
+
+[#_InitializationFunction]
+==== Initialization Function
+* Overview
+    ** Initializes UtilityLog.
+
+* Prerequisites
+    ** None.
+
+* Details
+    ** Performs initialization and sets the UtilityLog state to active. +
+    ** Registers a callback function with LogManager to receive Dlog parameters during initialization. If registration fails, sets the log level to Info and the log output destination to UART, and operates UtilityLog with these settings.
+
+[#_FinalizationFunction]
+==== Finalization Function
+* Overview
+    ** Performs finalization processing for UtilityLog.
+
+* Prerequisites
+    ** UtilityLog must be initialized.
+
+* Details
+    ** Unregisters the callback function registered with LogManager and sets the UtilityLog state to inactive.
+
+[#_UARTLogOutput]
+==== UART Log Output
+* Overview
+    ** Outputs Dlog data to UART.
+
+* Prerequisites
+    ** UtilityLog must be initialized. +
+    ** The Dlog output destination information received from LogManager must be UART or Both.
+
+* Details
+    ** When a log output request is received, outputs Dlog data to UART in a format that includes timestamp, log level, and module ID. +
+    ** The log level hierarchy is Critical (highest) to Trace (lowest). If the Dlog level specified by the user for the output request is lower than the Dlog level set in LogManager, the output is suppressed. +
+    ** An invalid log level results in an error.
+
+[#_DlogStorage]
+==== Dlog Storage
+* Overview
+    ** Stores Dlog data.
+
+* Prerequisites
+    ** UtilityLog must be initialized. +
+    ** The Dlog output destination information received from LogManager must be Store or Both.
+
+* Details
+    ** On a Dlog output request, calls the storage API of LogManager to store the Dlog data. +
+    ** UtilityLog creates a string that includes timestamp, log level, and module ID, and passes it to LogManager. +
+    ** The log level hierarchy is Critical (highest) to Trace (lowest). If the Dlog level specified by the user for the output request is lower than the Dlog level set in LogManager, the output is suppressed. +
+    ** If the storage API returns an error, Dlog storage is not performed, and an error value is returned. +
+    ** An invalid log level also results in an error.
+
+[#_ForcedUARTLogOutput]
+==== Forced UART Log Output
+* Overview
+    ** Forcibly outputs logs to UART.
+
+* Prerequisites
+    ** UtilityLog must be initialized.
+
+* Details
+    ** Outputs logs to UART forcibly. +
+    ** Mainly used when Dlog output is suppressed.
+
+[#_BulkLogOutputTransmissionFunction]
+==== Bulk Log Output/Transmission Function
+* Overview
+    ** Outputs a large volume of logs to UART or transmits them to the cloud.
+
+* Prerequisites
+    ** UtilityLog must be initialized.
+
+* Details
+    ** If the Dlog output destination information received from LogManager is UART or Both, outputs the specified bulk logs to UART. +
+    ** If the Dlog output destination information received from LogManager is Store or Both, uses LogManager's API to transmit the specified bulk logs to the cloud without storing them. +
+    ** After UART output or cloud transmission, calls the user-specified callback function to notify completion. If the Dlog output destination is Both, the completion notification is executed when transmission to the cloud is complete.
+
+[#_ElogOutput]
+==== Elog Output
+* Overview
+    ** Sends Elog data.
+
+* Prerequisites
+    ** UtilityLog must be initialized. +
+    ** LogManager must be initialized.
+
+* Details
+    ** On an Elog output request, calls the Elog transmission API of LogManager and sends Elog data to LogManager. +
+    ** Elog data includes timestamp, log level, module ID, and event ID. +
+    ** If the transmission API returns an error, Elog transmission is not performed, and an error value is returned.
+
+[#_ModuleSpecificLogLevelManagement]
+==== Module-Specific Log Level Management
+* Overview
+    ** Provides functionality for managing log levels per module.
+
+* Prerequisites
+    ** UtilityLog must be initialized. +
+    ** LogManager must be initialized.
+
+* Details
+    ** Enables arbitrary modules to synchronize their log levels with those managed by LogManager using a user-specified callback function. +
+    ** This functionality is mainly used when arbitrary processing needs to be performed within a module depending on the log level.
+
+<<<
+
+=== Component Non-Functional Requirements List
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>. +
+As of 2024/12/06, the maximum processing time and heap memory usage are T.B.D.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Overview |Section Number
+
+|Maximum Stack Usage
+|256 bytes
+|<<#_MaximumStackUsage>>
+
+|Thread Usage
+|No threads are used.
+|<<#_ThreadUsage>>
+
+|Maximum Processing Time
+|XXXX ms
+|<<#_MaximumProcessingTime>>
+
+|Heap Memory Usage
+|XXXX bytes
+|<<#_HeapMemoryUsage>>
+|===
+
+<<<
+
+=== Component Non-Functional Requirements Descriptions
+As of 2024/12/06, the maximum processing time and heap memory usage are T.B.D.
+
+[#_MaximumStackUsage]
+==== Maximum Stack Usage
+The target value at the design stage is 256 bytes.
+
+[#_ThreadUsage]
+==== Thread Usage
+No threads are used.
+
+[#_MaximumProcessingTime]
+==== Maximum Processing Time
+The target value at the design stage is XX ms.
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+The target value at the design stage is XXX bytes.
+
+<<<
+
+== API Specifications
+
+=== Definitions List
+
+==== Config List
+The list of Config settings is shown in <<#_TableConfigType>>.
+
+[#_TableConfigType]
+.Config List
+[width="100%", options="header"]
+|===
+|Config Name |Default Value |Overview
+
+|CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE
+|4096
+|Specifies the maximum size of logs for UtilityLogWriteBulkDLog.
+
+|CONFIG_UTILITY_LOG_ENABLE_SYSLOG
+|n
+|Enables the use of the syslog function when outputting Dlog to UART. If not specified, the printf function is used.
+|===
+
+==== Data Type List
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview |Section Number
+
+|UtilityLogStatus
+|An enumeration defining API execution results.
+|<<#_UtilityLogStatus>>
+
+|UtilityLogDlogLevel
+|An enumeration defining the Dlog log levels.
+|<<#_UtilityLogDlogLevel>>
+
+|UtilityLogElogLevel
+|An enumeration defining the Elog log levels.
+|<<#_UtilityLogElogLevel>>
+
+|UtilityLogNotificationCallback
+|A callback function for notifications on the completion of bulk log output or transmission.
+|<<#_UtilityLogNotificationCallback>>
+
+|UtilityLogSetDlogLevelCallback
+|A callback function for setting log levels.
+|<<#_UtilityLogSetDlogLevelCallback>>
+|===
+
+
+==== API List
+The list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Overview |Section Number
+
+|UtilityLogInit
+|Initializes UtilityLog.
+|<<#_UtilityLogInit>>
+
+|UtilityLogDeinit
+|Performs finalization processing for UtilityLog.
+|<<#_UtilityLogDeinit>>
+
+|UtilityLogWriteDLog
+|Outputs Dlog data to UART and stores logs.
+|<<#_UtilityLogWriteDLog>>
+
+|UtilityLogWriteVDLog
+|va_list version of UtilityLogWriteDLog.
+|<<#_UtilityLogWriteVDLog>>
+
+|UtilityLogWriteELog
+|Outputs Elog data to LogManager.
+|<<#_UtilityLogWriteELog>>
+
+|UtilityLogForcedOutputToUart
+|Forcibly outputs data to UART.
+|<<#_UtilityLogForcedOutputToUart>>
+
+|UtilityLogWriteBulkDLog
+|Outputs a large volume of logs to UART or transmits them to the cloud.
+|<<#_UtilityLogWriteBulkDLog>>
+
+|UtilityLogWriteBulkDLogNonNotify
+|Notification-free version of UtilityLogWriteBulkDLog.
+|<<#_UtilityLogWriteBulkDLogNonNotify>>
+
+|UtilityLogRegisterSetDLogLevelCallback
+|Registers a log level setting callback function to synchronize the log level of an arbitrary module with the latest log level.
+|<<#_UtilityLogRegisterSetDLogLevelCallback>>
+
+|UtilityLogUnregisterSetDLogLevelCallback
+|Unregisters a log level setting callback function registered by UtilityLogRegisterSetDLogLevelCallback.
+|<<#_UtilityLogUnregisterSetDLogLevelCallback>>
+|===
+
+<<<
+
+=== Data Type Definitions
+
+[#_UtilityLogStatus]
+==== UtilityLogStatus
+An enumeration defining API execution results.
+
+* *Format* +
+[source, C]
+....
+typedef enum{
+  kUtilityLogStatusOk,
+  kUtilityLogStatusFailed,
+  kUtilityLogStatusParamError,
+  kUtilityLogStatusNum
+} UtilityLogStatus;
+....
+
+* *Values* +
+[#_UtilityLogStatus_ValueDescriptions]
+.UtilityLogStatus Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kUtilityLogStatusOk
+|No error.
+
+|kUtilityLogStatusFailed
+|Error.
+
+|kUtilityLogStatusParamError
+|Parameter error.
+
+|kUtilityLogStatusNum
+|Number of UtilityLogStatus elements (placed at the end).
+|===
+
+[#_UtilityLogDlogLevel]
+==== UtilityLogDlogLevel
+An enumeration defining the log levels for Dlog.
+
+* *Format* +
+[source, C]
+....
+typedef enum{
+  kUtilityLogDlogLevelCritical,
+  kUtilityLogDlogLevelError,
+  kUtilityLogDlogLevelWarn,
+  kUtilityLogDlogLevelInfo,
+  kUtilityLogDlogLevelDebug,
+  kUtilityLogDlogLevelTrace,
+  kUtilityLogDlogLevelNum
+} UtilityLogDlogLevel;
+....
+
+* *Values* +
+[#_UtilityLogDlogLevel_ValueDescriptions]
+.UtilityLogDlogLevel Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kUtilityLogDlogLevelCritical
+|Critical.
+
+|kUtilityLogDlogLevelError
+|Error.
+
+|kUtilityLogDlogLevelWarn
+|Warning.
+
+|kUtilityLogDlogLevelInfo
+|Info.
+
+|kUtilityLogDlogLevelDebug
+|Debug.
+
+|kUtilityLogDlogLevelTrace
+|Trace.
+
+|kUtilityLogDlogLevelNum
+|Number of UtilityLogDlogLevel elements (placed at the end).
+|===
+
+[#_UtilityLogElogLevel]
+==== UtilityLogElogLevel
+An enumeration defining the log levels for Elog.
+
+* *Format* +
+[source, C]
+....
+typedef enum{
+  kUtilityLogElogLevelCritical,
+  kUtilityLogElogLevelError,
+  kUtilityLogElogLevelWarn,
+  kUtilityLogElogLevelInfo,
+  kUtilityLogElogLevelDebug,
+  kUtilityLogElogLevelTrace,
+  kUtilityLogElogLevelNum
+} UtilityLogElogLevel;
+....
+
+* *Values* +
+[#_UtilityLogElogLevel_ValueDescriptions]
+.UtilityLogElogLevel Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kUtilityLogElogLevelCritical
+|Critical.
+
+|kUtilityLogElogLevelError
+|Error.
+
+|kUtilityLogElogLevelWarn
+|Warning.
+
+|kUtilityLogElogLevelInfo
+|Info.
+
+|kUtilityLogElogLevelDebug
+|Debug.
+
+|kUtilityLogElogLevelTrace
+|Trace.
+
+|kUtilityLogElogLevelNum
+|Number of UtilityLogElogLevel elements (placed at the end).
+|===
+
+[#_UtilityLogNotificationCallback]
+==== UtilityLogNotificationCallback
+A callback function for notifications upon completion of bulk log output or transmission.
+
+* *Format* +
+[source, C]
+....
+typedef void (*UtilityLogNotificationCallback)(size_t size, void *user_data);
+....
+
+* *Parameters* +
+**``[IN] size_t size``**::  
+The size of the transmitted log data. If the transmission failed, 0 is stored.
+
+**``[IN] void *user_data``**::  
+User-defined data passed at the time of callback registration.
+
+[#_UtilityLogSetDlogLevelCallback]
+==== UtilityLogSetDlogLevelCallback
+A callback function for setting log levels.
+
+* *Format* +
+[source, C]
+....
+typedef void (*UtilityLogSetDlogLevelCallback)(UtilityLogDlogLevel level);
+....
+
+* *Parameters* +
+**``[IN] UtilityLogDlogLevel level``**::  
+The log level. The latest log level is passed.
+
+=== API Definitions
+
+[#_UtilityLogInit]
+==== UtilityLogInit
+* *Function* +
+Initializes UtilityLog.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogInit(void) **``
+
+* *Parameter Description* +
++
+None.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusFailed
+|Abnormal termination. +
+Occurs if UtilityLog could not be started.
+|===
+
+* *Description* +
+Transitions UtilityLog to the active state and begins accepting various requests. +
+Registers a callback function with LogManager to receive Dlog parameters. If registration fails, sets the log level to Info and the log output destination to UART, and runs UtilityLog with these settings. +
+If an error occurs, the state transition does not take place.
+
+[#_UtilityLogDeinit]
+==== UtilityLogDeinit
+* *Function* +
+Performs finalization processing for UtilityLog.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogDeinit(void) **``
+
+* *Parameter Description* +
++
+None.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusFailed
+|Abnormal termination. +
+Occurs if UtilityLog could not be finalized.
+|===
+
+* *Description* +
+Performs the finalization process of UtilityLog, transitions its state to inactive, and stops accepting various requests. +
+If an error occurs, the state transition does not take place. +
+
+[#_UtilityLogWriteDLog]
+==== UtilityLogWriteDLog
+* *Function* +
+Outputs a formatted string to UART and stores it in logs.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogWriteDLog(uint32_t module_id, UtilityLogDlogLevel level, const char *format, ...) **``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID. +
+
+**``[IN] UtilityLogDlogLevel level``**::  
+Set the Dlog output log level from <<#_UtilityLogDlogLevel>>. +
+
+**``[IN] const char *format``**::  
+Specifies the format of the Dlog data. +
+The specification method follows printf format specifiers. +
+If NULL or an empty string is specified, no data is output, but this does not result in an error.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid or if level is ``kUtilityLogDlogLevelNum``.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Outputs the formatted string to UART and/or stores it in logs, based on the log level and output destination. +
+Log levels are ordered from Critical (highest) to Trace (lowest). If the specified level is lower than the current log level, the data will be discarded. +
+
+UtilityLog output destinations: +
+- UART or Both: Outputs to UART. +
+- Store or Both: Notifies LogManager of the format string for log storage. +
+
+The maximum display length for the format string is 512 bytes (excluding the null terminator). Any excess is discarded and not displayed. +
+
+This API supports reentrant calls. +
+
+The display format is: +
+``<Year>-<Month>-<Day>T<Hour>:<Minute>:<Second>.<Millisecond><TimezoneOffset>:<LogLevel>:<module_id>:<format>``. Details are provided below. +
+
+[#_DlogLogOutputFormatDescriptions]
+.Dlog Log Output Format Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Value |Example Output
+
+|Year (4 digits)
+|1970
+
+|Month (2 digits)
+|01
+
+|Day (2 digits)
+|02
+
+|Hour (2 digits)
+|17
+
+|Minute (2 digits)
+|40
+
+|Second (2 digits)
+|48
+
+|Millisecond (3 digits)
+|976
+
+|Timezone Offset (1 character)
+|Displays "Z" because the timezone is fixed to UTC.
+
+|Log Level (1 character)
+|C
+
+|module_id (hexadecimal)
+|0x00000002
+
+|format
+|Any format
+|===
+
+An example of the actual output: +
+``1970-01-02T17:40:48.976Z:C:0x00000002:Any format``
+
+[#_UtilityLogWriteVDLog]
+==== UtilityLogWriteVDLog
+* *Function* +
+This is the va_list version of UtilityLogWriteDLog.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogWriteVDLog(uint32_t module_id, UtilityLogDlogLevel level, const char *format, va_list list) **``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID. +
+
+**``[IN] UtilityLogDlogLevel level``**::  
+Set the Dlog output log level from <<#_UtilityLogDlogLevel>>. +
+
+**``[IN] const char *format``**::  
+Specifies the format of the Dlog data. +
+The specification method follows printf format specifiers. +
+If NULL or an empty string is specified, no data is output, but this does not result in an error. +
+
+**``[IN] va_list list``**::  
+The va_list argument.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid or if level is ``kUtilityLogDlogLevelNum``.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Provides the same functionality as UtilityLogWriteDLog. See <<#_UtilityLogWriteDLog>> for details.
+
+[#_UtilityLogWriteELog]
+==== UtilityLogWriteELog
+* *Function* +
+Sends Elog data to LogManager.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogWriteELog(uint32_t module_id, UtilityLogElogLevel level, uint16_t event_id) **``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID. +
+
+**``[IN] UtilityLogElogLevel level``**::  
+Set the Elog data log level from <<#_UtilityLogElogLevel>>. +
+
+**``[IN] uint16_t event_id``**::  
+Specify a unique error code.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid or if level is ``kUtilityLogElogLevelNum``.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Sends Elog data to LogManager. +
+If an error occurs, the Elog data is not sent. +
+This API supports reentrant calls.
+
+
+[#_UtilityLogForcedOutputToUart]
+==== UtilityLogForcedOutputToUart
+* *Function* +
+Forcibly outputs data to UART.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogForcedOutputToUart(const char *format, ...) **``
+
+* *Parameter Description* +
++
+**``[IN] const char *format``**::  
+Specifies the format of the data to be forcibly output. +
+The specification method follows printf format specifiers. +
+If NULL or an empty string is specified, no data is output, but this does not result in an error.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Outputs data directly to UART using OS functions, without obtaining information from LogManager. Dlog data is not saved. +
+If an error occurs, no data is output to UART. +
+The maximum display length for the format string is 512 bytes (excluding the null terminator). Any excess is discarded and not displayed. +
+Unlike ``UtilityLogWriteDLog()``, the entered format is output as-is. +
+This API supports reentrant calls.
+
+[#_UtilityLogWriteBulkDLog]
+==== UtilityLogWriteBulkDLog
+* *Function* +
+Outputs a large volume of logs to UART or transmits them to the cloud.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogWriteBulkDLog(uint32_t module_id, UtilityLogDlogLevel level, size_t size, const char *bulk_log, const UtilityLogNotificationCallback callback, void *user_data) **``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID. +
+
+**``[IN] UtilityLogDlogLevel level``**::  
+Set the Dlog output log level from <<#_UtilityLogDlogLevel>>. +
+
+**``[IN] size_t size``**::  
+The size of the log. The maximum value is ``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``. +
+If the size is 0, no data is output, but this does not result in an error. +
+
+**``[IN] const char *bulk_log``**::  
+Pointer to the log. +
+If an empty string is specified, no data is output, but this does not result in an error. +
+
+**``[IN] const UtilityLogNotificationCallback callback``**::  
+Callback function to notify completion of log transmission. +
+
+**``[IN] void* user_data``**::  
+User data. Set NULL if not used.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid, +
+level is ``kUtilityLogDlogLevelNum``, +
+size exceeds ``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``, +
+bulk_log is NULL, or +
+callback is NULL.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Depending on the Dlog output destination information received from LogManager, this API outputs a large volume of logs to UART or transmits them to the cloud. +
+This API does not retain the ``bulk_log`` during its processing. +
+See the following table for details: +
+
+[#_UtilityLogWriteBulkDLog_DescriptionTable]
+.UtilityLogWriteBulkDLog Description Table
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Dlog Output Destination Info |Description
+
+|UART
+|Outputs to UART. After output, executes the ``callback`` passing the ``size`` and ``user_data`` received as arguments to notify completion. The maximum display length is 512 bytes (excluding the null terminator). Any excess is discarded and not displayed.
+
+|Store
+|Uses LogManager's API to immediately start transmission to the cloud without storing the logs in LogManager. When transmission to the cloud completes, executes the ``callback`` passing the size of the transmitted logs and the ``user_data`` received as arguments. If transmission to the cloud fails, passes 0 for the size.
+
+|Both
+|Performs both UART output and cloud transmission. The ``callback`` is executed only when cloud transmission completes.
+|===
+
+Log levels are ordered from Critical (highest) to Trace (lowest). If the specified level is lower than the current log level, the data will be discarded. +
+Unlike ``UtilityLogWriteDLog()``, logs are transmitted/output exactly as provided.
+
+
+[#_UtilityLogWriteBulkDLogNonNotify]
+==== UtilityLogWriteBulkDLogNonNotify
+* *Function* +
+This is the non-notification version of UtilityLogWriteBulkDLog.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogWriteBulkDLogNonNotify(uint32_t module_id, UtilityLogDlogLevel level, size_t size, const char *bulk_log) **``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID. +
+
+**``[IN] UtilityLogDlogLevel level``**::  
+Set the Dlog output log level from <<#_UtilityLogDlogLevel>>. +
+
+**``[IN] size_t size``**::  
+The size of the log. The maximum value is ``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``. +
+If the size is 0, no data is output, but this does not result in an error. +
+
+**``[IN] const char *bulk_log``**::  
+Pointer to the log. +
+If an empty string is specified, no data is output, but this does not result in an error.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid, +
+level is ``kUtilityLogDlogLevelNum``, +
+size exceeds ``CONFIG_UTILITY_LOG_BULK_DLOG_MAX_SIZE``, or +
+bulk_log is NULL.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Depending on the Dlog output destination information received from LogManager, this API outputs a large volume of logs to UART or transmits them to the cloud. +
+This API retains ``bulk_log`` during its processing. See the following table for details: +
+
+[#_UtilityLogWriteBulkDLogNonNotify_DescriptionTable]
+.UtilityLogWriteBulkDLogNonNotify Description Table
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Dlog Output Destination Info |Description
+
+|UART
+|Outputs to UART. The maximum display length is 512 bytes (excluding the null terminator). Any excess is discarded and not displayed.
+
+|Store
+|Uses LogManager's API to immediately start transmission to the cloud without storing the logs in LogManager. +
+Since ``bulk_dlog`` is copied internally during processing, if dynamically allocated memory is provided, it can be safely freed immediately after this API completes. +
+The period during which ``bulk_dlog`` is held internally lasts from the successful completion of this API until cloud transmission is finished. +
+However, if an error occurs during execution, ``bulk_dlog`` is not retained. +
+
+|Both
+|Performs both UART output and cloud transmission.
+|===
+
+Log levels are ordered from Critical (highest) to Trace (lowest). If the specified level is lower than the current log level, the data will be discarded. +
+Unlike ``UtilityLogWriteDLog()``, logs are transmitted/output exactly as provided. +
+
+[#_UtilityLogRegisterSetDLogLevelCallback]
+==== UtilityLogRegisterSetDLogLevelCallback
+* *Function* +
+Registers a log level setting callback function to synchronize the log level of an arbitrary module with the latest log level.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogRegisterSetDLogLevelCallback(uint32_t module_id, UtilityLogSetDlogLevelCallback callback)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID. +
+
+**``[IN] UtilityLogSetDlogLevelCallback callback``**::  
+Callback function for setting the log level.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid, +
+callback is NULL, or +
+a callback has already been registered.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+When LogManager detects a change in the log level, UtilityLog retrieves the latest log level from LogManager and executes the specified log level setting callback function, passing the updated log level as an argument. +
+If a log level setting callback function has already been registered, this API returns an error. To re-register, first execute ``UtilityLogUnregisterSetDLogLevelCallback`` before setting a new callback. +
+If registration completes successfully, the specified log level setting callback function is executed within this API to immediately update the log level.
+
+[#_UtilityLogUnregisterSetDLogLevelCallback]
+==== UtilityLogUnregisterSetDLogLevelCallback
+* *Function* +
+Unregisters the log level setting callback function that was registered using UtilityLogRegisterSetDLogLevelCallback.
+
+* *Format* +
++
+``** UtilityLogStatus UtilityLogUnregisterSetDLogLevelCallback(uint32_t module_id)**``
+
+* *Parameter Description* +
++
+**``[IN] uint32_t module_id``**::  
+The module ID.
+
+* *Return Value* +
++
+Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+
+[#_UtilityLogStatus_ReturnDescriptions]
+.UtilityLogStatus Return Value Descriptions
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kUtilityLogStatusOk
+|Successful completion.
+
+|kUtilityLogStatusParamError
+|Occurs if module_id is invalid, or +
+no log level setting callback function is registered.
+
+|kUtilityLogStatusFailed
+|An internal error occurred.
+|===
+
+* *Description* +
+Unregisters the log level setting callback function that was registered using UtilityLogRegisterSetDLogLevelCallback. +
+If no log level setting callback function is registered, this API returns an error. +
+Even if UtilityLogDeinit is called before this function, any registered log level setting callback functions will still be unregistered.
+
+<<<
+
+== API Usage Examples
+
+The following provides examples of how to call each API.
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant Module as Module
+    participant UtilityLog as UtilityLog
+    participant LogManager as LogManager
+
+    note over Module,LogManager : Initialization of UtilityLog
+    Module ->> +UtilityLog : UtilityInit()
+    UtilityLog ->> LogManager : Register log level change notification callback
+    LogManager -->> UtilityLog : Result
+    note over UtilityLog : If the callback cannot be registered, run with default parameters
+    UtilityLog ->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+
+    note over Module,LogManager : When a log level change occurs
+      LogManager ->> UtilityLog : Execute log level change notification callback
+      UtilityLog ->> UtilityLog : Update cached parameters corresponding to ModuleId
+      opt When a log level setting callback is registered
+        UtilityLog ->> Module : Execute log level setting callback
+     end
+
+    note over Module,LogManager : Dlog output request
+
+    Module ->> UtilityLog : UtilityLogWriteDLog()<br>※ Also applies when executing macros such as DLOG_CRITICAL()
+    UtilityLog ->> UtilityLog : Retrieve parameters corresponding to ModuleId from cache
+
+    activate UtilityLog
+    opt If the log level is lower than the specified level
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt If the module does not match the log filter
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt If the DLog output destination is UART/Both
+      note over UtilityLog : Output using printf or syslog
+    end
+    opt If the DLog output destination is Store/Both
+      UtilityLog ->> +LogManager : EsfLogManagerStoreDlog()
+      note over LogManager : Log storage process<br>※ For details about behavior when log storage reaches the maximum size, see LogManager's sequence diagram
+      LogManager -->> UtilityLog : EsfLogManagerStats : kEsfLogManagerStatusOk
+    end
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate  UtilityLog
+
+    note over Module,LogManager : Bulk Dlog output request [with notification]
+
+    Module ->> UtilityLog : UtilityLogWriteBulkDLog()
+    UtilityLog ->> UtilityLog : Retrieve parameters corresponding to ModuleId from cache
+
+    activate UtilityLog
+    opt If the log level is lower than the specified level
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt If the module does not match the log filter
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt If the DLog output destination is UART/Both
+      note over UtilityLog : Output using printf or syslog
+      opt If destination is not Both
+        UtilityLog ->> +Module : Execute bulk log output/send completion notification callback
+        Module -->> -UtilityLog : -
+      end
+    end
+    opt If the DLog output destination is Store/Both
+      UtilityLog ->> +LogManager : Call LogManager API
+      note over LogManager : Request the send thread to send bulk logs without storing them
+      LogManager -->> -UtilityLog : EsfLogManagerStats : kEsfLogManagerStatusOk
+    end
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate  UtilityLog
+    opt When cloud transmission completes
+      LogManager ->> Module : Execute bulk log output/send completion notification callback from send thread
+    end
+
+    note over Module,LogManager : Bulk Dlog output request [without notification]
+
+    Module ->> UtilityLog : UtilityLogWriteBulkDLogNonNotify()
+    UtilityLog ->> UtilityLog : Retrieve parameters corresponding to ModuleId from cache
+
+    activate UtilityLog
+    opt If the log level is lower than the specified level
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt If the module does not match the log filter
+      UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    end
+    opt If the DLog output destination is UART/Both
+      note over UtilityLog : Output using printf or syslog
+    end
+    opt If the DLog output destination is Store/Both
+      UtilityLog ->> +LogManager : Call LogManager API
+      note over LogManager : Request the send thread to send bulk logs without storing them
+      LogManager -->> -UtilityLog : EsfLogManagerStats : kEsfLogManagerStatusOk
+    end
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate  UtilityLog
+
+    note over Module, LogManager : Elog output request
+    Module ->> UtilityLog : UtilityLogWriteELog()<br>※ Also applies when executing macros such as ELOG_CRITICAL()
+    activate UtilityLog
+    UtilityLog ->> +LogManager : EsfLogManagerSendElog()
+    note over LogManager : Elog send process<br>※ For details, refer to LogManager's functional specification
+    LogManager -->> UtilityLog : EsfLogManagerStatus:kEsfLogManagerStatusOK
+    UtilityLog -->> Module : UtilityLogStatus:kUtilityLogStatusOK
+    Deactivate UtilityLog
+
+    note over Module,LogManager : Log level setting request
+    Module ->> +UtilityLog : UtilityLogRegisterSetDLogLevelCallback()
+    UtilityLog ->> UtilityLog : Register log level setting callback
+    UtilityLog ->> +Module : Execute log level setting callback with Dlog level
+    Module -->> -UtilityLog : -
+
+    UtilityLog -->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+
+
+    note over Module,LogManager : Log level setting unregister request
+    Module ->> +UtilityLog : UtilityLogUnregisterSetDLogLevelCallback()
+    UtilityLog ->> UtilityLog : Unregister log level setting callback
+    UtilityLog -->> -Module : UtilityLogStatus:kUtilityLogStatusOK
+
+    note over Module,LogManager : Termination of UtilityLog
+    Module ->> +UtilityLog : UtilityLogDeinit()
+    UtilityLog ->> LogManager : Unregister log level change notification callback
+    LogManager -->> UtilityLog : Result
+    UtilityLog --> -Module : UtilityLogStatus:kUtilityLogStatusOK
+....
+
+<<<
+
+== Special Notes and Component-Specific Descriptions
+
+=== Restrictions
+* Within the log level setting callback function, you may use only the following APIs. Do not call any other APIs: +
+・UtilityLogWriteDLog +
+・UtilityLogWriteVDLog +
+・UtilityLogWriteELog +
+・UtilityLogForcedOutputToUart +
+・UtilityLogWriteBulkDLog +
+・UtilityLogWriteBulkDLogNonNotify
+
+=== List of CONFIGs Used in This Module
+See <<#_TableConfigType>> for details.
+
+=== Alias Function List
+** The following alias functions are used for Dlog storage.
+
+.List of Alias Functions Used in This Module
+[width="100%",cols="40%,40%,20%",options="header"]
+|===
+|Alias Function Syntax |Original Function Syntax |Description
+
+|WRITE_DLOG_CRITICAL(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelCritical, format, ##__VA_ARGS__)
+|Outputs Dlog critical error
+
+|WRITE_DLOG_ERROR(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelError, format, ##__VA_ARGS__)
+|Outputs Dlog error
+
+|WRITE_DLOG_WARN(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelWarn, format, ##__VA_ARGS__)
+|Outputs Dlog warning
+
+|WRITE_DLOG_INFO(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelInfo, format, ##__VA_ARGS__)
+|Outputs Dlog informational message
+
+|WRITE_DLOG_DEBUG(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelDebug, format, ##__VA_ARGS__)
+|Outputs Dlog debug message
+
+|WRITE_DLOG_TRACE(module_id, format, ...)
+|UtilityLogWriteDLog(module_id, kUtilityLogDlogLevelTrace, format, ##__VA_ARGS__)
+|Outputs Dlog trace message
+
+|===
+
+** The following alias functions are used for Elog output.
+
+|===
+|Alias Function Syntax |Original Function Syntax |Description
+
+|WRITE_ELOG_CRITICAL(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelCritical, event_id)
+|Outputs Elog critical error
+
+|WRITE_ELOG_ERROR(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelError, event_id)
+|Outputs Elog error
+
+|WRITE_ELOG_WARN(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelWarn, event_id)
+|Outputs Elog warning
+
+|WRITE_ELOG_INFO(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelInfo, event_id)
+|Outputs Elog informational message
+
+|WRITE_ELOG_DEBUG(module_id, event_id)
+|UtilityLogWriteELog(module_id, kUtilityLogElogLevelDebug, event_id)
+|Outputs Elog debug message
+
+|WRITE_ELOG_TRACE(module_id, event_id)
+|UtilityLogWriteDLog(module_id, kUtilityLogElogLevelTrace, event_id)
+|Outputs Elog trace message
+
+|===
+
+<<<
+
+== List of OSS Used
+
+None
+
+<<<
+
+== References
+
+None
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes
+|v0.0.1
+|Initial release
+|v0.0.2
+|Updated content to reflect changes in the UtilityLog/LogManager architecture
+|v0.0.3
+|Added UtilityLogWriteBulkDLog
+|v0.0.4
+|Added information on Elog output
+|v0.0.5
+|Added UtilityLogRegisterSetDLogLevelCallback +
+Added UtilityLogUnregisterSetDLogLevelCallback
+|v0.0.6
+|Added UtilityLogWriteVDLog
+|v0.0.7
+|Revised descriptions for UtilityLogWriteDLog and UtilityLogWriteBulkDLog
+|v0.0.8
+|Added CONFIG_UTILITY_LOG_ENABLE_SYSLOG
+|v0.0.9
+|Changed DLOG timestamp display format to match DTDL-specified format +
+Removed UtilityLogOpen and UtilityLogClose +
+Renamed APIs: +
+・UtilityLogWriteDlog -> UtilityLogWriteDLog +
+・UtilityLogWriteVDlog -> UtilityLogWriteVDLog +
+・UtilityLogWriteElog -> UtilityLogWriteELog +
+・UtilityLogUartForcedOutput -> UtilityLogForcedOutputToUart +
+・UtilityLogWriteBulkDlog -> UtilityLogWriteBulkDLog +
+・UtilityLogRegisterSetDlogLevelCallback -> UtilityLogRegisterSetDLogLevelCallback +
+・UtilityLogUnregisterSetDlogLevelCallback -> UtilityLogUnregisterSetDLogLevelCallback +
+Renamed alias functions: +
+・DLOG_CRITICAL -> WRITE_DLOG_CRITICAL +
+・DLOG_ERROR -> WRITE_DLOG_ERROR +
+・DLOG_WARN -> WRITE_DLOG_WARN +
+・DLOG_INFO -> WRITE_DLOG_INFO +
+・DLOG_DEBUG -> WRITE_DLOG_DEBUG +
+・DLOG_TRACE -> WRITE_DLOG_TRACE +
+・ELOG_CRITICAL -> WRITE_ELOG_CRITICAL +
+・ELOG_ERROR -> WRITE_ELOG_ERROR +
+・ELOG_WARN -> WRITE_ELOG_WARN +
+・ELOG_INFO -> WRITE_ELOG_INFO +
+・ELOG_DEBUG -> WRITE_ELOG_DEBUG +
+・ELOG_TRACE -> WRITE_ELOG_TRACE +
+Added “Restrictions” section in *Special Notes* +
+Updated sequence diagrams in *API Usage Examples*
+|v0.0.10
+|Added UtilityLogWriteBulkDLogNonNotify
+|v0.0.11
+|Revised descriptions for UtilityLogWriteDLog, UtilityLogForcedOutputToUart, UtilityLogWriteBulkDLog, and UtilityLogWriteBulkDLogNonNotify +
+Updated note: Maximum size “512 bytes” -> “Display is limited to a maximum of 512 bytes (excluding null terminator)” +
+Added note for UtilityLogWriteBulkDLog and UtilityLogWriteBulkDLogNonNotify that if size is zero, no data is output but no error is returned
+|===

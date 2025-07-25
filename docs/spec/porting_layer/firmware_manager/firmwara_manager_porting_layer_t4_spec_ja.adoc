@@ -1,0 +1,1062 @@
+= Firmware Manager Porting Layer (T4) 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+
+
+== 目的と適用範囲
+
+本書では T4 用の Firmware Manager Porting Layer の仕様を説明します。
+
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧 (要更新)
+[options="header"]
+|===
+|用語 |説明 
+
+|AP
+|Application Processor
+
+|AP バイナリ
+|FW などのバイナリファイル。T4 では RAUC bundle 形式のファイル。
+
+|上位レイヤ
+|Firmware Manager Porting Layer を呼び出すレイヤ。(Firmware Manager の他の構成要素)
+|===
+
+<<<
+
+== ブロックの説明
+Firmware Manager Porting Layer は Firmware Manager の構成要素の1つです。
+Firmware Manager は AP (Application Processor) に保存されているバイナリファイル (FWなど) の更新を担いますが、Porting Layer は、その処理のうち、AP に依存する処理を抽象化し、上位レイヤ (本ブロック以外の Firmware Manager の構成要素) が AP の違いを意識しなくて済むようにすることです。
+Porting Layer は AP ごとに異なるものが使用されます。本書で説明されているのは、T4 用の Porting Layer の仕様です。
+本ブロックは Firmware Manager 内部のみから呼び出されることを想定しています。
+
+WARNING: カメラ周辺機器（センサーなど）のFW・データ更新などは本ブロックでは想定されていません。
+
+=== ブロックの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+[{mermaid_block}]
+----
+flowchart TB
+  subgraph "Firmware Manager"
+    direction TB
+    node_1["Upper Layer"]
+    node_2["Firmware Manager Porting Layer"]
+  end
+  node_3[RAUC]
+  node_4[OS]
+
+  node_1 --> node_2
+  node_2 --> node_3
+  node_2 --> node_4
+----
+<<<
+
+=== ブロックの詳細説明
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |リンク
+
+|OS
+|一時ファイルの保存など
+|
+
+|RAUC
+|FW, bootloader の更新
+|
+|===
+
+
+<<<
+
+=== 状態遷移
+
+Firmware Manager Porting Layer は、以下の<<#_TableStates>>に示される状態を取り得ます。
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|NotInitialized
+|Firmware Manager Porting Layer が初期化されていない状態
+
+|Closed
+|Firmware Manager Porting Layer の初期化が完了し、AP バイナリのアップデートの開始が可能な状態
+
+|Open
+|AP バイナリのアップデートが開始され、AP バイナリの書き込みが可能な状態
+
+|Aborted
+|AP バイナリのアップデートが中断された状態
+|===
+
+Firmware Manager Porting Layer では以下に示す状態遷移を行います。 +
+なお、各 API でエラーが発生した場合には状態遷移は起こりません。 +
+
+状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+  [*] --> NotInitialized
+  NotInitialized --> Closed : FwMgrPlInitialized
+  Closed --> Open : FwMgrPlOpen
+  Open --> Aborted : FwMgrPlAbort
+  Aborted --> Closed : FwMgrPlClose
+  Open --> Closed : FwMgrPlClose
+  Aborted --> NotInitialized : FwMgrPlFinalize
+  Closed --> NotInitialized : FwMgrPlFinalize
+  Open --> NotInitialized : FwMgrPlFinalize
+  Open --> Open : FwMgrPlWrite
+----
+
+各状態での API 受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。
+表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。
+ただし、処理が正常に完了しなかった場合 (返り値が kPlErrCodeOk 以外の場合)、状態は遷移しません。
+×は API 受け付け不可を示します。受け付け不可の状態で API が呼び出された場合エラーを返します。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="5%,10%,10%,10%,10%,10%"]
+|===
+2.2+| 4+|状態 
+|NotInitialized|Closed|Open|Aborted
+.40+|API 名
+
+|``**FwMgrPlInitialize**``
+|Closed
+|×
+|×
+|×
+
+|``**FwMgrPlFinalize**``   
+|×
+|NotInitialized
+|NotInitialized
+|NotInitialized
+
+|``**FwMgrPlOpen**``   
+|×
+|Open
+|×
+|×
+
+|``**FwMgrPlClose**``   
+|×
+|×
+|Closed
+|Closed
+
+|``**FwMgrPlWrite**``   
+|×
+|×
+|Open
+|×
+
+|``**FwMgrPlAbort**``   
+|×
+|×
+|Aborted
+|×
+
+|===
+
+<<<
+
+=== ブロックの機能一覧
+<<#_TableOperation>>に機能の一覧を示します。
+
+[#_TableOperation]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|AP バイナリのアップデート
+|指定された AP バイナリを AP に書き込み、次回以降の起動時にその新しい AP バイナリが使用されるようにします。
+現状では FW と bootloader のアップデートがサポートされています。
+|<<#_Operation1>>
+|===
+
+<<<
+
+=== ブロックの機能説明
+[#_Operation1]
+==== AP バイナリのアップデート
+機能概要::
+指定された AP バイナリを AP に書き込み、次回以降の起動時にその新しい AP バイナリが使用されるようにします。
+前提条件::
+Firmware Manager Porting Layer が Closed 状態であること。
+機能詳細::
+AP バイナリの種類と AP バイナリを受け取って、フラッシュメモリに書き込みます。
+その後、その AP バイナリが次回以降の起動時に使用されるように設定を更新します。
+フラッシュメモリのどの位置に書き込まれるかは、AP バイナリの種類によって異なります。
+他コンテキストなどで、AP バイナリのアップデートを行っている場合はアップデートを実施できません。
+詳細挙動::
+AP バイナリの種類を指定して FwMgrPlOpen を呼び出すことによってハンドルを取得し、そのハンドルを指定して FwMgrPlWrite を (場合によっては複数回) 呼び出すことによって、一時ファイルに AP バイナリを書き込みます。
+その後、FwMgrPlClose を呼び出すことでい一時ファイルを RAUC に渡して Firmware, bootloader の更新を行います。RAUC によって新しい AP バイナリが次回以降の起動時に使用されるように設定の更新がされます。 + 
+
+詳細は<<#_FwMgrPlOpen, FwMgrPlOpen>>, <<#_FwMgrPlClose, FwMgrPlClose>>, <<#_FwMgrPlWrite, FwMgrPlWrite>>を参照してください。
+
+
+<<<
+
+=== ブロックの非機能要件一覧
+
+<<#_TableNonFunctionalRequirements>>に非機能要件の一覧を示します。
+
+[#_TableNonFunctionalRequirements]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|スタック最大使用量
+|ブロック内で消費されるスタック最大使用量
+|<<#_MaxStackUsage>>
+
+|ヒープ最大使用量
+|ブロック内で使用されるヒープ最大使用量 (LHeap を使用して確保される分を除く)
+|<<#_MaxHeapUsage>>
+
+|LHeap 最大使用量
+|ブロック内で LHeap を使用して確保されるメモリの最大量
+|<<#_MaxLHeapUsage>>
+
+|static データ最大使用量
+|ブロック内で使用される static データ最大使用量
+|<<#_MaxStaticDataUsage>>
+
+|パフォーマンス
+|各 API の処理にかかる時間
+|<<#_Performance>>
+|===
+
+=== ブロックの非機能要件説明
+
+[#_MaxStackUsage]
+==== Stack最大使用量
+1 KB 以下 (予定)
+
+[#_MaxHeapUsage]
+==== ヒープ最大使用量
+5 KB 以下 (予定)
+※ FwMgrPlWrite 時は、AP バイナリは、上位レイヤが確保したメモリ上に配置され、Firmware Manager Porting Layer API はそこへのポインタを受け取るため、Firmware Manager Porting Layer の処理では AP バイナリ用のメモリ確保は行われない。
+
+[#_MaxLHeapUsage]
+==== LHeap 最大使用量
+なし
+
+[#_MaxStaticDataUsage]
+==== staticデータ最大使用量
+1 KB 以下 (予定)
+
+[#_Performance]
+==== パフォーマンス
+
+.Firmware Manager Porting Layer の各処理のパフォーマンス
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|API |処理時間 |備考
+|FwMgrPlOpen
+|[要計測]
+|
+
+|FwMgrPlClose
+|[要計測]
+|
+
+|FwMgrPlWrite
+|[要計測]
+|
+
+|FwMgrPlAbort
+|[要計測]
+|
+
+|FwMgrPlGetInfo
+|0.1ms 以下
+|
+
+|===
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|PlErrCode
+|API の実行結果を定義する列挙型です。
+|[準備中]
+
+|FwMgrPlHandle
+|AP バイナリアップデート用のハンドルを表す構造体です。
+|<<#_FwMgrPlHandle>>
+
+|FwMgrPlType
+|AP バイナリの種類を表す列挙型です。
+|<<#_FwMgrPlType>>
+|===
+
+==== API一覧
+<<#_TableAPI>> に API の一覧を示します。
+
+[#_TableAPI]
+.ブロック外部から利用可能な API 一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+|FwMgrPlInitialize
+|本ブロックの初期化処理を行います。
+|<<#_FwMgrPlInitialize>>
+
+|FwMgrPlFinalize
+|本ブロックの終了処理を行います。
+|<<#_FwMgrPlFinalize>>
+
+|FwMgrPlOpen
+|AP バイナリのアップデートの開始処理を行います。AP バイナリの書き込み先のデータを削除し、ハンドルを取得します。
+|<<#_FwMgrPlOpen>>
+
+|FwMgrPlClose
+|AP バイナリのアップデートの終了処理を実施します。
+正常に AP バイナリが書き込まれていれば、次回以降の起動で新しい AP バイナリが使用されるように設定を更新します。
+|<<#_FwMgrPlClose>>
+
+|FwMgrPlWrite
+|AP バイナリの書き込みを行います。
+|<<#_FwMgrPlWrite>>
+
+|FwMgrPlAbort
+|AP バイナリのアップデートを中断します。
+|<<#_FwMgrPlAbort>>
+
+|FwMgrPlGetInfo
+|AP バイナリのバージョン、ハッシュ、更新日時を取得します。
+|<<#_FwMgrPlGetInfo>>
+|===
+
+<<<
+
+=== データ型定義
+[#_FwMgrPlHandle]
+==== FwMgrPlHandle
+AP バイナリアップデート用のハンドルを表す構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef void* FwMgrPlHandle;
+....
+
+[#_FwMgrPlType]
+==== FwMgrPlType
+AP バイナリの種類を表す列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum TagFwMgrPlType {
+  kFwMgrPlTypeFirmware,
+  kFwMgrPlTypeBootloader,
+  kFwMgrPlTypePartitionTable,
+} FwMgrPlType;
+....
+* *値*
+
+.FwMgrPlTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kFwMgrPlTypeFirmware
+|FW を表します。
+|kFwMgrPlTypeBootloader
+|Bootloader を表します。
+|kFwMgrPlTypePartitionTable
+|パーティションテーブルを表します。
+|===
+
+=== 各 API の説明
+
+[#_FwMgrPlInitialize]
+==== FwMgrPlInitialize
+* *機能* +
+本ブロックの初期化処理を行います。
+
+* *書式* 
+
+[source, C]
+....
+PlErrCode FwMgrPlInitialize(void);
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+** AP バイナリに関する初期化処理を行います。
+** Firmware Manager Porting Layer の他の API を使用する前に呼ぶ必要があります。
+** 通常は、システム起動時に呼ばれることを想定しています。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可 (エラーを返します。)
+|複数スレッドからの呼び出し
+|不可 (エラーを返します。)
+|複数タスクからの呼び出し
+|不可 (エラーを返します。)
+|API 内部でブロッキングするか
+|ブロッキングするします。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで、Firmware Manager Porting Layer の API が実行中です。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|Firmware Manager Porting Layer の状態が NotInitialized ではありません。
+|-
+|影響なし
+|不要
+|===
+
+
+
+<<<
+
+
+[#_FwMgrPlFinalize]
+==== FwMgrPlFinalize
+* *機能* +
+本ブロックの終了処理を行います。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode FwMgrPlFinalize(void);
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+** 本ブロックの終了処理を行います。
+** 通常は、システムの終了時に呼ばれることを想定しています。
+** 本 API は、どの状態で呼ばれても成功します。ただし、*Closed 状態* 以外で呼ばれた場合、アップデートの終了処理・中断処理を行わないため、メモリリークが発生する可能性があります。
+
+[#_FwMgrPlFinalize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可 (エラーを返します。)
+|複数スレッドからの呼び出し
+|不可 (エラーを返します。)
+|複数タスクからの呼び出し
+|不可 (エラーを返します。)
+|API 内部でブロッキングするか
+|ブロッキングします。
+|===
+
+[#_FwMgrPlFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで、Firmware Manager Porting Layer の API が実行中です。
+|-
+|影響なし
+|不要
+|===
+<<<
+
+
+[#_FwMgrPlOpen]
+==== FwMgrPlOpen
+
+* *機能* +
+AP バイナリのアップデートの開始処理を行います。AP バイナリ書き込み用の一時ファイルを作成し、ハンドルを取得します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode FwMgrPlOpen(FwMgrPlType type, uint32_t total_write_size, uint8_t *hash,
+                      FwMgrPlHandle *handle, uint32_t *max_write_size);
+....
+
+* *引数の説明* +
+**[IN] FwMgrPlType type**:: 
+アップデートを行う AP バイナリの種類。
+サポートされていない種類を指定した場合は、エラーを返します。
+
+**[IN] uint32_t total_write_size**:: 
+アップデートを行う AP バイナリのサイズ。
+
+**[IN] uint8_t hash**:: 
+AP バイナリのハッシュ。32 bytes の配列の先頭アドレスを指定してください。
+ここで指定した値が、 ``FwMgrPlGetInfo`` で取得できます。この値が実際に書き込まれるバイナリのハッシュ値と一致することの確認はしません。
+
+**[OUT] FwMgrPlHandle *handle**:: 
+アップデート用のハンドル。ここで取得した handle を、以降の FwMgrPlWrite, FwMgrPlClose, FwMgrPlAbort の呼び出しにおいて引数として渡してください。
+NULL が指定された場合はエラーを返します。
+
+**[OUT] uint32_t *max_write_size**:: 
+FwMgrPlWriteで指定できる最大サイズ。
+NULL が指定された場合はエラーを返します。
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+** AP バイナリのアップデート用のハンドルを取得します。
+** フラッシュメモリの書き込み先の領域のデータを削除します。
+** 本 API は Firmware Manager Porting Layer の状態が Closed の時に実行可能です。それ以外の状態の場合、何も実行せずにエラーを返します。(データの削除は行われません)
+** 他コンテキストで Firmware Manager Porting Layer API が実行中の場合、何も実行せずにエラーを返します。(データの削除は行われません)
+** 本 API で取得したハンドルは、アップデート中断の有無にかかわらず、必ず、FwMgrPlClose を使用して Close してください。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可 (エラーを返します。)
+|複数スレッドからの呼び出し
+|不可 (エラーを返します。)
+|複数タスクからの呼び出し
+|不可 (エラーを返します。)
+|API 内部でブロッキングするか
+|ブロッキングします。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで、Firmware Manager Porting Layer の API が実行中です。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|Firmware Manager Porting Layer の状態が Closed ではありません。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|不正な引数が指定されています。
+|無効な値
+|影響なし
+|不要
+
+
+|kPlErrNoSupported
+|type にサポートされていない種類が指定されています。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInternal
+|API 実行中に予期しないエラーが発生しました。
+|無効な値
+|T.B.D.
+|T.B.D.
+|===
+
+<<<
+
+[#_FwMgrPlClose]
+==== FwMgrPlClose
+* *機能* +
+AP バイナリのアップデートの終了処理を実施します。
+``FwMgrPlWrite`` で一時ファイルに保存された AP バイナリを RAUC に渡して Firmware, bootloader の更新を行います。
+(RAUC によって、AP バイナリの署名検証および起動面の切り替えも行われます)
+
+* *書式*
+
+[source, C]
+....
+PlErrCode FwMgrPlClose(FwMgrPlHandle handle, bool *updated);
+....
+
+* *引数の説明* +
+**[IN] FwMgrPlHandle handle**:: 
+ハンドル。
+FwMgrPlOpen で取得したハンドルを指定してください。
+
+**[OUT] bool *updated**:: 
+AP バイナリがアップデートされたかどうか。
+true の場合、次回以降の起動において新しい AP バイナリが使用されます。
+Open 状態で本 API が呼ばれ、かつ、本 API の処理が成功した場合に限り true になります。Aborted 状態で本 API が呼ばれた場合、本 API の処理が成功した場合でも false になります。
+バイナリがアップデートされたかどうかの情報を取得する必要がない場合、NULL を指定することも可能です。
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+** AP バイナリアップデートの終了処理を実施します。
+** 本 API は Open, Aborted 状態で実行可能です。どちらの状態で実行されたかによって処理内容が異なります。
+*** **Open 状態**：FwMgrPlWrite を使用して書き込まれた AP バイナリのサイズの合計が、FwMgrPlOpen 時に指定された total_write_size と一致してる場合、``FwMgrPlWrite`` で書き込まれた AP バイナリを RAUC に渡して Firmware, bootloader の更新を行います。RAUC によって、AP バイナリの署名検証および起動面の切り替えも行われます。
+*** **Aborted 状態**：AP バイナリの更新を行うことなく更新処理を終了します。(RAUC による AP バイナリの更新を行いません)
+** 本 API が成功した場合、本 API の呼び出し時に指定したハンドルは無効になり、以降の API の呼び出しに使えなくなります。(失敗した場合、ハンドルは引き続き使用可能です)
+** 他コンテキストで Firmware Manager Porting Layer API が実行中の場合、何も実行せずにエラーを返します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可 (エラーを返します。)
+|複数スレッドからの呼び出し
+|不可 (エラーを返します。)
+|複数タスクからの呼び出し
+|不可 (エラーを返します。)
+|API 内部でブロッキングするか
+|ブロッキングします。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで Firmware Manager Porting Layer API が実行中です。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|不正な引数が指定されています。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|Firmware Manager Porting Layer の状態が Open, Aborted のいずれでもありません。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidOperation
+|wMgrPlWrite によって書き込まれた AP バイナリのサイズの合計が FwMgrPlOpen 時に指定された total_write_size と一致していません。
+|無効な値
+|影響なし
+|FwMgrPlWrite を呼び出し total_write_size と一致するように書き込んでください。または、FwMgrPlAbot を呼び出し後、再度本 API を呼び出すことで、アップデートを中断してください。
+
+|kPlErrInvalidValue
+|RAUC による AP バイナリの更新に失敗しました。
+|無効な値
+|非起動面に AP バイナリの一部または全部が書き込まれている可能性があります。ただし、起動面の切り替えは行われません。
+|FwMgrPlAbort 呼び出したのち、再度本 API を呼び出すことでアップデートを中断してください。AP バイナリのアップデートをリトライする場合は、FwMgrPlOpen から再度やり直してください。
+
+|kPlErrInternal
+|API 実行中に予期しないエラーが発生しました。
+|無効な値
+|T.B.D.
+|T.B.D.
+|===
+
+<<<
+
+[#_FwMgrPlWrite]
+==== FwMgrPlWrite
+* *機能* +
+AP バイナリを一時ファイルに書き込みます。この一時ファイルが ``FwMgrPlClose`` で RAUC に渡され、AP バイナリの更新が行われます。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode FwMgrPlWrite(FwMgrPlHandle handle,
+                       EsfMemoryManagerHandle buffer_handle,
+                       uint32_t buffer_offset, uint32_t write_size,
+                       uint32_t *written_size);
+....
+
+* *引数の説明* +
+**[IN] FwMgrPlHandle handle**:: 
+ハンドル。
+FwMgrPlOpen で取得したハンドルを指定してください。
+
+**[IN] EsfMemoryManagerHandle buffer_handle**:: 
+書き込み対象のバッファの Memory Manager ハンドル。
+
+**[IN] const uint32_t buffer_offset**:: 
+書き込み対象のバッファにおける書き込み開始位置。
+
+**[IN] const uint32_t write_size**:: 
+書き込みサイズ。
+0 または、 FwMgrPlOpen 時に取得できる max_write_size より大きい値を指定するとエラーを返します。
+
+**[OUT] uint32_t *written_size**:: 
+実際に書き込まれたサイズ。
+NULL が指定された場合はエラーを返します。
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+** AP バイナリを一時ファイルに書き込みます。
+** 本 API は Open 状態で実行可能です。それ以外の状態の場合、何も実行せずにエラーを返します。
+** 本API は複数回に分けて実行することが可能です。書き込む AP バイナリのサイズの合計が FwMgrPlOpen 時に指定した total_write_size に一致するようにしてください。
+** 「これまでに本 API で書き込んだ AP バイナリのサイズの合計」と write_size の和が、FwMgrPlOpen 時に指定した total_write_size を超えるとエラーを返します。
+** 他コンテキストで Firmware Manager Porting Layer API が実行中の場合、何も実行せずにエラーを返します。
+** 本 API が成功しても、write_size よりも小さいサイズのデータしか書き込まれていない可能性があります。**必ず *written_size の値を確認してください**。
+*written_size < write_size の場合は、書き込めていない部分の AP バイナリの書き込みを再度 (本 API を呼び出して) 行ってください。
+*written_size は 0 になることもあり得ます。*written_size == 0 が複数回続いた場合は、呼び出し側で書き込みを中断するなどの措置を講じてください。(**無限ループになる可能性があります。**)
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可 (エラーを返します。)
+|複数スレッドからの呼び出し
+|不可 (エラーを返します。)
+|複数タスクからの呼び出し
+|不可 (エラーを返します。)
+|API 内部でブロッキングするか
+|ブロッキングします。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで Firmware Manager Porting Layer API が実行中です。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|不正な引数が指定されています。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|Firmware Manager Porting Layer の状態が Open ではありません。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidOperation
+|Firmware Manager Porting Layer の状態が Open ではありません。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInternal
+|API 実行中に予期しないエラーが発生しました。
+|無効な値
+|T.B.D.
+|T.B.D.
+|===
+
+<<<
+
+[#_FwMgrPlAbort]
+==== FwMgrPlAbort
+* *機能* +
+AP バイナリのアップデートを中断します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode FwMgrPlAbort(FwMgrPlHandle handle);
+....
+
+* *引数の説明* +
+**[IN] FwMgrPlHandle handle**:: 
+FwMgrPlOpen で取得したハンドルを指定してください。
+ハンドルを取得した際に指定した AP バイナリに対するアップデートの中断がサポートされていない場合、エラーを返します。
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+** 指定されたハンドルにより現在進行中の AP バイナリのアップデートを中断します。
+** 本 API は Open 状態で実行が可能です。それ以外の状態の場合、何も実行せずにエラーを返します。
+** 他コンテキストで Firmware Manager Porting Layer API が実行中の場合、何も実行せずにエラーを返します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可 (エラーを返します。)
+|複数スレッドからの呼び出し
+|不可 (エラーを返します。)
+|複数タスクからの呼び出し
+|不可 (エラーを返します。)
+|API 内部でブロッキングするか
+|ブロッキングします。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで Firmware Manager Porting Layer API が実行中です。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|不正な引数が指定されています。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|Firmware Manager Porting Layer の状態が Open ではありません。
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_FwMgrPlGetInfo]
+==== FwMgrPlGetInfo
+* *機能* +
+AP バイナリのバージョン、ハッシュ、更新日時を取得します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode FwMgrPlGetInfo(FwMgrPlType type, int32_t version_size, char *version,
+                         int32_t hash_size, uint8_t *hash,
+                         int32_t update_date_size, char *update_date);
+....
+
+* *引数の説明* +
+**[in] FwMgrPlType type**::
+AP バイナリの種類
+
+**[in] int32_t version_size**::
+配列 version のサイズ。
+
+**[out] char *version**::
+NULL を指定するとエラーを返します。
+バージョン。Firmware の場合は "" を返します。
+
+**[in] int32_t hash_size**::
+配列 hash のサイズ。
+
+**[out] uint8_t *hash**::
+NULL を指定するとエラーを返します。
+ハッシュ。 FwMgrPlOpen で指定された値を返します。工場で書き込まれたバイナリが動いている場合は、000000..00 (32 bytes) を返します。
+
+**[in] int32_t update_date_size**::
+配列 update_date のサイズ
+
+**[out] char *update_date**::
+NULL を指定するとエラーを返します。
+バイナリの更新日時
+工場で書き込まれたバイナリが動いている場合は "" を返します。
+
+
+* *戻り値* +
+成功時は kPlErrCodeOk を返します。失敗時は PlErrCode のいずれかの値 (kPlErrCodeOk 以外) を返します。
+
+* *説明* +
+type に指定された AP バイナリについて、ハッシュ、バージョン、更新日時を取得します。
+本 API は Firmware Manager Porting Layer が Open, Closed, Aborted いずれかの状態のときに実行可能です。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングします。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrLock
+|他コンテキストで、Firmware Manager Porting Layer の API が実行中です。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|不正な引数が指定されている。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrInvalidState
+|Firmware Manager Porting Layer の状態が NotInitialized ではありません。
+|無効な値
+|影響なし
+|不要
+
+|kPlErrNoSupported
+|type にサポートされていない種類が指定されています。
+|無効な値
+|影響なし 
+|不要
+|===
+
+
+<<<
+== API 使用時の呼び出し例
+=== AP バイナリアップデートの例
+
+[{mermaid_block}]
+----
+sequenceDiagram
+  participant upper_layer as Upper Layer
+  participant fw_mgr_pl as Firmware Manager Porting Layer
+  participant rauc as RAUC
+  participant os as OS
+  upper_layer ->> fw_mgr_pl: FwMgrPlInitialize
+  fw_mgr_pl -->> upper_layer: {mermaid_br}
+  upper_layer ->> fw_mgr_pl: FwMgrPlOpen
+  fw_mgr_pl -->> upper_layer: {mermaid_br}
+  fw_mgr_pl ->> os: Open tmp.raucb
+  os -->> fw_mgr_pl: {mermaid_br}
+  loop
+    upper_layer ->> fw_mgr_pl: FwMgrPlWrite
+    fw_mgr_pl ->> os: Write to tmp.raucb
+    os -->> fw_mgr_pl: {mermaid_br}
+    fw_mgr_pl -->> upper_layer: {mermaid_br}
+  end
+  upper_layer ->> fw_mgr_pl: FwMgrPlClose
+  fw_mgr_pl ->> os: Close tmp.raucb
+  os -->> fw_mgr_pl: {mermaid_br}
+  fw_mgr_pl ->> rauc: rauc install tmp.raucb
+  rauc -->> fw_mgr_pl: {mermaid_br}
+  upper_layer ->> fw_mgr_pl: FwMgrPlFinalize
+  fw_mgr_pl -->> upper_layer: {mermaid_br}
+----
+
+
+== 特記事項やブロックごとの特有の説明事項
+なし
+
+
+== 使用しているOSSの一覧
+なし
+
+<<<
+
+== 参考文献
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+|===

@@ -1,0 +1,1003 @@
+= UTILITY MSG
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書では AITRIOS Utility の一つである、UTILITY MSG の仕様について記載します。
+UTILITY MSG の目的は、同一モジュール内での通信機能を OS 差分を意識せずに使えるようにすることです。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+|I/F
+|Interface
+|===
+
+<<<
+
+== コンポーネントの説明
+
+UTILITY MSG レイヤーは、タスク間通信機能に関する OS 差分を吸収することが目的となります。
+また、ターゲットとする OS に合わせて追加・変更が可能です。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/msg_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+
+UTILITY MSG の使用シーケンス例を以下に示します。
+上位レイヤーは UtilityMsgInitialize を実行後、UTILITY MSG API を使用して各種 MSG 機能を使うことができます。
+
+[#_button_seq]
+.シーケンス概要
+image::./images/msg_seq.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== 状態遷移
+UTILITY MSG の取り得る状態を <<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|UTL_MSG_READY
+|UTILITY MSG 初期状態
+
+|UTL_MSG_RUNNING
+|UTILITY MSG 初期化済み
+
+|CLOSE
+|メッセージキュー作成可能状態
+
+|OPEN
+|メッセージキュー作成済み状態
+|===
+
+UTILITY MSG では <<#_FigureState>> に示す状態遷移を行います。 +
+また、各 API でエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureState]
+.状態遷移図
+image::./images/msg_state.png[scaledwidth="100%",align="center"]
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_UtilityMsgErrCode>> を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|状態 
+.2+|UTL_MSG_READY
+2+|UTL_MSG_RUNNING
+|CLOSE |OPEN
+.10+|API 名
+
+|``**UtilityMsgInitialize**``
+|CLOSE
+|×
+|×
+
+|``**UtilityMsgFinalize**``   
+|×
+|UTL_MSG_READY
+|UTL_MSG_READY
+
+|``**UtilityMsgOpen**``   
+|×
+|OPEN
+|×
+
+|``**UtilityMsgSend**``   
+|×
+|×
+|OPEN
+
+|``**UtilityMsgRecv**``   
+|×
+|×
+|OPEN
+
+|``**UtilityMsgClose**``   
+|×
+|×
+|CLOSE
+|===
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|メッセージキューの Initialize/Finalize
+|メッセージキューを初期化・終了処理を行います。
+|<<#_Function0, 3.5.1.>>
+
+|メッセージキューの Open/Close
+|メッセージキューを作成・破棄します。
+|<<#_Function1, 3.5.2.>>
+
+|メッセージの Send/Recv
+|メッセージキューへメッセージを送信・受信します。
+|<<#_Function2, 3.5.3.>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function0]
+==== メッセージキューの Initialize/Finalize
+機能概要::
+メッセージキューを初期化・終了処理を行います。
+前提条件::
+なし
+機能詳細::
+詳細は <<#_UtilityMsgInitialize, UtilityMsgInitialize>>、<<#_UtilityMsgFinalize, UtilityMsgFinalize>> を参照してください。
+詳細挙動::
+詳細は <<#_UtilityMsgInitialize, UtilityMsgInitialize>>、<<#_UtilityMsgFinalize, UtilityMsgFinalize>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_UtilityMsgInitialize, UtilityMsgInitialize>>、<<#_UtilityMsgFinalize, UtilityMsgFinalize>> を参照してください。
+検討事項::
+なし
+
+[#_Function1]
+==== メッセージキューの Open/Close
+機能概要::
+メッセージキューを作成・破棄します。
+前提条件::
+UtilityMsgInitialize が実行済みであること
+機能詳細::
+詳細は <<#_UtilityMsgOpen, UtilityMsgOpen>>、<<#_UtilityMsgClose, UtilityMsgClose>> を参照してください。
+詳細挙動::
+詳細は <<#_UtilityMsgOpen, UtilityMsgOpen>>、<<#_UtilityMsgClose, UtilityMsgClose>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_UtilityMsgOpen, UtilityMsgOpen>>、<<#_UtilityMsgClose, UtilityMsgClose>> を参照してください。
+検討事項::
+なし
+
+[#_Function2]
+==== メッセージの Send/Recv
+機能概要::
+メッセージキューへメッセージを送信・受信します。
+前提条件::
+UtilityMsgInitialize が実行済みであること。
+UtilityMsgOpen でハンドルを取得済みであること。
+機能詳細::
+詳細は <<#_UtilityMsgSend, UtilityMsgSend>>、<<#_UtilityMsgRecv, UtilityMsgRecv>> を参照してください。
+詳細挙動::
+詳細は <<#_UtilityMsgSend, UtilityMsgSend>>、<<#_UtilityMsgRecv, UtilityMsgRecv>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_UtilityMsgSend, UtilityMsgSend>>、<<#_UtilityMsgRecv, UtilityMsgRecv>> を参照してください。
+検討事項::
+なし
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> を以下に示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack 最大使用量
+|Stack 使用量の最大値 (バイト数)
+|<<#_NonFunctionStack, 3.7.>>
+
+|ヒープ最大使用量
+|ヒープ使用量の最大値 (バイト数)
+|<<#_NonFunctionHeap, 3.7.>>
+
+|static データ使用量
+|static データ使用量 (バイト数)
+|<<#_NonFunctionStatic, 3.7.>>
+
+|パフォーマンス
+|各 API の処理時間
+|<<_NonFunctionPerformance, 3.7.>>
+|===
+
+[#_CompornentNonFunction]
+=== コンポーネントの非機能要件説明
+
+[#_NonFunctionStack]
+==== Stack 最大使用量
+*** 1024 バイト
+
+[#_NonFunctionHeap]
+==== ヒープ最大使用量
+*** 各キューに格納されているメッセージサイズの合計 +500 バイト使用します
+
+.ヒープ使用量例
+[width="100%", cols="15%,18%,35%,22%",options="header"]
+|===
+|キュー数 (UtilityMsgOpen数) |送信中メッセージ数 (各メッセージサイズ) |各キューに格納されているメッセージサイズの合計 (Bytes) |通常ヒープ最大使用量 (Bytes)
+|1|1 (1024)|1024|1524
+|1|1 (2048)|2048|2548
+|1|1 (10240)|10240|10740
+|1|1 (102400)|102400|102900
+|2|1 (1024)|1024|1524
+|2|2 (1024,1024)|2048|2548
+
+|===
+
+[#_NonFunctionStatic]
+==== static データ最大使用量
+*** 100 バイト
+
+[#_NonFunctionPerformance]
+==== パフォーマンス
+*** UtilityMsgSend 1 [ms] 未満　※ただし、最大メッセージ数超のメッセージ送信時は除く
+
+*** UtilityMsgRecv 1 [ms] 未満　※ただし、メッセージキューが空の場合のメッセージ受信 (無限待ち) は除く
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> を以下に示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum UtilityMsgErrCode
+|API の実行結果を定義する列挙型です。
+|<<#_UtilityMsgErrCode, 4.2.1.>>
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> を以下に示します。
+
+[#_TablePublicAPI]
+.上位レイヤーから直接使用可能な API
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+|UtilityMsgInitialize
+|メッセージキューに関する初期化処理を行います。
+|<<#_UtilityMsgInitialize, 4.3.1.>>
+|UtilityMsgFinalize
+|メッセージキューに関する終了処理を行います。
+|<<#_UtilityMsgFinalize, 4.3.2.>>
+|UtilityMsgOpen
+|メッセージキューを作成します。
+|<<#_UtilityMsgOpen, 4.3.3.>>
+|UtilityMsgSend
+|メッセージキューへメッセージを送信します。
+|<<#_UtilityMsgSend, 4.3.4.>>
+|UtilityMsgRecv
+|メッセージキューのメッセージを受信します。
+|<<#_UtilityMsgRecv, 4.3.5.>>
+|UtilityMsgClose
+|メッセージキューを破棄します。
+|<<#_UtilityMsgClose, 4.3.6.>>
+|===
+
+<<<
+
+=== データ型定義
+[#_UtilityMsgErrCode]
+==== UtilityMsgErrCode
+API の実行結果を定義する列挙型です。
+
+* *書式*
+[source, C]
+....
+typedef enum {
+  kUtilityMsgOk = 0,
+  kUtilityMsgErrState,
+  kUtilityMsgErrParam,
+  kUtilityMsgErrLock,
+  kUtilityMsgErrUnlock,
+  kUtilityMsgErrTimedout,
+  kUtilityMsgErrRetry,
+  kUtilityMsgErrMemory,
+  kUtilityMsgErrNotFound,
+  kUtilityMsgErrInternal,
+  kUtilityMsgErrTerminate,
+} UtilityMsgErrCode;
+....
+
+* *値*
+
+[#_UtilityMsgErrCodeValue]
+.UtilityMsgErrCode の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kUtilityMsgOk
+|正常終了
+|kUtilityMsgErrState
+|状態エラー
+|kUtilityMsgErrParam
+|パラメータエラー
+|kUtilityMsgErrLock
+|ブロッキング設定エラー
+|kUtilityMsgErrUnlock
+|ブロッキング解除エラー
+|kUtilityMsgErrTimedout
+|タイムアウト
+|kUtilityMsgErrRetry
+|オープンエラー。再度オープンが必要。
+|kUtilityMsgErrMemory
+|メモリエラー
+|kUtilityMsgErrNotFound
+|メッセージキューのハンドルが見つからなかった
+|kUtilityMsgErrInternal
+|内部エラー
+|kUtilityMsgErrTerminate
+|API 実行中に UtilityMsgClose を実行した
+|===
+
+<<<
+
+=== 各 API の説明
+[#_UtilityMsgInitialize]
+==== UtilityMsgInitialize
+* *機能* +
+メッセージキューに関する初期化処理を行います。
+
+* *書式* +
+[source, C]
+....
+UtilityMsgErrCode UtilityMsgInitialize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて <<#_UtilityMsgErrCode>> のいずれかの値が返ります。 +
+<<#_UtilityMsgInitialize_error>> を参照してください。
+
+
+* *説明* +
+** メッセージキューに関する初期化処理を行います。
+
+[#_UtilityMsgInitialize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+他のコンテキストで UTILITY MSG API が実行中の場合、完了を待ってから実行されます。ただし、二重に UtilityMsgInitialize を実行した場合、エラーになります。
+|===
+
+[#_UtilityMsgInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityMsgOk
+|正常終了
+|-
+|-
+|-
+
+|kUtilityMsgErrState
+|UtilityMsgInitialize を実行済み
+|-
+|影響なし
+|不要。UtilityMsgInitialize を二重に呼び出さないようにしてください。
+
+|kUtilityMsgErrLock
+|システムエラー
+|-
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrUnlock
+|システムエラー
+|-
+|システム異常
+|デバイスを再起動してください。
+|===
+
+<<<
+
+[#_UtilityMsgFinalize]
+==== UtilityMsgFinalize
+* *機能* +
+メッセージキューに関する終了処理を行います。
+
+* *書式* +
+[source, C]
+....
+UtilityMsgErrCode UtilityMsgFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて <<#_UtilityMsgErrCode>> のいずれかの値が返ります。 +
+<<#_UtilityMsgFinalize_error>> を参照してください。
+
+* *説明* +
+** メッセージキューに関する終了処理を行います。
+
+** 別スレッドで UtilityMsgSend/UtilityMsgRecv 実行中の場合、UtilityMsgSend/UtilityMsgRecv はエラー (kUtilityMsgErrTerminate) を返します。
+
+[#_UtilityMsgFinalize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+他のコンテキストで UTILITY MSG API が実行中の場合、完了を待ってから実行されます。ただし、二重に UtilityMsgFinalize を実行した場合、エラーになります。
+|===
+
+[#_UtilityMsgFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityMsgOk
+|正常終了
+|-
+|-
+|-
+
+|kUtilityMsgErrState
+|UtilityMsgInitialize が未実行。または、UtilityMsgFinalize 実行済み
+|-
+|影響なし
+|不要。UtilityMsgInitialize を実行してから UtilityMsgFinalize を実行してください。
+
+|kUtilityMsgErrLock
+|システムエラー
+|-
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrUnlock
+|システムエラー
+|-
+|システム異常
+|デバイスを再起動してください。
+|===
+
+<<<
+
+[#_UtilityMsgOpen]
+==== UtilityMsgOpen
+
+* *機能* +
+メッセージキューを作成します。
+
+* *書式* +
+[source, C]
+....
+UtilityMsgErrCode UtilityMsgOpen(int32_t *handle, uint32_t queue_size, uint32_t max_msg_size)
+....
+
+* *引数の説明* +
+**[OUT] int32_t *handle**::
+メッセージキューのハンドルです。
+
+**[IN] uint32_t queue_size**::
+メッセージキューに格納できる最大メッセージ数です。1 以上を指定してください。
+
+**[IN] uint32_t max_msg_size**::
+UtilityMsgSend で指定できる最大メッセージサイズです。1 以上を指定してください。
+
+* *戻り値* +
+実行結果に応じて <<#_UtilityMsgErrCode>> のいずれかの値が返ります。 +
+<<#_UtilityMsgOpen_error>> を参照してください。
+
+* *説明* +
+** メッセージキューを作成します。
+** 本 API は UtilityMsgInitialize の実行後に使用可能です。
+** 本 API で取得したハンドルを UtilityMsgSend、Recv、Close で使用してください。
+** Open したハンドルを Close をしないまま UtilityMsgFinalize を実行した場合、UTILITY MSG 内部で UtilityMsgClose が自動実行されます。
+** queue_size に 0 が指定された場合、エラーを返します。
+** max_msg_size に 0 が指定された場合、エラーを返します。
+
+[#_UtilityMsgOpen_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+他のコンテキストで UTILITY MSG API が実行中の場合、完了を待ってから実行されます。
+|===
+
+[#_UtilityMsgOpen_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityMsgOk
+|正常終了
+|-
+|-
+|-
+
+|kUtilityMsgErrState
+|UtilityMsgInitialize が未実行
+|変化なし
+|影響なし
+|UtilityMsgInitialize を実行してから UtilityMsgOpen を実行してください。
+
+|kUtilityMsgErrParam
+|パラメータエラー
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrRetry
+|オープンエラー。再度オープンが必要
+|変化なし
+|影響なし
+|再度 UtilityMsgOpen を実行してください。
+
+|kUtilityMsgErrInternal
+|内部エラー
+|変化なし
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrLock
+|システムエラー
+|変化なし
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrUnlock
+|システムエラー
+|引数 handle に不定値が格納される。
+|システム異常
+|デバイスを再起動してください。
+|===
+
+<<<
+
+[#_UtilityMsgSend]
+==== UtilityMsgSend
+* *機能* +
+メッセージキューへメッセージを送信します。
+
+* *書式* +
+[source, C]
+....
+UtilityMsgErrCode UtilityMsgSend(int32_t handle, const void *msg, uint32_t msg_size, int32_t msg_prio, int32_t *sent_size)
+....
+
+* *引数の説明* +
+**[IN] int32_t handle**:: 
+メッセージキューのハンドル。
+
+**[IN] const void *msg**:: 
+送信したいメッセージ。msg_size 分のデータが送信されます。
+
+**[IN] uint32_t msg_size**:: 
+メッセージサイズ。UtilityMsgOpen で指定した max_msg_size 以下にしてください。
+
+**[IN] int32_t msg_prio**:: 
+メッセージの優先度。数字が大きいほど優先度が高くなります。メッセージは優先度が高い順番でキューに格納され、同じ優先度のメッセージは最初に格納されたほうが先に受信されます。
+
+**[OUT] int32_t *sent_size**:: 
+実際に送信したサイズ。
+
+* *戻り値* +
+実行結果に応じて <<#_UtilityMsgErrCode>> のいずれかの値が返ります。 +
+<<#_UtilityMsgSend_error>> を参照してください。
+
+* *説明* +
+** メッセージキューへメッセージを送信します。
+** 送信したメッセージはメッセージの受信またはメッセージキューの破棄が行われるまでメッセージキューに保持されます。
+** 本 API は UtilityMsgInitialize の実行後に使用可能です。
+** max_msg_size よりも大きいサイズを指定された場合、メッセージ送信は行わずにエラーを返します。
+
+[#_UtilityMsgSend_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+キューにメッセージが最大数格納されている際にメッセージ送信を行った場合、メッセージ受信処理が行われるまでブロッキングされます。
+|===
+
+[#_UtilityMsgSend_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityMsgOk
+|正常終了
+|-
+|-
+|-
+
+|kUtilityMsgErrState
+|UtilityMsgInitialize が未実行
+|変化なし
+|影響なし
+|UtilityMsgInitialize/UtilityMsgOpen を実行してから UtilityMsgSend を実行してください。
+
+|kUtilityMsgErrParam
+|パラメータエラー
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrNotFound
+|メッセージキューのハンドルが見つからなかった
+|変化なし
+|影響なし
+|不要。有効なメッセージキューのハンドルを指定してください。
+
+|kUtilityMsgErrTerminate
+|API 実行中に UtilityMsgClose を実行した
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrInternal
+|内部エラー
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrMemory
+|メモリエラー
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrLock
+|システムエラー
+|変化なし
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrUnlock
+|システムエラー
+|変化なし
+|システム異常
+|デバイスを再起動してください。
+|===
+
+<<<
+
+[#_UtilityMsgRecv]
+==== UtilityMsgRecv
+* *機能* +
+メッセージキューのメッセージを受信します。
+
+* *書式* +
+[source, C]
+....
+UtilityMsgErrCode UtilityMsgRecv(int32_t handle, void *buf, uint32_t size, int32_t timeout_ms, int32_t *recv_size)
+....
+
+* *引数の説明* +
+**[IN] const int32_t handle**:: 
+メッセージキューのハンドル。
+
+**[IN] void *buf**:: 
+受信先のバッファ。size 分のデータが受信されます。
+
+**[IN] uint32_t size**:: 
+buf の大きさ。UtilityMsgOpen で取得した max_msg_size よりも小さい値の場合、エラーを返します。
+
+**[IN] int32_t timeout_ms**:: 
+受信のタイムアウト値。（単位：ms）
+-1: 無限待ち　0: データが無い場合でも即時に返ります
+
+**[OUT] int32_t *recv_size**:: 
+実際に受信したサイズ。
+
+* *戻り値* +
+実行結果に応じて <<#_UtilityMsgErrCode>> のいずれかの値が返ります。 +
+<<#_UtilityMsgRecv_error>> を参照してください。
+
+* *説明* +
+** メッセージキューのメッセージを受信します。
+** 本 API は UtilityMsgInitialize の実行後に使用可能です。
+** max_msg_size よりも小さいサイズを指定された場合、メッセージ受信は行わずにエラーを返します。
+** メッセージキューから最も古く、かつ最も高い優先度を持つメッセージが buf に格納されます。
+** 本 API は新しいメッセージが届くか、関数呼び出しがシグナルハンドラにより中断されるまでブロッキングされます。
+
+[#_UtilityMsgRecv_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+新しいメッセージが届くか、関数呼び出しがシグナルハンドラにより中断されるまで、ブロッキングされます。
+|===
+
+[#_UtilityMsgRecv_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityMsgOk
+|正常終了
+|-
+|-
+|-
+
+|kUtilityMsgErrState
+|UtilityMsgInitializeが未実行
+|変化なし
+|影響なし
+|UtilityMsgInitialize/UtilityMsgOpen を実行してから UtilityMsgRecv を実行してください。
+
+|kUtilityMsgErrParam
+|パラメータエラー
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrNotFound
+|メッセージキューのハンドルが見つからなかった
+|変化なし
+|影響なし
+|不要。有効なメッセージキューのハンドルを指定してください。
+
+|kUtilityMsgErrTerminate
+|API 実行中に UtilityMsgClose を実行した
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrTimedout
+|タイムアウト
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrInternal
+|内部エラー
+|変化なし
+|影響なし
+|不要
+
+|kUtilityMsgErrLock
+|システムエラー
+|変化なし
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrUnlock
+|システムエラー
+|変化なし
+|システム異常
+|デバイスを再起動してください。
+|===
+
+<<<
+
+<<<
+
+[#_UtilityMsgClose]
+==== UtilityMsgClose
+* *機能* +
+メッセージキューを破棄します。
+
+* *書式* +
+[source, C]
+....
+UtilityMsgErrCode UtilityMsgClose(int32_t handle)
+....
+
+* *引数の説明* +
+**[IN] int32_t handle**:: 
+メッセージキューのハンドル。
+
+* *戻り値* +
+実行結果に応じて <<#_UtilityMsgErrCode>> のいずれかの値が返ります。 +
+<<#_UtilityMsgClose_error>> を参照してください。
+
+* *説明* +
+** メッセージキューを破棄します。
+** 別スレッドで UtilityMsgSend/UtilityMsgRecv 実行中の場合、UtilityMsgSend/UtilityMsgRecv はエラー (kUtilityMsgErrTerminate) を返します。
+
+[#_UtilityMsgClose_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+他のコンテキストで UTILITY MSG API が実行中の場合、完了を待ってから実行されます。
+|===
+
+[#_UtilityMsgClose_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityMsgOk
+|正常終了
+|-
+|-
+|-
+
+|kUtilityMsgErrState
+|UtilityMsgInitialize が未実行
+|-
+|影響なし
+|UtilityMsgInitialize/UtilityMsgOpen を実行してから UtilityMsgClose を実行してください。
+
+|kUtilityMsgErrNotFound
+|メッセージキューのハンドルが見つからなかった
+|-
+|影響なし
+|不要。有効なメッセージキューのハンドルを指定してください。
+
+|kUtilityMsgErrParam
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kUtilityMsgErrLock
+|システムエラー
+|-
+|システム異常
+|デバイスを再起動してください。
+
+|kUtilityMsgErrUnlock
+|システムエラー
+|-
+|システム異常
+|デバイスを再起動してください。
+|===
+
+<<<
+
+
+
+== API 使用時の呼び出し例
+=== MSGRecv までの一例
+.MSGRecv (例)
+image::./images/msg_recv.png[scaledwidth="100%",align="center"]
+
+=== MSGClose までの一例
+.MSGClose (例)
+image::./images/msg_close.png[scaledwidth="100%",align="center"]
+
+== 特記事項やコンポーネントごとの特有の説明事項
+== 注意事項
+本モジュールは同一モジュール内でのみ使われることが前提となっており、
+別モジュール間で直接メッセージ通信を行いたい場合は、それらのモジュールの上位部分でお互いのハンドルを管理・共有する仕組みを設ける必要があります。 +
+割り込みハンドラからの UTILITY MSG API 呼び出しは非サポートになります。割り込みハンドラから呼び出さないでください。
+
+== 使用している OSS の一覧
+なし
+
+<<<
+
+== 参考文献
+[width="100%", cols="20%,80%",options="header"]
+|===
+|文献|リンク
+|-
+|-
+|===
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+
+|0.0.2
+|- 全体 : 英単語の前後に半角空白を挿入 (読みやすくするため) +
+- READY を UTL_MSG_READY に変更 +
+- UTL_MSG_RUNNING 状態を追加 +
+- Message queue をメッセージキューに表記変更 +
+- 節番号を番号表記に変更 +
+- 図 (*.png) を英語表記に変更
+
+|===

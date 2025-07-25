@@ -1,0 +1,948 @@
+= PL DmaMemory
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書では PL DmaMemory の仕様について記載します。
+PL DmaMemory の目的は、カメラ毎にアドレス領域が異なる DmaMemory へのアクセス手段を提供することです。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting Layer. カメラ/ OS 差分を吸収する層
+
+|I/F
+|Interface
+|===
+
+<<<
+
+== コンポーネントの説明
+
+PL DmaMemory の目的は、カメラ毎にアドレス領域が異なる DmaMemory へのアクセス手段を提供することです。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/dmamem_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+
+PL DmaMemory の使用シーケンス例を以下に示します。
+
+[#_button_seq]
+.シーケンス概要
+image::./images/dmamem_seq.png[scaledwidth="100%",align="center"]
+
+==== 依存ブロック (PL 内部向け) 
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |リンク
+|-
+|-
+|-
+|===
+
+<<<
+
+=== 状態遷移
+PL DmaMemory の取り得る状態を <<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+|PL_DMA_READY
+|PL DmaMemory 未初期化
+
+|PL_DMA_RUNNING
+|PL DmaMemory 初期化済み
+
+|FREE
+|一度も PlDmaMemAlloc されていない。または Alloc したハンドルを Free 済み。
+
+|USED
+|1 回以上 PlDmaMemAlloc されており、PlDmaMemFree もされていない。
+|===
+
+PL DmaMemory では <<#_FigureState>> に示す状態遷移を行います。 +
+また、各 API でエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureState]
+.状態遷移図
+image::./images/dmamem_state.png[scaledwidth="100%",align="center"]
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでの API 呼び出しはエラーを返し状態遷移は起きません。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|状態 
+.2+|PL_DMA_READY
+2+|PL_DMA_RUNNING
+|FREE
+|USED
+.20+|API 名
+
+|``**PlDmaMemInitialize**``
+|PL_DMA_RUNNING
+|×
+|×
+
+|``**PlDmaMemFinalize**``
+|×
+|PL_DMA_READY
+|PL_DMA_READY
+
+|``**PlDmaMemAlloc**``
+|×
+|USED
+|USED
+
+|``**PlDmaMemFree**``
+|×
+|×
+|FREE or USED
+
+|``**PlDmaMemMap**``
+|×
+|×
+|USED
+
+|``**PlDmaMemUnmap**``
+|×
+|×
+|USED
+
+|``**PlDmaMemIsValid**``
+|×
+|FREE
+|USED
+
+|``**PlDmaMemGetMemInfo**``
+|×
+|FREE
+|USED
+|===
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|DmaMem 領域の物理メモリ領域を確保/解放
+|DmaMem 領域の物理メモリ領域を確保/解放します。
+|<<#_Function1, 3.5.1.>>
+
+|DmaMem 領域の物理メモリ領域に仮想メモリを割り当て/解除
+|DmaMem 領域の物理メモリ領域に仮想メモリを割り当て/解除します。
+|<<#_Function2, 3.5.2.>>
+
+|物理メモリ領域のハンドルの検証
+|物理メモリ領域のハンドルが有効かどうか確認します。
+|<<#_Function3, 3.5.3.>>
+
+|DmaMem 領域の情報取得
+|DmaMem 領域の空き容量などを取得できます。
+|<<#_Function4, 3.5.4.>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== DmaMem 領域の物理メモリ領域を確保/解放
+機能概要::
+DmaMem 領域の物理メモリ領域を確保/解放します。
+前提条件::
+PlDmaMemInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlDmaMemAlloc, PlDmaMemAlloc>>、 <<#_PlDmaMemFree, PlDmaMemFree>> を参照してください。
+詳細挙動::
+詳細は <<#_PlDmaMemAlloc, PlDmaMemAlloc>>、 <<#_PlDmaMemFree, PlDmaMemFree>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_PlDmaMemAlloc, PlDmaMemAlloc>>、 <<#_PlDmaMemFree, PlDmaMemFree>> を参照してください。
+検討事項::
+なし
+
+[#_Function2]
+==== DmaMem 領域の物理メモリ領域に仮想メモリを割り当て/解除
+機能概要::
+DmaMem 領域の物理メモリ領域に仮想メモリを割り当て/解除します。
+前提条件::
+PlDmaMemInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlDmaMemMap, PlDmaMemMap>>、 <<#_PlDmaMemUnmap, PlDmaMemUnmap>> を参照してください。
+詳細挙動::
+詳細は <<#_PlDmaMemMap, PlDmaMemMap>>、 <<#_PlDmaMemUnmap, PlDmaMemUnmap>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_PlDmaMemMap, PlDmaMemMap>>、 <<#_PlDmaMemUnmap, PlDmaMemUnmap>> を参照してください。
+検討事項::
+なし
+
+[#_Function3]
+==== 物理メモリ領域のハンドルの検証
+機能概要::
+物理メモリ領域のハンドルが有効かどうか確認します。
+前提条件::
+PlDmaMemInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlDmaMemIsValid, PlDmaMemIsValid>> を参照してください。
+詳細挙動::
+詳細は <<#_PlDmaMemIsValid, PlDmaMemIsValid>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_PlDmaMemIsValid, PlDmaMemIsValid>> を参照してください。
+検討事項::
+なし
+
+[#_Function4]
+==== DmaMem 領域の情報取得
+機能概要::
+DmaMem 領域の分割数、空き容量などを取得できます。
+前提条件::
+PlDmaMemInitialize が実行済みであること
+機能詳細::
+詳細は <<#_PlDmaMemGetMeminfo, PlDmaMemGetMeminfo>> を参照してください。
+詳細挙動::
+詳細は <<#_PlDmaMemGetMeminfo, PlDmaMemGetMeminfo>> を参照してください。
+エラー時の挙動、復帰方法::
+詳細は <<#_PlDmaMemGetMeminfo, PlDmaMemGetMeminfo>> を参照してください。
+検討事項::
+なし
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="90%,10%",options="header"]
+|===
+|機能名 |節番号
+|Stack 最大使用量
+|<<#_NonFunctionStack, 3.7.>>
+
+|通常ヒープ最大使用量
+|<<#_NonFunctionHeap, 3.7.>>
+
+|static データ使用量
+|<<#_NonFunctionStatic, 3.7.>>
+
+|パフォーマンス
+|<<_NonFunctionPerformance, 3.7.>>
+|===
+
+=== コンポーネントの非機能要件説明
+
+[#_NonFunctionStack]
+==== Stack 最大使用量
+1 KB (仮) 
+
+[#_NonFunctionHeap]
+==== 通常ヒープ最大使用量
+1 KB (仮) 
+
+[#_NonFunctionStatic]
+==== static ヒープ最大使用量
+1 KB (仮) 
+
+[#_NonFunctionPerformance]
+==== パフォーマンス
+1 ms 以下
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum PlErrCode
+|API の実行結果を定義する列挙型です。
+|<<#_PlErrCode, 4.3.1.>>
+
+|PlDmaMemHandle
+|DmaMem 領域の物理メモリハンドルを表す構造体です。
+|<<#_PlDmaMemHandle, 4.3.2.>>
+
+|PlDmaMemInfo
+|DmaMem 領域の情報を表す構造体です。
+|<<#_PlDmaMemInfo, 4.3.3.>>
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> に API の一覧を示します。
+
+[#_TablePublicAPI]
+.上位アプリから直接使用可能な API 一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+|PlDmaMemInitialize
+|本モジュールの初期化処理を行います。
+|<<#_PlDmaMemInitialize, 4.4.1.>>
+
+|PlDmaMemFinalize
+|本モジュールの終了処理を行います。
+|<<#_PlDmaMemFinalize, 4.4.2.>>
+
+|PlDmaMemAlloc
+|DmaMem 領域の物理メモリ領域を確保します。
+|<<#_PlDmaMemAlloc, 4.4.3.>>
+
+|PlDmaMemFree
+|DmaMem 領域の物理メモリ領域を解放します。
+|<<#_PlDmaMemFree, 4.4.4.>>
+
+|PlDmaMemMap
+|DmaMem 領域の物理メモリ領域に仮想メモリを割り当てます。
+|<<#_PlDmaMemMap, 4.4.5.>>
+
+|PlDmaMemUnmap
+|DmaMem 物理領域の仮想メモリへの割り当てを解除します。
+|<<#_PlDmaMemUnmap, 4.4.6.>>
+
+|PlDmaMemIsValid
+|物理メモリ領域のハンドルが有効かどうか確認します。
+|<<#_PlDmaMemIsValid, 4.4.7.>>
+
+|PlDmaMemGetMemInfo
+|DmaMem 領域の分割数、空き容量などを取得できます。
+|<<#_PlDmaMemGetMemInfo, 4.4.8.>>
+|===
+
+<<<
+
+=== ビルドコンフィグ
+[#_BuildConfig]
+==== ESP32S3
+
+* *書式* +
+[source, C]
+....
+CONFIG_ESP32S3_SPIRAM_DMA_SIZE=2097152
+....
+
+[#_BuildConfig_table]
+.BuildConfig の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|CONFIG_ESP32S3_SPIRAM_DMA_SIZE
+|DmaMem 領域の総サイズ。
+|===
+
+=== データ型定義
+[#_PlErrCode]
+==== PlErrCode
+API の実行結果を定義する列挙型です。
+(T.B.D.)
+
+[#_PlDmaMemHandle]
+==== PlDmaMemHandle
+DmaMem 領域の情報を表す構造体です。
+
+* *書式* +
+[source, C]
+....
+typedef void* PlDmaMemHandle;
+....
+
+[#_PlDmaMemInfo]
+==== PlDmaMemInfo
+DmaMem 領域の情報を表す構造体です。
+
+* *書式* +
+[source, C]
+....
+typedef struct {
+  uint32_t total_bytes;
+  uint32_t used_bytes;
+  uint32_t free_bytes;
+  uint32_t free_linear_bytes;
+} PlDmaMemInfo;
+....
+
+* *値*
+
+.PlDmaMemInfo の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|total_bytes
+|DmaMem 領域の総サイズ (バイト) を表します。
+|used_bytes
+|DmaMem 領域の使用中サイズ (バイト) を表します。
+|free_bytes
+|DmaMem 領域の空きサイズ (バイト) を表します。
+|free_linear_bytes
+|DmaMem 領域で最大の連続空きサイズ (バイト) を表します。
+|===
+
+=== 各 API の説明
+
+[#_PlDmaMemInitialize]
+==== PlDmaMemInitialize
+* *機能* +
+PL DmaMemory に関する初期化処理を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode  PlDmaMemInitialize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL DmaMemory に関する初期化処理を行います。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|すでに使用可能状態になっている。
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_PlDmaMemFinalize]
+==== PlDmaMemFinalize
+* *機能* +
+PL DmaMemory に関する終了処理を行います。
+
+* *書式* +
+[source, C]
+....
+PlErrCode  PlDmaMemFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL DmaMemory に関する終了処理を行います。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|すでに PL_DMA_READY になっている。
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlDmaMemAlloc]
+==== PlDmaMemAlloc
+
+* *機能* +
+DmaMem 領域の物理メモリ領域を確保します。
+
+* *書式* +
+[source, C]
+....
+PlDmaMemHandle PlDmaMemAlloc(uint32_t size)
+....
+
+* *引数の説明* +
+**[IN] uint32_t size**:: 
+** 確保したい DmaMem 領域のサイズ (バイト) 
+** DmaMem 領域に空き容量がない場合、エラーを返します。
+
+* *戻り値* +
+メモリが確保できた場合は、メモリ アドレスを返します。 +
+メモリが確保できできない場合は、NULL を返します。
+
+* *説明* +
+** DmaMem 領域の物理メモリ領域を確保します。
+** 本 API は PlDmaMemInitialize の実行後に使用可能です。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|NULL
+|メモリが確保できません
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlDmaMemFree]
+==== PlDmaMemFree
+
+* *機能* +
+DmaMem 領域の物理メモリ領域を解放します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode  PlDmaMemFree(const PlDmaMemHandle handle)
+....
+
+* *引数の説明* +
+**[IN] const PlDmaMemHandle handle**::
+解放したい物理メモリ領域のハンドル。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** DmaMem 領域の物理メモリ領域を解放します。
+** handle が不正値の場合、エラーを返します。
+** handle が NULL の場合、エラーを返します。
+** handle が PlDmaMemMap でマップされている場合、エラーを返します。
+*** Unmap を実施してから Free してください。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|PlErrInvalidState (仮)
+|PlDmaMemInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|PlErInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlDmaMemMap]
+==== PlDmaMemMap
+* *機能* +
+DmaMem 領域の物理メモリ領域に仮想メモリを割り当てます。
+
+* *書式* +
+[source, C]
+....
+PlErrCode  PlDmaMemMap(const PlDmaMemHandle handle, void **vaddr)
+....
+
+* *引数の説明* +
+**[IN] const PlDmaMemHandle handle**::
+対象の物理メモリ領域のハンドル。
+
+**[OUT] void {asterisk}{asterisk}vaddr**::
+DmaMem 領域をマップしたい仮想メモリ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** DmaMem 領域の物理メモリ領域に仮想メモリを割り当てます。
+** handle が NULL の場合、エラーを返します。
+** handle が不正値の場合、エラーを返します。
+** vaddr が NULL の場合、エラーを返します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|PlErrInvalidState(仮)
+|PlDmaMemInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|PlErrInvalidParam(仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|===
+
+<<<
+
+[#_PlDmaMemUnmap]
+==== PlDmaMemUnmap
+* *機能* +
+DmaMem 物理領域の仮想メモリへの割り当てを解除します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode  PlDmaMemUnmap(const void *vaddr)
+....
+
+* *引数の説明* +
+**[IN] const void *vaddr**::
+マップを解除したい仮想メモリ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** DmaMem 物理領域の仮想メモリへの割り当てを解除します。
+** vaddr が NULL の場合、エラーを返します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|PlErrInvalidState (仮)
+|PlDmaMemInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|PlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|===
+
+<<<
+
+[#_PlDmaMemIsValid]
+==== PlDmaMemIsValid
+* *機能* +
+物理メモリ領域のハンドルが有効かどうか確認します。
+
+* *書式* +
+[source, C]
+....
+bool PlDmaMemIsValid(const PlDmaMemHandle handle)
+....
+
+* *引数の説明* +
+**[IN] const PlDmaMemHandle handle**::
+有効性を確認したいハンドル。
+
+* *戻り値* +
+** ハンドルが有効な場合、true を返します。
+** ハンドルが無効な場合、false を返します。
+** ハンドルが NULL の場合、false を返します。
+
+* *説明* +
+** 物理メモリ領域のハンドルが有効かどうか確認します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|true/false
+|ハンドルが有効な場合、true を返します。ハンドルが無効な場合、false を返します。
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlDmaMemGetMemInfo]
+==== PlDmaMemGetMemInfo
+* *機能* +
+DmaMem 領域の分割数、空き容量などを取得できます。
+
+* *書式* +
+[source, C]
+....
+PlErrCode  PlDmaMemGetMemInfo(PlDmaMemInfo *info)
+....
+
+* *引数の説明* +
+**[OUT] PlDmaMemInfo *info**::
+DmaMem 領域情報の格納先。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 本 API を呼んだ時点での DmaMem 領域の空き容量などを取得できます。
+** info が NULL の場合、エラーを返します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|PlErrInvalidState(仮)
+|PlDmaMemInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|PlErrInvalidParam(仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|===
+
+<<<
+
+== API 使用時の呼び出し例
+=== Alloc～Free の一例
+.Alloc～Free までのシーケンス例
+image::./images/dmamem_example_seq.png[scaledwidth="100%",align="center"]
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+== 使用している OSS の一覧
+なし
+
+<<<
+
+== 参考文献
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+
+|0.0.2
+|- 全体 : 英単語の前後に半角空白を挿入 (読みやすくするため) +
+- 用語 : OSAL を削除し、PL を追加 +
+- OSAL (Osal) 記述を PL (Pl) に変更 +
+- OSAL_READY/OSAL_RUNNING を PL_DMA_READY/PL_DMA_RUNNING に変更 +
+- データ型に PlErrCode を追加 +
+- PlDmaMemInitialize/PlDmaMemFinalize API の並びを先頭に変更 +
+- PlDmaMemInitialize API にエラーコード追記 +
+- PlDmaMemFinalize API にエラーコード追記 +
+- PlDmaMemAlloc API のエラーコード変更 +
+- PlDmaMemFree API にエラーコード追記 +
+- PlDmaMemMap API にエラーコード追記 +
+- PlDmaMemUnmap API にエラーコード追記 +
+- PlDmaMemIsVaid API にエラーコード追記 +
+- PlDmaMemGetMemInfo API にエラーコード追記 +
+- 図 (*.png) を英語表記に変更
+|===

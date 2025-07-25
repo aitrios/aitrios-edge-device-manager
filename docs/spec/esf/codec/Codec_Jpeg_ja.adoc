@@ -1,0 +1,1265 @@
+= Codec Jpeg 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.8
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOSのJPEGエンコードを行うCodec(Jpeg)ブロックを定義します。JPEGデコードには対応しません。 +
+XXのバージョンXXに適用されます。
+
+<<<
+
+[#_用語]
+== 用語
+
+[#_RGB_Planar]
+=== RGB Planar
+* R,G,Bのplanar(平面)が順に並んでいる形式
+* ``stride[byte] = width[pixel] + padding[byte]``
+....
+|<-------------------- stride[byte] --------------------------->|
+|<-------------------- width[byte] ------------------>|
++-----------------------------------------------------+---------+
+|                                                     | padding |
+|                        R                            |         | height[pixel]
++-----------------------------------------------------+---------+
+|                                                     | padding |
+|                        G                            |         | height[pixel]
++-----------------------------------------------------+---------+
+|                                                     | padding |
+|                        B                            |         | height[pixel]
++-----------------------------------------------------+---------+
+....
+
+[#_RGB_Packed]
+=== RGB Packed
+* R,G,Bが1つのPackとして、順に並んでいる形式
+* ``stride[byte] = width[pixel] * 3 + padding[byte]``
+....
+|<-------------------- stride[byte] --------------------------->|
+|<-------------------- width*3[byte] ---------------->|
++-----------------------------------------------------+---------+
+|RGBRGB·········································RGBRGB| padding |
+|RGBRGB·········································RGBRGB|         | height[pixel]
++-----------------------------------------------------+---------+
+....
+
+[#_BGR_Packed]
+=== BGR Packed
+* B,G,Rが1つのPackとして、順に並んでいる形式
+* ``stride[byte] = width[pixel] * 3 + padding[byte]``
+....
+|<-------------------- stride[byte] --------------------------->|
+|<-------------------- width*3[byte] ---------------->|
++-----------------------------------------------------+---------+
+|BGRBGR·········································BGRBGR| padding |
+|BGRBGR·········································BGRBGR|         | height[pixel]
++-----------------------------------------------------+---------+
+....
+
+[#_GrayScale]
+=== GrayScale
+* 輝度データのみの形式
+* ``stride[byte] = width[pixel] + padding[byte]``
+....
+|<-------------------- stride[byte] --------------------------->|
+|<-------------------- width[byte] ------------------>|
++-----------------------------------------------------+---------+
+|                                                     | padding |
+|                        Y                            |         | height[pixel]
++-----------------------------------------------------+---------+
+....
+
+[#_YUV(NV12)]
+=== YUV(NV12)
+* YUVデータが、Yがplanar(平面)・UVがPackとして並んでいる形式
+* ``stride[byte] = width[pixel] + padding[byte]``
+....
+|<-------------------- stride[byte] --------------------------->|
+|<-------------------- width[byte] ------------------>|
++-----------------------------------------------------+---------+
+|                                                     | padding |
+|                        Y                            |         | height[pixel]
++-----------------------------------------------------+---------+
+|UVUVUV·········································UVUVUV| padding | height/2[pixel]
++-----------------------------------------------------+---------+
+....
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+JPEGエンコードを行います。
+
+.概要図
+
+<<<
+
+=== コンポーネントの詳細説明
+
+==== メモリアクセスの場合
+
+[{mermaid_block}]
+....
+graph TB;
+    direction LR
+    subgraph ESF
+
+        subgraph OSS
+            subgraph JpegLib
+                hal1[Jpegエンコード]
+            end
+        end
+
+        subgraph Codec
+            hi1[JPEGエンコード処理]
+        end
+        style Codec fill:#f9f
+
+	end
+    subgraph App
+        buf[buf:JPEG登録用バッファ]
+        mem[JPEG用メモリ管理]
+        buf <---> |メモリ確保/破棄| mem
+    end
+
+App ----> |JPEGエンコード要求| hi1
+hi1 --> |バッファへJPEGデータ登録<br>JPEG| buf
+hi1 ----> |JPEGエンコード開始|OSS
+OSS --> |JPEG| hi1
+
+....
+
+==== FileIOアクセスの場合
+[{mermaid_block}]
+....
+graph TB;
+    direction LR
+
+    subgraph OSS
+        subgraph JpegLib
+            hal1[Jpegエンコード]
+        end
+    end
+
+    subgraph Codec
+        hi1[JPEGエンコード処理]
+    end
+    style Codec fill:#f9f
+
+    subgraph MemoryManager
+    end
+
+    subgraph App
+    end
+
+App --> |入力側FileIOハンドル、出力側FileIOハンドル| Codec
+hi1 --> |入力データ|hal1
+hal1 --> |Jpegデータ| hi1
+hi1 --> |JpegデータをFileIOを用いてwrite|MemoryManager
+MemoryManager --> |入力データをFileIOを用いてread|hi1
+
+....
+
+==== MemoryManager管理領域使用の場合
+[{mermaid_block}]
+....
+graph TB;
+    direction LR
+
+    subgraph OSS
+        subgraph JpegLib
+            hal1[Jpegエンコード]
+        end
+    end
+
+    subgraph Codec
+        hi1[JPEGエンコード処理]
+    end
+    style Codec fill:#f9f
+
+    subgraph MemoryManager
+    end
+
+    subgraph App
+    end
+
+App --> |入力側MemoryManagerハンドル、出力側MemoryManagerハンドル| Codec
+hi1 --> |入力データ|hal1
+hal1 --> |Jpegデータ| hi1
+hi1 --> |JpegデータをMap/FileIOを用いてwrite|MemoryManager
+MemoryManager --> |入力データをMap/FileIOを用いてread|hi1
+....
+
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|OSS
+|JPEGエンコード
+|-
+
+|MemoryManager
+|FileIOアクセス
+|-
+
+|===
+
+
+<<<
+
+=== 状態遷移
+Codec_Jpegは状態を持たない。
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|JPEGエンコード機能（メモリアクセス）
+|JPEG画像を生成する
+|<<#_JPEGエンコード機能（メモリアクセス）>>
+
+|JPEGエンコード機能（FileIOアクセス）
+|入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
+|<<#_JPEGエンコード機能（FileIOアクセス）>>
+
+|JPEGエンコード機能（MemoryManager管理領域使用）
+|入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
+|<<#_JPEGエンコード機能（MemoryManager管理領域使用）>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_JPEGエンコード機能（メモリアクセス）]
+==== JPEGエンコード機能（メモリアクセス）
+* 機能概要
+    ** JPEGエンコードを行い、JPEG画像を出力する
+* 前提条件
+    ** 特になし
+* 機能詳細
+    ** 入力データにJPEGエンコードを行い、指定されたバッファにJPEG画像を出力する。
+    ** 対応する入力データは<<#_対応入力データ>>に記載
++
+[#_対応入力データ]
+.対応入力データ
+[width="100%",options="header"]
+|===
+|データの種類  |配置形式 | 色の並び | ビット深度 | カラーサンプリング形式 | データアライン | エンディアン
+
+|RGB Planar
+|Planar
+|R→G→B
+|8bit
+|-
+|pixel単位でbyteアライメント
+|ビッグエンディアン
+
+|RGB/BGR Packed
+|Packed
+|R→G→B +
+B→G→R
+|8bit
+|-
+|pixel単位でbyteアライメント
+|ビッグエンディアン
+
+|GrayScale
+|-
+|Yのみ
+|8bit
+|-
+|pixel単位でbyteアライメント
+|ビッグエンディアン
+
+|YUV(NV12)
+|Y：Planar +
+UV：Packed
+|Y→U→V
+|8bit
+|4:2:0
+|pixel、pack単位で1byteアライメント
+|ビッグエンディアン
+
+|===
+
+
+[#_JPEGエンコード機能（FileIOアクセス）]
+==== JPEGエンコード機能（FileIOアクセス）
+* 機能概要
+    ** 入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
+* 前提条件
+    ** MemoryManagerのFileIO機能がサポートされている環境が前提です。
+* 機能詳細
+    ** 入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
+    ** MemoryManagerのFileIOハンドルを引き渡してください。ハンドルはオープン状態である必要があります。FileIO以外のハンドル（LargeHeap, WasmHeap, DMAメモリ）が引き渡された場合はエラーとします。
+    ** 対応する入力データは<<#_対応入力データ>>に記載しています
+
+
+[#_JPEGエンコード機能（MemoryManager管理領域使用）]
+==== JPEGエンコード機能（MemoryManager管理領域使用）
+* 機能概要
+    ** 入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
+* 前提条件
+    ** （Map機能非サポート時）LargeHeapが使用できるデバイスであること。
+* 機能詳細
+    ** Map機能サポート状況により、異なる手順でJPEGエンコードを行います。
+       *** Map機能サポート +
+        MemoryManagerのMapアクセス機能を用いて、入力データを管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
+       *** Map機能非サポート +
+        MemoryManagerのFileIOアクセス機能を用いて、入力データをLargeHeap領域から読み取り、JPEGエンコードを行い、指定されたLargeHeap領域へ書き込みます。
+    ** MemoryManagerのハンドルを引き渡してください。
+    ** （Map機能非サポート時）LargeHeap領域以外のハンドル（WasmHeap, DMAメモリ）が引き渡された場合はエラーとします。
+    ** 対応する入力データは<<#_対応入力データ>>に記載しています
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|最大処理時間
+|128x96 : 15.065ms +
+640x480 : 324.059ms
+|<<#_最大処理時間>>
+
+|Stack最大使用量
+|2352byte
+|<<#_Stack最大使用量>>
+
+|ヒープメモリ使用量
+|128x96 : 24328byte +
+640x480 : 40774byte
+|<<#_ヒープメモリ使用量>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_最大処理時間]
+==== 最大処理時間
+設計時点でのT3S3の実測値を<<#_最大処理時間表>>に示す。
+
+[#_最大処理時間表]
+.最大処理時間表
+[width="100%",options="header"]
+|===
+|画像サイズ |Jpegモジュール部 |OSS部（libjpeg） | 合計
+|128x96
+|4.862ms
+|10.203ms
+|15.065ms
+
+|640x480
+|49.432ms
+|274.627ms
+|324.059ms
+
+|===
+
+
+[#_Stack最大使用量]
+==== Stack最大使用量
+設計時点でのT3S3の実測値は2352byte。
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+設計時点でのT3S3の実測値を<<#_ヒープメモリ使用量表>>に示す。
+
+[#_ヒープメモリ使用量表]
+.ヒープメモリ使用量表
+[width="100%",options="header"]
+|===
+|画像サイズ |Jpegモジュール部 |OSS部（libjpeg） | 合計
+|128x96
+|384byte
+|23944byte
+|24328byte
+
+|640x480
+|1920byte
+|38854byte
+|40774byte
+
+|===
+
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfCodecJpegError
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfCodecJpegError>>
+
+|EsfCodecJpegInputFormat
+|入力データフォーマットを定義する列挙型です。
+|<<#_EsfCodecJpegInputFormat>>
+
+|EsfCodecJpegOutputBuf
+|出力バッファ情報を定義する構造体です。
+|<<#_EsfCodecJpegOutputBuf>>
+
+|EsfCodecJpegEncParam
+|Jpegエンコードのパラメータを定義する構造体です。
+|<<#_EsfCodecJpegEncParam>>
+
+|EsfCodecJpegInfo
+|Jpegエンコードのパラメータを定義する構造体です。
+|<<#_EsfCodecJpegInfo>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfCodecJpegEncode
+|入力データにJPEGエンコードを行い、JPEG画像を出力する。
+|<<#_EsfCodecJpegEncode>>
+
+|EsfCodecJpegEncodeFileIo
+|入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
+|<<#_EsfCodecJpegEncodeFileIo>>
+
+|EsfCodecJpegEncodeHandle
+|入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
+|<<#_EsfCodecJpegEncodeHandle>>
+|===
+
+<<<
+
+=== データ型定義
+[#_EsfCodecJpegError]
+==== EsfCodecJpegError
+APIの実行結果を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kJpegSuccess,
+  kJpegParamError,
+  kJpegOssInternalError,
+  kJpegMemAllocError,
+  kJpegOtherError,
+  kJpegOutputBufferFullError
+} EsfCodecJpegError;
+....
+
+
+* *値*
++
+[#_EsfCodecJpegErrorの値の説明]
+.EsfCodecJpegErrorの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kJpegSuccess
+|エラーなし
+
+|kJpegParamError
+|パラメータエラー
+
+|kJpegOssInternalError
+|OSS内部エラー
+
+|kJpegMemAllocError
+|メモリ確保エラー
+
+|kJpegOtherError
+|その他エラー
+
+|kJpegOutputBufferFullError
+|出力バッファフルエラー
+
+|===
+
+
+[#_EsfCodecJpegInputFormat]
+==== EsfCodecJpegInputFormat
+入力データフォーマットを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kJpegInputRgbPlanar_8,
+  kJpegInputRgbPacked_8,
+  kJpegInputBgrPacked_8,
+  kJpegInputGray_8,
+  kJpegInputYuv_8
+} EsfCodecJpegInputFormat;
+....
+
+
+* *値*
++
+[#_EsfCodecJpegInputFormatの値の説明]
+.EsfCodecJpegInputFormatの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kJpegInputRgbPlanar_8
+|RGB Planar 8bit
+
+|kJpegInputRgbPacked_8
+|RGB Packed 8bit
+
+|kJpegInputBgrPacked_8
+|BGR Packed 8bit
+
+|kJpegInputGray_8
+|GrayScale 8bit
+
+|kJpegInputYuv_8
+|YUV(NV12) 8bit
+|===
+
+
+[#_EsfCodecJpegOutputBuf]
+==== EsfCodecJpegOutputBuf
+出力バッファを定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct{
+  uint64_t output_adr_handle;
+  int32_t output_buf_size;
+} EsfCodecJpegOutputBuf;
+....
+
+
+* *値*
++
+[#_EsfCodecJpegOutputBufの値の説明]
+.EsfCodecJpegOutputBufの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|output_adr_handle
+|JPEG画像出力先の先頭アドレス。0の設定は不可能。
+
+|output_buf_size
+|出力バッファサイズ
+
+|===
+
+
+[#_EsfCodecJpegEncParam]
+==== EsfCodecJpegEncParam
+Jpegエンコードのパラメータを定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct{
+  uint64_t input_adr_handle;
+  struct EsfCodecJpegOutputBuf out_buf;
+  EsfCodecJpegInputFormat input_fmt;
+  int32_t width;
+  int32_t height;
+  int32_t stride;
+  int32_t quality;
+} EsfCodecJpegEncParam;
+....
+
+
+* *値*
++
+[#_EsfCodecJpegEncParamの値の説明]
+.EsfCodecJpegEncParamの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|input_adr_handle
+|入力データの先頭アドレス。0の設定は不可能。
+
+|out_buf
+|出力バッファ情報。
+
+|input_fmt
+|入力データ形式
+
+|width
+|入力画像の横サイズ(pixel)。0以下の設定は不可能。
+
+|height
+|入力画像の縦サイズ(pixel)。0以下の設定は不可能。
+
+|stride
+|パディングを含めた入力画像のストライド(byte)。入力画像1行分のバイト数より小さい値の設定は不可能。
+
+|quality
+|画質(0:低品質~100:高品質)
+|===
+
+
+[#_EsfCodecJpegInfo]
+==== EsfCodecJpegInfo
+Jpegエンコードのパラメータを定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct{
+  EsfCodecJpegInputFormat input_fmt;
+  int32_t width;
+  int32_t height;
+  int32_t stride;
+  int32_t quality;
+} EsfCodecJpegInfo;
+....
+
+
+* *値*
++
+[#_EsfCodecJpegInfoの値の説明]
+.EsfCodecJpegInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|input_fmt
+|入力データ形式
+
+|width
+|入力画像の横サイズ(pixel)。0以下の設定は不可能。
+
+|height
+|入力画像の縦サイズ(pixel)。0以下の設定は不可能。
+
+|stride
+|パディングを含めた入力画像のストライド(byte)。入力画像1行分のバイト数より小さい値の設定は不可能。
+
+|quality
+|画質(0:低品質~100:高品質)
+
+|===
+
+<<<
+
+=== API定義
+
+[#_EsfCodecJpegEncode]
+==== EsfCodecJpegEncode
+* *機能*
++
+入力データをJPEGエンコードし、JPEG画像を出力する。
+
+
+* *書式* +
++
+``** EsfCodecJpegError EsfCodecJpegEncode( const EsfCodecJpegEncParam *enc_param, int32_t *jpeg_size )**``
+
+* *引数の説明* +
++
+**``[IN] const EsfCodecJpegEncParam *enc_param``**::
+JPEGエンコード用パラメータ
+**``[OUT] int32_t *jpeg_size``**::
+出力されるエンコード後のJPEG画像のサイズ
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfCodecJpegErrorの値の説明>>のいずれかの値が返ります。
++
+[#_EsfCodecJpegEncodeの戻り値の説明]
+.EsfCodecJpegEncodeの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kJpegSuccess
+|正常終了
+
+|kJpegParamError
+|・enc_paramがNULLの場合 +
+・enc_paramの値が不正な場合（詳細は<<#_EsfCodecJpegEncParamの値の説明>>を参照） +
+・jpeg_sizeがNULLの場合
+
+|kJpegOssInternalError
+|OSS内部でエラーが発生した場合
+
+|kJpegMemAllocError
+|メモリ確保に失敗した場合
+
+|kJpegOtherError
+|その他エラー
+
+|kJpegOutputBufferFullError
+|出力バッファがフルになった場合
+|===
+
+
+* *説明* +
+** 入力データをJPEGエンコードし、JPEG画像を出力する。JPEGエンコーダーに合わせた前処理・パラメータ設定等を行い、JPEGエンコードを行う。
+** 処理効率化の為、入力データと出力先のアドレス（enc_param->input_adr_handle、enc_param->out_buf.output_adr_handle）は4byteのアライメントがとれている事
+** 4byteアライメントがとれていない場合は処理効率が低下する
+** 出力用の領域はエンコード後のJpeg画像が収まるサイズを呼び元で確保してください。（収まらない場合は``kJpegOutputBufferFullError``を返します）
+** 同時に呼び出し可能です。
+** 複数のスレッドからの呼び出し可能です。
+** 複数のタスクからの呼び出しが可能です。
+** 関数内部でブロッキングしません。
+
+
+[#_EsfCodecJpegEncodeFileIo]
+==== EsfCodecJpegEncodeFileIo
+* *機能*
++
+入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
+
+
+* *書式* +
++
+``** EsfCodecJpegError EsfCodecJpegEncodeFileIo(EsfMemoryManagerHandle input_file_handle, EsfMemoryManagerHandle output_file_handle, const EsfCodecJpegInfo *info, int32_t *jpeg_size)**``
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle input_file_handle``**::
+入力側のMemoryManagerのFileIOハンドル
+**``[IN] EsfMemoryManagerHandle output_file_handle``**::
+出力側のMemoryManagerのFileIOハンドル
+**``[IN] const EsfCodecJpegInfo *info``**::
+JPEGエンコード用パラメータ
+**``[OUT] int32_t *jpeg_size``**::
+出力されるエンコード後のJPEG画像のサイズ
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfCodecJpegErrorの値の説明>>のいずれかの値が返ります。
++
+[#_EsfCodecJpegEncodeFileIoの戻り値の説明]
+.EsfCodecJpegEncodeFileIoの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kJpegSuccess
+|正常終了
+
+|kJpegParamError
+|・infoがNULLの場合 +
+・infoの値が不正な場合（詳細は<<#_EsfCodecJpegInfoの値の説明>>を参照） +
+・jpeg_sizeがNULLの場合 +
+・``input_file_handle``又は``output_file_handle``がFileIOハンドル以外（LargeHeap, WasmHeap, DMAメモリ）の場合 +
+・``input_file_handle``又は``output_file_handle``がクローズ状態のFileIOハンドルの場合 +
+
+|kJpegOssInternalError
+|OSS内部でエラーが発生した場合
+
+|kJpegMemAllocError
+|メモリ確保に失敗した場合
+
+|kJpegOtherError
+|その他エラー
+
+|kJpegOutputBufferFullError
+|出力バッファがフルになった場合
+|===
+
+
+* *説明* +
+** 入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
+** ``input_file_handle``及び``output_file_handle``はMemoryManagerの``EsfMemoryManagerFopen()``によってオープンされた状態で渡してください。
+** 出力用の領域はエンコード後のJpeg画像が収まるサイズを呼び元で確保してください。（収まらない場合は``kJpegOutputBufferFullError``を返します）
+** 同時に呼び出し可能です。
+** 複数のスレッドからの呼び出し可能です。
+** 複数のタスクからの呼び出しが可能です。
+** 関数内部でブロッキングしません。
+
+[#_EsfCodecJpegEncodeHandle]
+==== EsfCodecJpegEncodeHandle
+* *機能*
++
+入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
+
+
+* *書式* +
++
+``** EsfCodecJpegError EsfCodecJpegEncodeHandle(EsfMemoryManagerHandle input_handle, EsfMemoryManagerHandle output_handle, const EsfCodecJpegInfo *info, int32_t *jpeg_size)**``
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle input_handle``**::
+入力側のMemoryManagerのハンドル
+**``[IN] EsfMemoryManagerHandle output_handle``**::
+出力側のMemoryManagerのハンドル
+**``[IN] const EsfCodecJpegInfo *info``**::
+JPEGエンコード用パラメータ
+**``[OUT] int32_t *jpeg_size``**::
+出力されるエンコード後のJPEG画像のサイズ
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfCodecJpegErrorの値の説明>>のいずれかの値が返ります。
++
+[#_EsfCodecJpegEncodeHandleの戻り値の説明]
+.EsfCodecJpegEncodeHandleの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kJpegSuccess
+|正常終了
+
+|kJpegParamError
+|・infoがNULLの場合 +
+・infoの値が不正な場合（詳細は<<#_EsfCodecJpegInfoの値の説明>>を参照） +
+・jpeg_sizeがNULLの場合 +
+・（Map機能非サポート時）``input_handle``又は``output_handle``がLargeHeap領域向け以外（WasmHeap, DMAメモリ）の場合
+
+|kJpegOssInternalError
+|OSS内部でエラーが発生した場合
+
+|kJpegMemAllocError
+|メモリ確保に失敗した場合
+
+|kJpegOtherError
+|その他エラー
+
+|kJpegOutputBufferFullError
+|出力バッファがフルになった場合
+|===
+
+
+* *説明* +
+** 入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
+** 出力用の領域はエンコード後のJpeg画像が収まるサイズを呼び元で確保してください。（収まらない場合は``kJpegOutputBufferFullError``を返します）
+** 同時に呼び出し可能です。
+** 複数のスレッドからの呼び出し可能です。
+** 複数のタスクからの呼び出しが可能です。
+** 関数内部でブロッキングしません。
+<<<
+
+== API使用時の呼び出し例
+
+=== メモリアクセスの場合
+
+入力データがRGBの場合の呼び出し例を以下に示します。
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant jpeg as Codec_Jpeg
+    participant OSS
+
+    activate App
+    App ->> App: RGB用メモリ確保
+    App ->> App: RGBデータをメモリにコピー
+    App ->> App: JPEG出力先メモリ確保
+    App ->> +jpeg: JPEGエンコード開始要求
+    jpeg ->> +OSS: JPEGエンコード
+    OSS-->> -jpeg: エンコード完了:JPEGデータ
+    jpeg -->> -App: JPEG画像
+    App ->> App: RGB用のメモリ解放
+    App ->> App: JPEG画像をバッファに登録
+    deactivate App
+
+    Note over App:JPEG画像使用処理
+    activate App
+    App ->> App: JPEG出力先メモリ解放
+    deactivate App
+
+....
+
+
+=== FileIOアクセスの場合
+
+入力データがRGBの場合の呼び出し例を以下に示します。
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant mm as MemoryManager
+    participant jpeg as Codec_Jpeg
+
+    App ->> +mm: EsfMemoryManagerAllocate(kEsfMemoryManagerTargetLargeHeap)
+    Note over App:RGB用メモリ確保
+    mm -->> -App: input_file_handle
+    App ->> +mm: EsfMemoryManagerFopen(input_file_handle)
+    mm -->> -App: -
+    App ->> +mm: EsfMemoryManagerFwrite(input_file_handle, RGBデータ)
+    Note over App:RGBデータをメモリにコピー
+    mm -->> -App: -
+
+    App ->> +mm: EsfMemoryManagerAllocate(kEsfMemoryManagerTargetLargeHeap)
+    Note over App:JPEG出力先メモリ確保
+    mm -->> -App: output_file_handle
+    App ->> +mm: EsfMemoryManagerFopen(output_file_handle)
+    mm -->> -App: -
+
+    App ->> +jpeg: EsfCodecJpegEncodeFileIo(input_file_handle, output_file_handle, エンコードパラメータ, &jpeg_size)
+    jpeg -->> -App: JPEG画像
+
+    App ->> +mm: EsfMemoryManagerFclose(input_file_handle)
+    Note over App:RGB用のメモリ解放
+    mm -->> -App: -
+
+    App ->> +mm: EsfMemoryManagerFread(output_file_handle)
+    mm -->> -App: -
+    Note over App:JPEG画像使用処理
+
+    App ->> +mm: EsfMemoryManagerFclose(output_file_handle)
+    Note over App:JPEG出力先メモリ解放
+    mm -->> -App: -
+
+....
+
+==== MemoryManager管理領域使用(Map機能非サポート)の場合
+
+入力データがRGBの場合の呼び出し例を以下に示します。
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant mm as MemoryManager
+    participant jpeg as Codec_Jpeg
+
+    App ->> +mm: EsfMemoryManagerAllocate(kEsfMemoryManagerTargetLargeHeap)
+    Note over App:RGB用メモリ確保
+    mm -->> -App: input_handle
+    App ->> +mm: EsfMemoryManagerFopen(input_handle)
+    mm -->> -App: -
+    App ->> +mm: EsfMemoryManagerFwrite(input_handle, RGBデータ)
+    Note over App:RGBデータをメモリにコピー
+    mm -->> -App: -
+    App ->> +mm: EsfMemoryManagerFclose(input_handle)
+    mm -->> -App: -
+
+    App ->> +mm: EsfMemoryManagerAllocate(kEsfMemoryManagerTargetLargeHeap)
+    Note over App:JPEG出力先メモリ確保
+    mm -->> -App: output_handle
+
+    App ->> +jpeg: EsfCodecJpegEncodeHandle(input_handle, output_handle, エンコードパラメータ, &jpeg_size)
+    jpeg -->> -App: JPEG画像
+
+
+    App ->> +mm: EsfMemoryManagerFree(input_handle)
+    Note over App:RGB用のメモリ解放
+    mm -->> -App: -
+
+    App ->> +mm: EsfMemoryManagerFopen(output_handle)
+    mm -->> -App: -
+    App ->> +mm: EsfMemoryManagerFread(output_handle)
+    mm -->> -App: -
+    Note over App:JPEG画像使用処理
+
+    App ->> +mm: EsfMemoryManagerFclose(output_handle)
+    mm -->> -App: -
+    App ->> +mm: EsfMemoryManagerFree(output_handle)
+    Note over App:JPEG出力先メモリ解放
+    mm -->> -App: -
+
+....
+
+==== MemoryManager管理領域使用(Map機能サポート)の場合
+
+入力データがRGBの場合の呼び出し例を以下に示します。
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant mm as MemoryManager
+    participant jpeg as Codec_Jpeg
+
+    App ->> +mm: EsfMemoryManagerAllocate(kEsfMemoryManagerTargetLargeHeap | kEsfMemoryManagerTargetDma | kEsfMemoryManagerTargetWasmHeap)
+    Note over App:RGB用メモリ確保
+    mm -->> -App: input_handle
+    App ->> +mm: EsfMemoryManagerMap(input_handle,input_buf)
+    mm -->> -App: -
+    App ->> App: memset(input_buf, RGBデータ)
+    Note over App:RGBデータをメモリにコピー
+    App ->> +mm: EsfMemoryManagerUnmap(input_handle,input_buf)
+    mm -->> -App: -
+
+    App ->> +mm: EsfMemoryManagerAllocate(kEsfMemoryManagerTargetLargeHeap | kEsfMemoryManagerTargetDma | kEsfMemoryManagerTargetWasmHeap)
+    Note over App:JPEG出力先メモリ確保
+    mm -->> -App: output_handle
+
+    App ->> +jpeg: EsfCodecJpegEncodeHandle(input_handle, output_handle, エンコードパラメータ, &jpeg_size)
+    jpeg -->> -App: JPEG画像
+
+    App ->> +mm: EsfMemoryManagerMap(output_handle,output_buf)
+    mm -->> -App: -
+    App ->> App: JPEG画像使用処理
+
+    App ->> +mm: EsfMemoryManagerFree(input_handle)
+    Note over App:RGB用のメモリ解放
+    mm -->> -App: -
+
+    App ->> +mm: EsfMemoryManagerUnmap(output_handle,output_buf)
+    mm -->> -App: -
+    App ->> +mm: EsfMemoryManagerFree(output_handle)
+    Note over App:JPEG出力先メモリ解放
+    mm -->> -App: -
+....
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+* 入力データのビット深度は8bitのみ対応(その他は対応時にenumのメンバ追加)
+* 初回実装としては、libjpegのみサポート 。以降はサポートOSS等が増加する度に追加する。
+
+=== Config
+[#_Config一覧]
+.Config一覧
+[width="100%",options="header"]
+|===
+|変数名 |値  |デフォルト値|ファイル | 説明
+|CONFIG_EXTERNAL_CODEC_JPEG
+|tristate
+|``n``
+|src/esf/codec/jpeg/Kconfig
+|Jpegモジュールを有効にします。
+
+|CONFIG_EXTERNAL_CODEC_JPEG_OSS
+|choice
+|``EXTERNAL_CODEC_JPEG_OSS_LIBJPEG``
+|src/lib/lib_jpeg/Kconfig
+|Jpegに使用するOSSの種類です。``EXTERNAL_CODEC_JPEG_OSS_LIBJPEG``（libjpeg）,``EXTERNAL_CODEC_JPEG_OSS_LIBJPEG_TURBO``（libjpeg-turob（未サポート））を選択できます。
+
+|CONFIG_EXTERNAL_CODEC_JPEG_FILE_IO_WRITE_BUFFER_SIZE
+|int
+|``4096``
+|src/esf/codec/jpeg/Kconfig
+|EsfCodecJpegEncodeFileIo()実行時に、Jpeg画像を一時的に格納するために内部で確保するバッファサイズ(Byte)です。このサイズ単位でFileIOにアクセスしJpeg画像を書き込みます。
+
+|===
+
+
+=== 入力データフォーマットの将来拡張検討
+将来拡張を目的に検討。対応パターンを増やしていく場合は、データ変換部のみ別モジュール化して切り出す事を検討する。入力データフォーマットは主に下記の要素によって多数のパターンが存在する。
+
+* データの種類
+** RGBデータ、グレースケール、YUVなど
+* データパッキング
+** RGBデータを例にすると、同一画素のRGBデータを1セットに格納したりと複数色のデータを1セットの単位で配置していく方式
+** YUVの場合、UVのみパッキングするパターンも存在
+* 色の並び
+** RGBデータやYUVデータの色の並び
+** RGBだとR→G→B、B→G→Rなど
+* ビット深度
+** 1pixelあたりの1色のデータ量
+** 8,10,12,14,16ビットなど
+* カラーサンプリング形式
+** YUVやYCrCb画像などにで色データに対する色データのデータ量を示すもの
+** 4:4:4,4:2:2,4:1:1,4:2:0など
+* データのアライメント
+** 8,16ビット以外の場合、一定単位でアライメントを取るパターンが存在する
+** アライメントなしで連続配置、pixel(パッキング)単位、Line単位、各色のPlanar単位
+* エンディアン
+** 特殊なパターンを除くとLittleエンディアン、Bigエンディアンの2種類存在。
+
+==== 代表的なデータパターン
+* RGBデータの場合Planar、Packedの各R→G→B、B→G→R
+* YUVデータの場合
+** 4:4:4
+*** I444
++
+....
+YY・・・・
+YY・・・・
+UU・・・・
+UU・・・・
+VV・・・・
+VV・・・・
+....
+
+*** IYU2
++
+....
+UYVYUYVY・・・・・
+UYVYUYVY・・・・・
+....
+
+** 4:2:2
+*** I422
++
+....
+YYYY・・・・・
+YYYY・・・・・
+UU・・・・
+UU・・・・
+VV・・・・
+VV・・・・
+....
+
+*** YUY2
++
+....
+YUYVYUYV・・・・
+YUYVYUYV・・・・
+....
+
+*** UYVY
++
+....
+UYVYUYVY・・・・
+UYVYUYVY・・・・
+....
+
+** 4:2:0
+*** I420
++
+....
+YYYY・・・・・
+YYYY・・・・・
+UU・・・・・
+VV・・・・
+....
+
+*** YV12
++
+....
+YYYY・・・・・
+YYYY・・・・・
+VV・・・
+UU・・・
+....
+
+*** 420Planar
++
+....
+YY・・・・
+YY・・・・
+U・・・・
+V・・・・
+....
+
+*** NV12
++
+....
+YY・・・・
+YY・・・・
+UVUV・・・
+....
+
+*** NV21
++
+....
+YY・・・・
+YY・・・・
+VUVU・・・
+....
+
+<<<
+
+== 使用しているOSSの一覧
+* libjpeg
+** ライセンス：IJGライセンス バージョン：9f(2024/2/6時点最新)
+
+* libjpeg-turbo
+** ライセンス：IJGライセンス,BSDライセンス バージョン：3.0.2(2024/2/6時点最新)
+*** SIMD使用可能
+
+* libjpeg,libjpeg-turbo共通仕様・補足
+** 現在はビット深度を8bit固定で使用していますが、jmorecfg.hのBITS_IN_JSAMPLEを変更することで12bitまで対応可能。なおデータ配置はビッグエンディアンである必要がある。入力データのビット深度はdata_precisionというパラメータで設定可能。
+** JPEGエンコード設定が限定的と想定される為、下記内容にパラメータ設定を固定する。拡張する必要がある場合は、EsfCodecJpegEncode()の引数に追加して対応する。
+*** DCTアルゴリズム:速度優先
+*** ダウンサンプリング:なし
+
+<<<
+
+== 参考文献
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes
+|v0.0.1
+|初版リリース
+|v0.0.2
+|変更 +
+・画像フォーマットの説明を<<#_対応入力データ>>から<<#_用語>>に移動 +
+・定義名の修正 +
+　・ EsfSlJpegError -> EsfCodecJpegError +
+　・ EsfSlJpegInputFormat -> EsfCodecJpegInputFormat +
+　・ EsfSlCodecJpegEncode -> EsfCodecJpegEncode +
+追加 +
+・stride対応を追加 +
+・<<#_Config一覧>>を追加 +
+|v0.0.3
+|SSFをESFに修正 +
+<<#_EsfCodecJpegError>>に``kJpegOutputBufferFullError``を追加 +
+<<#_EsfCodecJpegEncode>>の戻り値に``kJpegOutputBufferFullError``を追加
+<<#_EsfCodecJpegEncode>>出力用領域についての説明を修正
+|v0.0.4
+|テスト用のConfigのため、説明を削除 +
+・CONFIG_EXTERNAL_CODEC_JPEG_BUILTIN_APP +
+・CONFIG_EXTERNAL_CODEC_JPEG_PROGNAME +
+・CONFIG_EXTERNAL_CODEC_JPEG_PRIORITY +
+・CONFIG_EXTERNAL_CODEC_JPEG_STACKSIZE
+|v0.0.5
+|FileIO対応を追加
+|v0.0.6
+|UtilityLogの仕様変更により、関数内部でブロッキングしない仕様に戻す。
+|v0.0.7
+|JPEGエンコード機能（LargeHeap領域使用）を追加 +
+|v0.0.8
+|``EsfCodecJpegEncodeHandle``のMap機能サポート時の仕様を修正
+|===

@@ -1,0 +1,1206 @@
+= Timer
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書ではUtilityとして提供するTimerの仕様について記載します。 +
+Timerの目的は、ESFやSystemApp等の上位レイヤーに対して、タイマー機能を提供することとなります。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|ESF
+|Edge System Framework. 上位レイヤーに当たるEdge Applicationを動作させるために必要な機能群
+|===
+
+<<<
+
+== コンポーネントの説明
+Timerレイヤーは、上位レイヤーに対して、タイマー機能の提供を行います。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/timer_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+Timerの使用例を以下に示します。 +
+Timer機能を使用する上位レイヤーは、UtilityTimerInitializeシーケンスが実行された直後から、 +
+TimerのAPIを使用して各種Timer機能を使うことができます。
+
+[#_timer_seq]
+.シーケンス概要
+image::./images/timer_seq.png[scaledwidth="100%",align="center"]
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |リンク
+|[T.B.D.] +
+ OSAL MSG
+|上位レイヤーからの要求をTimerThreadに伝えるために使用します。
+|[T.B.D.]
+|===
+
+<<<
+
+=== 状態遷移
+TIMERの取り得る状態を<<#_TableStates>>に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|TIMER_READY
+|初期状態。
+
+|TIMER_RUNNING
+|実行可能状態。
+
+|TIMER_START
+|タイマーが開始している状態。 +
+※TIMER_RUNNINGのサブ状態で、タイマー毎に状態を保持します。 +
+
+|TIMER_STOP
+|タイマーが停止している状態。 +
+※TIMER_RUNNINGのサブ状態で、タイマー毎に状態を保持します。 +
+
+|===
+
+Timerでは<<#_FigureState>>に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureState]
+.状態遷移図
+image::./images/timer_state.png[scaledwidth="100%",align="center"]
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。 +
+TIMER_RUNNINGはサブ状態を持っており、サブ状態については表中の2段目で示します。 +
+サブ状態はタイマー毎に保持しており、タイマー生成で状態管理を開始し、タイマー破棄で状態管理を終了します。 +
+
+表中の状態名は、API実行完了後の遷移先状態を示し、API呼び出し可能であることを示します。 +
+×はAPI受け付け不可能を示し、ここでのAPI呼び出しはエラーを返し状態遷移は起きません。 +
+-は状態遷移後に、その状態を管理していないことを示します。 +
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|状態 
+.2+|TIMER_READY
+2+|TIMER_RUNNING
+|TIMER_START
+|TIMER_STOP
+.20+|API名
+
+|``**UtilityTimerInitialize**``
+|TIMER_RUNNING +
+-
+|×
+|×
+
+|``**UtilityTimerFinalize**``
+|×
+|TIMER_READY
+|TIMER_READY
+
+|``**UtilityTimerCreate**``
+|×
+|TIMER_RUNNING +
+TIMER_STOP
+|TIMER_RUNNING +
+TIMER_STOP
+
+|``**UtilityTimerCreateEx**``
+|×
+|TIMER_RUNNING +
+TIMER_STOP
+|TIMER_RUNNING +
+TIMER_STOP
+
+|``**UtilityTimerStart**``
+|×
+|×
+|TIMER_RUNNING +
+TIMER_START
+
+|``**UtilityTimerStop**``
+|×
+|TIMER_RUNNING +
+TIMER_STOP
+|×
+
+|``**UtilityTimerDelete**``
+|×
+|×
+|TIMER_RUNNING +
+-
+
+|``**UtilityTimerGetSystemInfo**``
+|×
+|TIMER_RUNNING +
+TIMER_START
+|TIMER_RUNNING +
+TIMER_STOP
+|===
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|タイマー機能の初期化、終了処理
+|タイマー機能の初期化、終了処理を行います。
+|<<#_Function1>>
+
+|タイマー生成
+|タイマーを生成をします。
+|<<#_Function2>>
+
+|タイマー開始
+|タイマーを開始します。
+|<<#_Function3>>
+
+|タイマー停止
+|タイマーを停止します。
+|<<#_Function4>>
+
+|タイマー破棄
+|タイマーを破棄します。
+|<<#_Function5>>
+
+|タイマーに関するシステム情報の取得
+|タイマーに設定できる最小の周期などの情報を取得できます。
+|<<#_Function6>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== タイマー機能の初期化、終了処理
+機能概要::
+タイマー機能の初期化、終了処理を行います。
+前提条件::
+特になし
+機能詳細::
+詳細は<<#_UtilityTimerInitialize, UtilityTimerInitialize>>, <<#_UtilityTimerFinalize, UtilityTimerFinalize>>を参照してください。
+詳細挙動::
+詳細は<<#_UtilityTimerInitialize, UtilityTimerInitialize>>, <<#_UtilityTimerFinalize, UtilityTimerFinalize>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_UtilityTimerInitialize, UtilityTimerInitialize>>, <<#_UtilityTimerFinalize, UtilityTimerFinalize>>を参照してください。
+検討事項::
+特になし
+
+[#_Function2]
+==== タイマー生成
+機能概要::
+タイマーを生成します。
+前提条件::
+UtilityTimerInitialize()が実行済みであること
+機能詳細::
+詳細は<<#_UtilityTimerCreate, UtilityTimerCreate>>, <<#_UtilityTimerCreateEx, UtilityTimerCreateEx>>を参照してください。
+詳細挙動::
+詳細は<<#_UtilityTimerCreate, UtilityTimerCreate>>, <<#_UtilityTimerCreateEx, UtilityTimerCreateEx>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_UtilityTimerCreate, UtilityTimerCreate>>, <<#_UtilityTimerCreateEx, UtilityTimerCreateEx>>を参照してください。
+検討事項::
+特になし
+
+[#_Function3]
+==== タイマー開始
+機能概要::
+タイマーを開始します。
+前提条件::
+UtilityTimerInitialize()が実行済みであること +
+UtilityTimerCreate() または UtilityTimerCreateEx() でタイマーの生成済みであること
+機能詳細::
+詳細は<<#_UtilityTimerStart, UtilityTimerStart>>を参照してください。
+詳細挙動::
+詳細は<<#_UtilityTimerStart, UtilityTimerStart>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_UtilityTimerStart, UtilityTimerStart>>を参照してください。
+検討事項::
+特になし
+
+[#_Function4]
+==== タイマー停止
+機能概要::
+タイマーを停止します。
+前提条件::
+UtilityTimerInitialize()が実行済みであること +
+UtilityTimerCreate() または UtilityTimerCreateEx() でタイマーの生成済みであること
+機能詳細::
+詳細は<<#_UtilityTimerStop, UtilityTimerStop>>を参照してください。
+詳細挙動::
+詳細は<<#_UtilityTimerStop, UtilityTimerStop>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_UtilityTimerStop, UtilityTimerStop>>を参照してください。
+検討事項::
+特になし
+
+[#_Function5]
+==== タイマー破棄
+機能概要::
+タイマーを破棄します。
+前提条件::
+UtilityTimerInitialize()が実行済みであること +
+UtilityTimerCreate() または UtilityTimerCreateEx() でタイマーの生成済みであること
+機能詳細::
+詳細は<<#_UtilityTimerDelete, UtilityTimerDelete>>を参照してください。
+詳細挙動::
+詳細は<<#_UtilityTimerDelete, UtilityTimerDelete>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_UtilityTimerDelete, UtilityTimerDelete>>を参照してください。
+検討事項::
+特になし
+
+[#_Function6]
+==== タイマーに関するシステム情報の取得
+機能概要::
+タイマーに設定できる最小の周期などの情報を取得できます。
+前提条件::
+UtilityTimerInitialize()が実行済みであること
+機能詳細::
+詳細は<<#_UtilityTimerGetSystemInfo, UtilityTimerGetSystemInfo>>を参照してください。
+詳細挙動::
+詳細は<<#_UtilityTimerGetSystemInfo, UtilityTimerGetSystemInfo>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_UtilityTimerGetSystemInfo, UtilityTimerGetSystemInfo>>を参照してください。
+検討事項::
+特になし
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|Stack使用量の最大値(バイト数)
+|<<#_CompornentNonFunction, 3.7>>
+
+|ヒープ最大使用量
+|ヒープ使用量の最大値(バイト数)
+|<<#_CompornentNonFunction, 3.7>>
+
+|staticデータ使用量
+|staticデータ使用量(バイト数)
+|<<#_CompornentNonFunction, 3.7>>
+
+|パフォーマンス
+|各APIの処理時間
+|<<#_CompornentNonFunction, 3.7>>
+|===
+
+[#_CompornentNonFunction]
+=== コンポーネントの非機能要件説明
+
+==== Stack最大使用量
+** 1792(バイト)
+
+==== 通常ヒープ最大使用量
+** 128(バイト)
+
+==== staticヒープ最大使用量
+** 128(バイト)
+
+==== パフォーマンス
+** 1[ms]未満
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum UtilityTimerErrCode
+|APIの実行結果を定義する列挙型です。
+|<<#_UtilityTimerErrCode, 4.2.1>>
+
+|enum UtilityTimerRepeatType
+|タイマーを繰り返し実行するかどうかを定義する列挙型です。
+|<<#_UtilityTimerRepeatType, 4.2.2>>
+
+|UtilityTimerHandle
+|タイマーのハンドラーを表す構造体へのポインタです。
+|<<#_UtilityTimerHandle, 4.2.3>>
+
+|UtilityTimerCallback
+|タイマーコールバックを表す関数ポインタです。
+|<<#_UtilityTimerCallback, 4.2.4>>
+
+|UtilityTimerSystemInfo
+|タイマーに関するシステム情報を表す構造体です。
+|<<#_UtilityTimerSystemInfo, 4.2.5>>
+
+|===
+
+==== API一覧
+<<#_TablePublicAPI>>にAPIの一覧を示します。
+
+[#_TablePublicAPI]
+.使用可能なAPI一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API名 |概要 |節番号
+|UtilityTimerInitialize
+|タイマーに関する初期化処理を行います。
+|<<#_UtilityTimerInitialize, 4.3.1>>
+
+|UtilityTimerCreate
+|タイマーを生成します。
+|<<#_UtilityTimerCreate, 4.3.2>>
+
+|UtilityTimerCreateEx
+|スタックサイズ、スレッド優先度を指定してタイマーを生成します。
+|<<#_UtilityTimerCreateEx, 4.3.3>>
+
+|UtilityTimerStart
+|タイマーを開始します。
+|<<#_UtilityTimerStart, 4.3.4>>
+
+|UtilityTimerStop
+|タイマーを停止します。
+|<<#_UtilityTimerStop, 4.3.5>>
+
+|UtilityTimerDelete
+|タイマーを破棄します。
+|<<#_UtilityTimerDelete, 4.3.6>>
+
+|UtilityTimerGetSystemInfo
+|タイマーに関するシステム情報を取得できます。
+|<<#_UtilityTimerGetSystemInfo, 4.3.7>>
+
+|UtilityTimerFinalize
+|タイマーに関する終了処理を行います。
+|<<#_UtilityTimerFinalize, 4.3.8>>
+|===
+
+<<<
+
+=== データ型定義
+
+[#_UtilityTimerErrCode]
+==== UtilityTimerErrCode
+TimerAPIの実行結果を定義する列挙型です。 +
+
+* *書式*
+[source, C]
+....
+typedef enum {
+  kUtilityTimerOk = 0,
+  kUtilityTimerErrInvalidStatus,
+  kUtilityTimerErrInvalidParams,
+  kUtilityTimerErrNotFound,
+  kUtilityTimerErrBusy,
+  kUtilityTimerErrInternal,
+} UtilityTimerErrCode
+....
+
+[#_UtilityTimerRepeatType]
+==== UtilityTimerRepeatType
+タイマーを繰り返し実行するかどうかを定義する列挙型です。 +
+
+* *書式*
+[source, C]
+....
+typedef enum {
+  kUtilityTimerOneShot = 0,
+  kUtilityTimerRepeat,
+} UtilityTimerRepeatType;
+....
+
+[#_UtilityTimerHandle]
+==== UtilityTimerHandle
+タイマーのハンドラーを表す構造体です。 +
+UtilityTimerCreateで生成され、タイマー開始、停止に使用します。
+UtilityTimerDeleteで破棄することができます。
+
+* *書式*
+[source, C]
+....
+typedef void* UtilityTimerHandle;
+....
+
+[#_UtilityTimerCallback]
+==== UtilityTimerCallback
+タイマーコールバックを表す関数ポインタです。
+
+* *書式*
+[source, C]
+....
+typedef void (*UtilityTimerCallback)(void *timer_cb_params);
+....
+
+* *引数の説明* +
+**[IN] void *timer_cb_params**:: 
+UtilityTimerCreateで指定したtimer_cb_paramsがセットされます。
+
+<<<
+
+[#_UtilityTimerSystemInfo]
+==== UtilityTimerSystemInfo
+タイマーに関するシステム情報を表す構造体です。
+
+
+* *書式*
+[source, C]
+....
+typedef struct {
+    timespec interval_min_ts; // タイマーに指定可能な最小値
+    timespec interval_max_ts; // タイマーに指定可能な最大値
+} UtilityTimerSystemInfo;
+....
+
+* *値*
+
+.UtilityTimerSystemInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|timespec interval_min_ts
+|タイマーに指定可能な最小値
+
+|timespec interval_max_ts
+|タイマーに指定可能な最大値
+|===
+
+<<<
+
+=== 各APIの説明
+[#_UtilityTimerInitialize]
+==== UtilityTimerInitialize
+タイマーに関する初期化処理を行います。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerInitialize()
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** タイマー機能を使用する際は、必ず実施してください。
+*** 本API実施後から、各種タイマー機能を使用することができます。
+
+[#_UtilityTimerInitialize_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+他のコンテキストでUtilityTimerInitializeを実施中の場合は、完了を待ってから実行されます。 +
+|===
+
+[#_UtilityTimerInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeを実行済み
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInternal
+|何かしらのエラーが発生
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerCreate]
+==== UtilityTimerCreate
+
+* *機能* +
+タイマーを生成します。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerCreate(
+                        const UtilityTimerCallback utility_timer_cb,
+                        void *timer_cb_params,
+                        UtilityTimerHandle *utility_timer_handle);
+....
+
+* *引数の説明* +
+**[IN] const UtilityTimerCallback utility_timer_cb**:: 
+コールバック関数。 +
+UtilityTimerCreateで生成したタイマーが満了した際に実行されます。
+
+**[IN] void *timer_cb_params**:: 
+コールバック関数実行時に引数としてセットしたいポインタ。NULLでも構いません。
+
+**[OUT] UtilityTimerHandle *utility_timer_handle**:: 
+タイマーハンドラー。 +
+UtilityTimerStart/UtilityTimerStop/UtilityTimerDeleteの実行時に指定してください。
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** タイマーを生成します。
+** 本APIは、UtilityTimerInitializeの実行後に使用可能です。
+** 失敗した場合、handleの値は本API実行前の状態と同じになります。
+** 本APIはUtilityTimer内部にスレッドを生成します。
+*** スタックサイズは4096, スレッド優先度は CONFIG_UTILITY_TIMER_THREAD_PRIORITY が使用されます。
+** タイマー数の上限値はOSが定義するタイマー最大数に従います。 +
+例）NuttXの場合は、32個が上限
+** 複数のタイマでutility_timer_cbを共用する場合は、そのCallback関数内で排他制御の実装が必要です。
+** 本APIで取得したタイマーハンドラーを引数に、以下のAPIを使用可能です。
+*** UtilityTimerStart
+*** UtilityTimerStop
+*** UtilityTimerDelete
+
+WARNING: タイマーを多数作ると、後半に作られたタイマーのコールバックが最大5msほど遅れて到達することがあります。（調査中）
+
+[#_UtilityTimerCreate_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|タイマー生成要求まで：呼び元のコンテキストで動作 +
+タイマー生成：タイマー側のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+既に他のコンテキストでUtilityTimer APIが動作中の場合、完了を待ってから実行されます。 +
+タイマーコールバックの実行と被った場合、ブロッキングされ、コールバック処理の完了を待ってから実行されます。
+|===
+
+[#UtilityTimerCreate_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが実行されていない
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrInvalidParams
+|パラメータエラー
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrBusy
+|タイマーの上限値を超えた場合
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrInternal
+|何かしらのエラーが発生
+|変更なし
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerCreateEx]
+==== UtilityTimerCreateEx
+
+* *機能* +
+タイマーを生成します。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerCreateEx(const UtilityTimerCallback callback,
+                                         void *cb_params,
+                                         int priority,
+                                         size_t stacksize,
+                                         UtilityTimerHandle *timer_handle);
+....
+
+* *引数の説明* +
+**[IN] const UtilityTimerCallback callback**:: 
+コールバック関数。 +
+UtilityTimerCreateExで生成したタイマーが満了した際に実行されます。
+
+**[IN] void *cb_params**:: 
+コールバック関数実行時に引数としてセットしたいポインタ。NULLでも構いません。
+
+**[IN] int priority**:: 
+コールバック関数を実行するUtilityTimer側のスレッド優先度。
+pthread_attr_setschedparam の仕様に従います。
+
+**[IN] size_t stacksize**:: 
+コールバック関数を実行するUtilityTimer側のスレッドのスタックサイズ。
+pthread_attr_setstacksize の仕様に従います。
+
+**[OUT] UtilityTimerHandle *utility_timer_handle**:: 
+タイマーハンドラー。 +
+UtilityTimerStart/UtilityTimerStop/UtilityTimerDeleteの実行時に指定してください。
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** タイマーを生成します。
+** 本APIは、UtilityTimerInitializeの実行後に使用可能です。
+** 失敗した場合、handleの値は本API実行前の状態と同じになります。
+** タイマー数の上限値はOSが定義するタイマー最大数に従います。 +
+** 本APIはUtilityTimer内部にスレッドを生成します。
+*** スタックサイズは引数stacksize, スレッド優先度は引数priorityが使用されます。
+例）NuttXの場合は、32個が上限
+** 本APIで取得したタイマーハンドラーを引数に、以下のAPIを使用可能です。
+*** UtilityTimerStart
+*** UtilityTimerStop
+*** UtilityTimerDelete
+
+WARNING: タイマーを多数作ると、後半に作られたタイマーのコールバックが最大5msほど遅れて到達することがあります。（調査中）
+
+[#_UtilityTimerCreateEx_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|タイマー生成要求まで：呼び元のコンテキストで動作 +
+タイマー生成：タイマー側のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+既に他のコンテキストでUtilityTimer APIが動作中の場合、完了を待ってから実行されます。 +
+タイマーコールバックの実行と被った場合、ブロッキングされ、コールバック処理の完了を待ってから実行されます。
+|===
+
+[#UtilityTimerCreateEx_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが実行されていない
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrInvalidParams
+|パラメータエラー
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrBusy
+|タイマーの上限値を超えた場合
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrInternal
+|何かしらのエラーが発生
+|変更なし
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerStart]
+==== UtilityTimerStart
+
+* *機能* +
+タイマーを開始します。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerStart(
+                        const UtilityTimerHandle utility_timer_handle,
+                        const struct timespec *interval_ts,
+                        const UtilityTimerRepeatType utility_timer_repeat_type);
+....
+
+* *引数の説明* +
+**[IN] const UtilityTimerHandle utility_timer_handle**:: 
+開始したいタイマーのハンドラー。 +
+UtilityTimerCreateで返却されたものを使用してください。
+
+**[IN] const struct timespec *interval_ts**:: 
+** タイマーの周期。sec + nsecを周期としてタイマーを開始します。
+*** time.tv_sec ... 単位[s]
+*** time.tv_nsec ... 単位[ns]（ナノ秒）
+
+**[IN] const UtilityTimerRepeatType utility_timer_repeat_type**:: 
+タイマーを繰り返し実行するかどうかのフラグ。 +  
+kUtilityTimerRepeat: 繰り返し kUtilityTimerOneShot: 1回のみ
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** タイマーを開始します。
+** 本APIは、UtilityTimerInitializeの実行後に使用可能です。
+** 指定したタイマーがすでに開始されている場合は、エラーを返します。 +
+** タイマーに指定可能な最小値/最大値の範囲外の場合、エラーを返します。 +
+最小値/最大値はUtilityTimerGetSystemInfoで取得してください。
+** 指定された周期は、タイマーの最小単位周期（＝タイマーに指定可能な最小値）で切り上げをして処理されます。 +
+例）最小単位周期を10nsと仮定し、15nsを指定した場合は、20nsのタイマーとして処理されます。
+** utility_timer_repeat_type=kUtilityTimerOneShotのとき、タイマーの開始・コールバックの実行は1回のみで終了します。コールバック実行後にUtilityTimerStopでタイマーを停止してください。
+** utility_timer_repeat_type=kUtilityTimerRepeatのとき、タイマーの稼働・コールバックの実行はUtilityTimerStopされるまで繰り返し動き続けます。
+** callbackはUtilityTimer側のスレッドで実行されます。
+*** タイマー側のスレッドはUtilityTimerCreate/UtilityTimerCreateEx 毎に生成されます。
+
+[#_UtilityTimerStart_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|タイマー開始要求まで：呼び元のコンテキストで動作 +
+タイマー開始、タイマーコールバックの実行：タイマー側のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+既に他のコンテキストでUtilityTimer APIが動作中の場合、完了を待ってから実行されます。 +
+タイマーコールバックの実行と被った場合、ブロッキングされ、コールバック処理の完了を待ってから実行されます。
+|===
+
+[#UtilityTimerStart_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが実行されていない +
+タイマーがすでに開始されている
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInvalidParams
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrNotFound
+|指定したハンドラーが存在しない
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInternal
+|何かしらのエラーが発生
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerStop]
+==== UtilityTimerStop
+* *機能* +
+タイマーを停止します。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerStop(const UtilityTimerHandle utility_timer_handle)
+....
+
+* *引数の説明* +
+**[IN] const UtilityTimerHandle utility_timer_handle**:: 
+停止したいタイマーのハンドラー。 +
+UtilityTimerCreateで返却されたものを使用してください。
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** UtilityTimerStartで開始したタイマーを停止します。
+** 本APIは、UtilityTimerInitializeの実行後に使用可能です。
+** 指定したタイマーがすでに停止されている場合は、エラーを返します。 +
+** UtilityTimerStopをせずにUtilityFinalizeを実行した場合、タイマー内部で自動的に停止処理とタイマー破棄が行われます。
+
+[#_UtilityTimerStop_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+タイマーコールバックの実行と被った場合、ブロッキングされ、コールバック処理の完了を待ってから実行されます。
+|===
+
+[#_UtilityTimerStop_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが実行されていない +
+タイマーがすでに停止されている
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInvalidParams
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrNotFound
+|指定したハンドラーが存在しない
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInternal
+|何かしらのエラーが発生
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerDelete]
+==== UtilityTimerDelete
+* *機能* +
+タイマーを破棄します。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerDelete(UtilityTimerHandle utility_timer_handle)
+....
+
+* *引数の説明* +
+**[IN] const UtilityTimerHandle utility_timer_handle**:: 
+破棄したいタイマーのハンドラー。 +
+UtilityTimerCreateで返却されたものを使用してください。
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** UtilityTimerCreateで生成したタイマーを破棄します。
+** 本APIは、UtilityTimerInitializeの実行後に使用可能です。
+** 指定したタイマーが動作中の場合は、エラーを返します。 +
+*** 先にタイマーの停止を行ってください。
+** UtilityTimerDeleteをせずにUtilityTimerFinalizeを実行した場合、タイマー内部で自動でタイマー破棄が行われます。
+*** タイマー数の制限があるため、使い終わったタイマーは破棄するようにしてください。
+
+[#_UtilityTimerDelete_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+対象ハンドラーのタイマーが停止処理中の場合は、停止処理完了を待ってから実行されます。
+|===
+
+[#_UtilityTimerDelete_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが実行されていない +
+タイマーが停止されていない
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInvalidParams
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrNotFound
+|指定したハンドラーが存在しない
+|-
+|影響なし
+|不要
+
+|kUtilityTimerErrInternal
+|何かしらのエラーが発生
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerGetSystemInfo]
+==== UtilityTimerGetSystemInfo
+* *機能* +
+タイマーに関するシステム情報を取得できます。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerGetSystemInfo(UtilityTimerSystemInfo *utility_timer_sysinfo)
+....
+
+* *引数の説明* +
+**[OUT] struct UtilityTimerSystemInfo *utility_timer_sysinfo**:: 
+タイマーに関するシステム情報。
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 本APIは、UtilityTimerInitializeの実行後に使用可能です。
+** 失敗した場合、utility_timer_sysinfoの値は本API実行前の状態と同じになります。
+
+・「Nuttxドキュメント - System Time and Clock」より、100us が最小単位です。
+[width="100%", cols="100%",options="header"]
+|===
+|System Timer
+In most implementations, system time is provided by a timer interrupt. That timer interrupt runs at rate determined by
+CONFIG_USEC_PER_TICK
+(default 10000 microseconds or 100Hz. If
+CONFIG_SCHED_TICKLESS
+is selected, the default is 100 microseconds).
+|===
+
+[#_UtilityTimerGetSystemInfo_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_UtilityTimerGetSystemInfo_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが実行されていない
+|変更なし
+|影響なし
+|不要
+
+|kUtilityTimerErrInvalidParams
+|パラメータエラー
+|変更なし
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_UtilityTimerFinalize]
+==== UtilityTimerFinalize
+[HAL内部API] タイマーに関する終了処理を行います。
+
+* *書式* +
+[source, C]
+....
+UtilityTimerErrCode UtilityTimerFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて UtilityTimerErrCode のいずれかの値が返ります。
+
+* *説明* +
+** タイマー機能を使用しなくなった際は、必ず実施してください。
+
+[#_UtilityTimerFinalize_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。 +
+既に他のコンテキストでUtilityTimer APIが動作中の場合、完了を待ってから実行されます。 +
+|===
+
+[#_UtilityTimerFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kUtilityTimerErrInvalidStatus
+|UtilityTimerInitializeが1度も実行されていない
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+== API使用時の呼び出し例
+
+.UtilityTimerStart/Stop(例)
+image::./images/timer_example.png[scaledwidth="100%",align="center"]
+
+== 特記事項やコンポーネントごとの特有の説明事項
+特になし
+
+<<<
+
+== 使用しているOSSの一覧
+特になし
+
+<<<
+
+== 参考文献
+・Nuttxドキュメント - System Time and Clock
+　https://nuttx.apache.org/docs/latest/reference/os/time_clock.html#basic-system-timer
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+|0.0.2
+|UtilityTimerCreateExを追加
+|===

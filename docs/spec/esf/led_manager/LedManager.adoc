@@ -1,0 +1,1662 @@
+= Led Manager Function Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.18
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document describes the Led Manager module. 
+This applies to version XX of XX.
+
+<<<
+
+== Terminology
+=== ESF
+ESF(AITRIOS edge software framework) +
+
+* A layer with AITRIOS-standard APIs that can be executed from various applications.
+* It is generally unaffected by changes in OS, chips, etc.
+* As it forms the core of application functionality, the function will be managed by SSS.
+* By separating it into blocks, we minimize the impact of changes, such as those involving sensors.
+
+=== Lighting Retention Setting
+
+* This setting determines whether the lighting state of each LED should be retained or not. 
+* When enabled, the current lighting state of the specified LED is retained. +
+Although the state can still be updated while enabled, the visible lighting does not change.
+* When disabled, the lighting behavior reflects the most prioritized state, including any states set while the retention was previously enabled.
+
+<<<
+
+== Component Description
+=== Component Overview
+This module controls the LED lighting as described in the <<#_Software,Overview Diagram>>, illuminating the LEDs according to the assigned states.
+
+[#_Software]
+.Overview Diagram
+
+[{mermaid_block}]
+----
+graph TB;
+app[App]
+subgraph ssf[ESF]
+    subgraph module[Modules]
+    end
+    subgraph led_manager[LED Manager]
+    end
+    hal[PL LED]
+end
+app  --> |State configuration{mermaid_br}Update LED hold setting| led_manager
+module  --> |State configuration{mermaid_br}Update LED hold setting| led_manager
+led_manager --> |LED control| hal
+----
+
+
+<<<
+
+=== Detailed Component Description
+This module is initialized and finalized by the ESF main process. +
+Each individual module can use the provided APIs to set LED states. The LED Manager selects the highest-priority active state and reflects it to the LED via the PL LED API. +
+The LED behavior and priority for each state can be customized per product or project. +
+For details on LED behavior and priority, refer to <<#_StatePriority,"6.1. LED State List and Priority">>. +
+However, if the LED hold setting is enabled for a particular LED, the LED will retain the lighting state that was active at the time the hold setting was enabled. This state will be maintained until the hold flag is disabled.
+
+[#_FigureDetail_DataFlow]
+.Process Flow Diagram
+[{mermaid_block}]
+----
+graph LR;
+app[App]
+subgraph ESF
+  main[Main]
+  module[Modules]
+  led[Led Manager]
+  table[State Priority Table]
+  pl[PL Led]
+end
+
+main  --> |"Initialize/Finalize"| led
+module  --> |"Set State{mermaid_br}Update LED Hold Setting"| led
+led  --> |"Get State"| module
+app  --> |"Set State{mermaid_br}Update LED Hold Setting"| led
+led  --> |"Get LED Display Info"| table
+led  --> |"Get State"| app
+led  --> |"Control LED"| pl
+----
+
+
+<<<
+
+=== State Transitions
+<<#_TableStates>> shows the possible states of Led Manager.
+
+[#_TableStates]
+.List of States
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description 
+
+|UNINIT
+|Initial state.
+
+|IDLE
+|Waiting for processing.
+
+|===
+
+The Led Manager performs state transitions as defined in the <<#_FigureLedManagerStateTransition,State Transition Diagram>> when each API is invoked. +
+If an error occurs with any API, no state transition will take place. +
+
+[#_FigureLedManagerStateTransition]
+.State Transition Diagram
+[{mermaid_block}]
+----
+stateDiagram-v2
+    direction LR
+    [*] --> UNINIT
+        UNINIT --> IDLE:EsfLedManagerInit
+        UNINIT --> UNINIT:EsfLedManagerDeinit
+        IDLE --> UNINIT:EsfLedManagerDeinit
+        IDLE --> IDLE:EsfLedManagerInit{mermaid_br}EsfLedManagerSetStatus{mermaid_br}EsfLedManagerGetStatus{mermaid_br}EsfLedManagerSetLightingPersistence 
+----
+
+<<#_TableStateTransition>> indicates whether or not to accept the API and the state transition destination in each state. +
+The state names in the table indicate the state after the API execution is completed, which means the API can be called. +
+"X" signifies that the API is not accepted. Calling the API in this state will return error and no state transition will occur.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,15%,15%"]
+|===
+2.2+| 2+|State 
+^|UNINIT ^|IDLE
+.5+|API Name
+
+|EsfLedManagerInit           
+^|IDLE               
+^|IDLE
+
+|EsfLedManagerDeinit 
+^|UNINIT                      
+^|UNINIT                
+
+|EsfLedManagerSetStatus   
+^|X                    
+^|IDLE                 
+
+|EsfLedManagerGetStatus   
+^|X                      
+^|IDLE  
+
+|EsfLedManagerSetLightingPersistence 
+^|X
+^|IDLE
+
+|===
+
+<<<
+
+
+=== Component Function List
+Refer to <<#_TableFunction>> for details of each function.
+
+[#_TableFunction]
+.Functions
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|Function Name |Overview  |Section
+|Led Manager initialization
+|Initialize the Led Manager.
+|<<#_Function1>>
+
+|Led Manager termination
+|Terminates the Led Manager.
+|<<#_Function2>>
+
+|State configuration acquisition
+|Provides functionality to set and retrieve LED states.
+|<<#_Function3>>
+
+|Light retention setting
+|Allows enabling or disabling of individual LED light retention settings.
+|<<#_Function4>>
+|===
+
+<<<
+
+=== Component Details
+[#_Function1]
+==== Led Manager initialization
+* Overview +
+This function initializes Led Manager.
+* Prerequisites +
+There are no prerequisites.
+* Details +
+    Provides the functionality to initialize the Led Manager. +
+    For details, refer to the API specification. +
+    <<#_EsfLedManagerInit,[EsfLedManagerInit]>>
+
+[#_Function2]
+==== Led Manager termination
+* Overview +
+Handles the termination process for the Led Manager.
+* Prerequisites +
+There are no prerequisites.
+* Details +
+    Turns off LEDs and finalizes the Led Manager. +
+    Also finalizes the PL Led module. +
+    For details, refer to the API specification. +
+    <<#_EsfLedManagerDeinit,[ EsfLedManagerDeinit ]>>
+
+[#_Function3]
+==== State configuration acquisition
+* Overview +
+Provides functionality to configure and retrieve LED states.
+* Prerequisites +
+The Led Manager is initialized.
+* Details +
+** State configuration +
+After setting the state, the LED will light according to the highest-priority active state among all enabled states. +
+For details, refer to the API specification. +
+<<#_EsfLedManagerSetStatus,[ EsfLedManagerSetStatus ]>>
+
+** State retrieval +
+Retrieves the current state of a specified LED. +
+For details, refer to the API specification. +
+<<#_EsfLedManagerGetStatus,[ EsfLedManagerGetStatus ]>>
+
+[#_Function4]
+==== Light retention setting
+* Overview +
+Manages whether each LED should maintain its current lighting state.
+* Prerequisites +
+The Led Manager is initialized.
+* Details +
+** LED light retention setting +
+You can enable or disable lighting retention per LED. When enabled, the current lighting state is maintained until persistence is disabled. +
+For details, refer to the API specification. +
+<<#_EsfLedManagerSetLightingPersistence ,[ EsfLedManagerSetLightingPersistence ]>>
+
+<<<
+
+=== Nonfunctional requirements
+
+Refer to <<#_TableNonFunction>> for the non-functional requirements.
+
+[#_TableNonFunction]
+.Nonfunctional requirements
+[width="100%", cols="20%,15%,55%,10%",options="header"]
+|===
+|Function Name |Value |Overview |Section
+|Maximum Processing Time
+|Up to 1 ms (excluding external factors)
+|Indicates the maximum time required for processing.
+|<<#_NonFunction1>>
+
+|Stack Memory Usage
+|1KB
+|Maximum stack memory size used.
+|<<#_NonFunction2>>
+
+|Heap Memory Usage
+|0.26KB
+|Maximum heap memory size used.
+|<<#_NonFunction3>>
+
+|Thread Usage
+|Not used
+|Number of threads used.
+|<<#_NonFunction4>>
+
+|Static Memory Usage
+|0.54KB
+|Maximum static memory size used.
+|<<#_NonFunction5>>
+
+|===
+
+<<<
+
+=== Non-functional Requirements Details
+[#_NonFunction1]
+==== Maximum Processing Time
+The processing time from state setting to LED operation is up to 1msec. +
+However, this excludes external factors such as access time to the PL Led module.
+[#_NonFunction2]
+==== Stack Memory Usage
+1KB
+[#_NonFunction3]
+==== Heap Memory Usage
+0.26KB
+[#_NonFunction4]
+==== Thread Usage
+Not used
+[#_NonFunction5]
+==== Static Memory Usage
+0.54KB
+
+
+<<<
+
+== API Specification
+=== Definition
+==== Data Types
+Refer to <<#_TableDataType>> for data types.
+
+[#_TableDataType]
+.Data Types
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|Name |Overview  |Section
+|EsfLedManagerResult
+|Enumeration representing return values used by the LED Manager.
+|<<#_EsfLedManagerResult>>
+
+|EsfLedManagerTargetLed
+|Enumeration used to specify the target LED.
+|<<#_EsfLedManagerTargetLed>>
+
+|EsfLedManagerLedStatus
+|Enumeration defining the LED status.
+|<<#_EsfLedManagerLedStatus>>
+
+|EsfLedManagerLedStatusInfo
+|Structure used by each module to set or retrieve LED status.
+|<<#_EsfLedManagerLedStatusInfo>>
+
+|===
+
+==== APIs
+Refer to <<#_TableAPI>> for the supported APIs.
+
+[#_TableAPI]
+.APIs
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|API Name |Overview  |Section
+|EsfLedManagerInit
+|Perform initialization.
+|<<#_EsfLedManagerInit>>
+
+|EsfLedManagerDeinit
+|Perform termination.
+|<<#_EsfLedManagerDeinit>>
+
+|EsfLedManagerSetStatus
+|Sets the status of the specified LED.
+|<<#_EsfLedManagerSetStatus>>
+
+|EsfLedManagerGetStatus
+|Retrieves the status of the specified LED.
+|<<#_EsfLedManagerGetStatus>>
+
+|EsfLedManagerSetLightingPersistence 
+|Updates the lighting retention setting of the specified LED.
+|<<#_EsfLedManagerSetLightingPersistence>>
+|===
+
+<<<
+
+=== Data Type Definition
+[#_EsfLedManagerResult]
+==== EsfLedManagerResult
+An enumeration type representing the return values used by the LED Manager.
+
+* *Format*
++
+[source, C]
+....
+typedef enum EsfLedManagerResult{
+    kEsfLedManagerSuccess,
+    kEsfLedManagerInternalError,
+    kEsfLedManagerInvalidArgument,
+    kEsfLedManagerTimeOut,
+    kEsfLedManagerStatusNotFound,
+    kEsfLedManagerStateTransitionError,
+    kEsfLedManagerOutOfMemory,
+    kEsfLedManagerLedOperateError,
+} EsfLedManagerResult;
+....
+
+
+* *Value* 
++
+[#_TableEsfLedManagerResult]
+.Values of EsfLedManagerResult
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerSuccess
+|Returned when the operation completes successfully.
+
+|kEsfLedManagerInternalError
+|Returned when an internal processing error occurs.
+
+|kEsfLedManagerInvalidArgument
+|Returned when there is an invalid argument.
+
+|kEsfLedManagerTimeOut
+|Returned when the operation times out.
+
+|kEsfLedManagerStatusNotFound
+|Returned when the specified status is not found.
+
+|kEsfLedManagerStateTransitionError
+|Returned when a state transition error is detected.
+
+|kEsfLedManagerOutOfMemory
+|Returned when memory allocation fails.
+
+|kEsfLedManagerLedOperateError
+|Returned when an error occurs during LED operation.
+|===
+
+[#_EsfLedManagerTargetLed]
+==== EsfLedManagerTargetLed
+Enumeration used to specify the target LED.
+
+* *Format*
++
+[source, C]
+....
+typedef enum EsfLedManagerTargetLed {
+  kEsfLedManagerTargetLedPower,
+  kEsfLedManagerTargetLedWifi,
+  kEsfLedManagerTargetLedService,
+  kEsfLedManagerTargetLedNum
+} EsfLedManagerTargetLed;
+....
+
+* *Value* 
++
+[#_EsfLedManagerTargetLedValue]
+.Values of EsfLedManagerTargetLed
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerTargetLedPower
+|Value used to specify the target Power LED.
+
+|kEsfLedManagerTargetLedWifi
+|Value used to specify the target Wifi LED.
+
+|kEsfLedManagerTargetLedService
+|Value used to specify the target Service LED.
+
+|kEsfLedManagerTargetLedNum
+|Number of the LEDs.
+|===
+
+[#_EsfLedManagerLedStatus]
+==== EsfLedManagerLedStatus
+Enumeration defining the LED status. +
+The value corresponds to the state definitions listed in the <<#_StatePriority,Status Table>>.
+
+* *Format*
++
+[source, C]
+....
+typedef enum EsfLedManagerLedStatus {
+  kEsfLedManagerLedStatusForcedOff,
+  kEsfLedManagerLedStatusResetting,
+  kEsfLedManagerLedStatusAbleToAcceptInputs,
+  kEsfLedManagerLedStatusUnableToAcceptInputs,
+  kEsfLedManagerLedStatusConnectedWithTLS,
+  kEsfLedManagerLedStatusConnectedWithoutTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP,
+  kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer,
+  kEsfLedManagerLedStatusDisconnectedNoInternetConnection,
+  kEsfLedManagerLedStatusDisconnectedConnectingWithTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingProxy,
+  kEsfLedManagerLedStatusWaitingForInputsToConnectConsole,
+  kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner,
+  kEsfLedManagerLedStatusSearchingAP,
+  kEsfLedManagerLedStatusAPFoundAndDoingAuthentication,
+  kEsfLedManagerLedStatusLinkEstablished,
+  kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed,
+  kEsfLedManagerLedStatusErrorNetworkInitializationFailed,
+  kEsfLedManagerLedStatusErrorLegacyUSB,
+  kEsfLedManagerLedStatusErrorInvalidQRCode,
+  kEsfLedManagerLedStatusErrorUploadFailed,
+  kEsfLedManagerLedStatusErrorDownloadFailed,
+  kEsfLedManagerLedStatusErrorAuthProxyFailed,
+  kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed,
+  kEsfLedManagerLedStatusErrorDataFlashFailed,
+  kEsfLedManagerLedStatusNum,
+} EsfLedManagerLedStatus;
+....
+
+
+* *Value* 
++
+.Values of EsfLedManagerLedStatus
+[width="100%", cols="50%,50%",options="header"]
+|===
+|Member name |Description
+|kEsfLedManagerLedStatusForcedOff
+|Value used to specify the forcibly turned off LED status.
+
+|kEsfLedManagerLedStatusResetting
+|Value used when the device is factory resetting.
+
+|kEsfLedManagerLedStatusAbleToAcceptInputs
+|Value used when the input is enabled.
+
+|kEsfLedManagerLedStatusUnableToAcceptInputs
+|Value used when the input is disabled.
+
+|kEsfLedManagerLedStatusConnectedWithTLS
+|Value used when connecting to TLS.
+
+|kEsfLedManagerLedStatusConnectedWithoutTLS
+|Value used when connecting without TLS.
+
+|kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP
+|Value used when device is attempting connection (DNS/NTP).
+
+|kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer
+|Value used when device is disconnected and attempting to establish a physical network link.
+
+|kEsfLedManagerLedStatusDisconnectedNoInternetConnection
+|Value used during disconnection due to no Internet access.
+
+|kEsfLedManagerLedStatusDisconnectedConnectingWithTLS
+|Value used when the device is attempting to connect with TLS.
+
+|kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS
+|Value used when the device is attempting to connect without TLS.
+
+|kEsfLedManagerLedStatusDisconnectedConnectingProxy
+|Value used when the device is attempting to connect via Proxy.
+
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsole
+|Value used when the device is waiting for input to connect to the Console (QR code mode).
+
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner
+|Value used when the device is waiting for input to connect to the Console (Global Provisioner).
+
+|kEsfLedManagerLedStatusSearchingAP
+|Value used when AP searching is in progress.
+
+|kEsfLedManagerLedStatusAPFoundAndDoingAuthentication 
+|Value used when performing AP authentication.
+
+|kEsfLedManagerLedStatusLinkEstablished
+|Value used when the network link has been successfully established.
+
+|kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed
+|Value used when failed to initialize peripheral drivers.
+
+|kEsfLedManagerLedStatusErrorNetworkInitializationFailed
+|Value used when failed to initialize a network.
+
+|kEsfLedManagerLedStatusErrorLegacyUSB
+|Value used when detected a power supply via legacy USB.
+
+|kEsfLedManagerLedStatusErrorInvalidQRCode
+|Value used when detected an invalid QR code.
+
+|kEsfLedManagerLedStatusErrorUploadFailed
+|Value used when failed to upload data.
+
+|kEsfLedManagerLedStatusErrorDownloadFailed
+|Value used when failed to download data.
+
+|kEsfLedManagerLedStatusErrorAuthProxyFailed
+|Value used when failed to authenticate proxy.
+
+|kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed
+|Value used when failed to allocate memory for downloads.
+
+|kEsfLedManagerLedStatusErrorDataFlashFailed
+|Value used when failed to write data to flash memory.
+
+|kEsfLedManagerLedStatusNum
+|Represents the number of relevant enum value.
+
+|===
+
+[#_EsfLedManagerLedStatusInfo]
+==== EsfLedManagerLedStatusInfo	
+This is a structure used by each module to set and retrieve LED status values. +
+
+* *Format*
++
+[source, C]
+....
+typedef struct EsfLedManagerLedStatusInfo {
+    EsfLedManagerTargetLed led;
+    EsfLedManagerLedStatus status;
+    bool enabled;
+} EsfLedManagerLedStatusInfo;
+....
+
+
+* *Value* 
++
+[#_EsfLedManagerStatusInfoValue]
+.Values of EsfLedManagerStatusInfo
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|led
+|The LED ID.
+
+|status
+|The LED status to be set or retrieved.
+
+|enabled
+|Flag indicating enabled or disabled.
+|===
+
+<<<
+
+=== API Definition
+
+[#_EsfLedManagerInit]
+==== EsfLedManagerInit
+* *Feature* 
++
+Initialize the Led Manager.
+
+
+* *Format*
++
+``** enum EsfLedManagerResult EsfLedManagerInit(void)**``  
+
+* *Argument*
++
+**``[IN] None``**:: 
+There are no IN.
+
+**``[OUT] None``**:: 
+There are no OUT.
+
+
+* *Return Value*
++
+[#_EsfLedManagerInitReturnValue]
+.EsfLedManagerInit return value
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerSuccess
+|Returned when the operation completes successfully.
+
+|kEsfLedManagerInternalError
+|Returned when an internal processing error occurs.
+
+|kEsfLedManagerLedOperateError
+|Returned when an error occurs during LED operation.
+
+|kEsfLedManagerOutOfMemory
+|Returned when memory allocation fails.
+|===
+
+* *Description*
+** Behavior
+*** Provides the functionality to initialize the Led Manager.
+*** This API returns **``kEsfLedManagerSuccess``** even if it is called multiple times.
+*** Exclusive control is handled internally.
+
+* *Errors*
++
+[#EsfLedManagerInit_Error]
+.EsfLedManagerInit errors
+[width="100%", options="header"]
+|===
+|Return Value|Description|Error Condition|Recovery Method
+|kEsfLedManagerSuccess
+|Success
+|Success
+|None
+
+|kEsfLedManagerInternalError
+|Internal processing error
+|Mutex operation error
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerLedOperateError
+|Led operation related errors
+|PL Led initialization error
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerOutOfMemory
+|Memory allocation failed
+|Memory allocation failed
+|Please retry after checking the memory.
+|===
+
+[#_EsfLedManagerDeinit]
+==== EsfLedManagerDeinit
+* *Feature* 
++
+Terminates the Led Manager.
+
+
+* *Format* +
++
+``** enum EsfLedManagerResult EsfLedManagerDeinit(void)**``  
+
+* *Argument* +
++
+**``[IN] None``**:: 
+There are no IN.
+
+**``[OUT] None``**:: 
+There are no OUT.
+
+
+* *Return Value* +
++
+[#_EsfLedManagerDeinitReturnValue]
+.Return value of EsfLedManagerDeinit
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerSuccess
+|Returned when the operation completes successfully.
+
+|kEsfLedManagerInternalError
+|Returned when an internal processing error occurs.
+
+|kEsfLedManagerLedOperateError
+|Returned when an error occurs during LED operation.
+|===
+
+* *Description* +
+** Behavior +
+*** Turns off LEDs and finalizes the Led Manager.
+*** Also finalizes the PL Led module. +
+*** This API returns **``kEsfLedManagerSuccess``** even if it is called multiple times.
+*** Exclusive control is handled internally.
+
+* *Errors* +
++
+[#EsfLedManagerDeinit_Error]
+.EsfLedManagerDeinit errors
+[width="100%", options="header"]
+|===
+|Return Value|Description|Error Condition|Recovery Method
+|kEsfLedManagerSuccess
+|Success
+|Success
+|None
+
+|kEsfLedManagerInternalError
+|Internal processing error
+|Mutex operation error
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerLedOperateError
+|Led operation related errors
+|PL Led termination errors
+|Retry. If the error persists, restart the system.
+|===
+
++
+
+
+[#_EsfLedManagerSetStatus]
+==== EsfLedManagerSetStatus
+* *Feature* 
++
+Sets the status of the specified LED.
+
+
+* *Format* +
++
+``** enum EsfLedManagerResult EsfLedManagerSetStatus(const EsfLedManagerLedStatusInfo* status)**``  
+
+* *Argument* +
++
+**``[IN] const EsfLedManagerLedStatusInfo* status``**:: 
+Structure defining the LED status. +
+
+**``[OUT] None``**:: 
+There are no OUT.
+
+
+* *Return Value* +
++
+[#_EsfLedManagerSetStatusReturnValue]
+.Return value of EsfLedManagerSetStatus
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerSuccess
+|Returned when the operation completes successfully.
+
+|kEsfLedManagerInternalError
+|Returned when an internal processing error occurs.
+
+|kEsfLedManagerInvalidArgument
+|Returned when there is an invalid argument.
+
+|kEsfLedManagerTimeOut
+|Returned when the operation times out.
+
+|kEsfLedManagerStateTransitionError
+|Returned when a state transition error occurs.
+
+|kEsfLedManagerStatusNotFound
+|Returned when the specified status is not found.
+
+|kEsfLedManagerLedOperateError
+|Returned when an error occurs during LED operation.
+
+|kEsfLedManagerOutOfMemory
+|Returned when memory allocation fails.
+|===
+
+* *Description* +
+** Behavior
+*** This function sets the status of the specified LED as either enabled or disabled. +
+To enable the status, set ``**status->enabled**`` to ``**true**``; to disable it, set it to ``**false**``. +
+For detailed examples, refer to the <<_SetStatusExample,Status Setting Examples>>.
+*** After setting the state, the LED will light according to the highest-priority active state among all enabled states.
+Refer to section <<#_StatePriority,6.1 LED State List and Priority>> for the priority order and corresponding LED behavior. +
+For LED lighting examples, see <<_LEDLightingExample,here>>. +
+Note: If lighting retention is enabled for the LED, only state is updated; the visual of LED remains unchanged.
+*** LED ON/OFF control is performed using the PL Led API.
+*** The Led Manager maintains internal state information per LED.
+*** If there is no change in state, the function will return **``kEsfLedManagerSuccess``** without performing any LED operation.
+*** If the Led Manager has not been initialized, the function returns **``kEsfLedManagerStateTransitionError``**.
+*** This API performs exclusive control internally in order not to change the LED state at the same time.
+*** If this API returns an error, the internal state per LED will remain unchanged. 
+*** If the returned value during an error is not **``kEsfLedManagerLedOperateError``**, the visual LED output remains unchanged.
+
+
+** *Errors* +
++
+[#EsfLedManagerSetStatus_Error]
+.EsfLedManagerSetStatus errors
+[width="100%", options="header"]
+|===
+|Return Value|Description|Error Condition|Recovery Method
+|kEsfLedManagerSuccess
+|Success
+|Success
+|None
+
+|kEsfLedManagerInvalidArgument
+|Argument errors
+|status NULL status->led is invalid
+|Check the argument and try again.
+
+|kEsfLedManagerInternalError
+|Internal processing error
+|Failure in internal functions or mutex operations
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerTimeOut
+|Timeout
+|Exclusive access control timeout
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerStateTransitionError
+|State transition error
+|State transition error
+|Check the State Transition table and retry.
+
+|kEsfLedManagerStatusNotFound
+|The specified state does not exist
+|The specified state does not exist
+|Check the argument and try again.
+
+|kEsfLedManagerLedOperateError
+|Led operation related errors
+|Led operation errors
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerOutOfMemory
+|Memory allocation error
+|Memory allocation failed
+|Please retry after checking the memory.
+|===
+
+
+[#_EsfLedManagerGetStatus]
+==== EsfLedManagerGetStatus
+* *Feature* 
++
+Retrieves the status of the specified LED.
+
+* *Format* +
++
+``** enum EsfLedManagerResult EsfLedManagerGetStatus(EsfLedManagerLedStatusInfo* status)**``  
+
+* *Argument* +
++
+**``[IN/OUT] EsfLedManagerLedStatusInfo* status``**:: 
+Structure storing the retrieved LED status.
+
+
+* *Return Value* +
++
+[#_EsfLedManagerGetStatusReturnValue]
+.Return value of EsfLedManagerGetStatus
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerSuccess
+|Returned when the operation completes successfully.
+
+|kEsfLedManagerInternalError
+|Returned when an internal processing error occurs.
+
+|kEsfLedManagerInvalidArgument
+|Returned when there is an invalid argument.
+
+|kEsfLedManagerTimeOut
+|Returned when the operation times out.
+
+|kEsfLedManagerStateTransitionError
+|Returned when a state transition error occurs.
+
+|kEsfLedManagerStatusNotFound
+|Returned when the specified status is not found.
+|===
+
+* *Description* +
+** Behavior +
+*** This function retrieves the  specified information and stores it in the **``status``** structure. +
+For values set for ``**status**``, refer to the <<_GetStatusExample,Status Setting Examples>>.
+*** If the Led Manager has not been initialized, the function returns **``kEsfLedManagerStateTransitionError``**.
+*** Exclusive control is handled internally. +
+** *Errors* +
++
+[#EsfLedManagerGetStatus_Error]
+.EsfLedManagerGetStatus errors
+[width="100%", options="header"]
+|===
+|Return Value|Description|Error Condition|Recovery Method
+|kEsfLedManagerSuccess
+|Success
+|Success
+|None
+
+|kEsfLedManagerInvalidArgument
+|Argument errors
+|status NULL status->led is invalid
+|Check the argument and try again.
+
+|kEsfLedManagerTimeOut
+|Timeout
+|Exclusive access control timeout
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerInternalError
+|Internal processing error
+|Failure in internal functions or mutex operations
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerStateTransitionError
+|State transition error
+|State transition error
+|Check the State Transition table and retry.
+
+|kEsfLedManagerStatusNotFound
+|The specified state does not exist
+|The specified state does not exist
+|Check the argument and try again.
+|===
+
+[#_EsfLedManagerSetLightingPersistence]
+==== EsfLedManagerSetLightingPersistence 
+* *Feature* 
++
+Updates the lighting retention setting of the specified LED.
+
+* *Format*
++
+``** enum EsfLedManagerResult EsfLedManagerSetLightingPersistence(EsfLedManagerTargetLed led, bool is_enable)**``  
+
+* *Argument* +
++
+**``[IN] EsfLedManagerTargetLed led``**:: 
+The target LED.
+
+**``[IN] bool is_enable``**:: 
+Flag indicating whether to enable or disable lighting retention. +
+true: retained, false: not retained
+
+
+* *Return Value* +
++
+[#_EsfLedManagerSetLightingPersistenceReturnValue]
+.Return value of EsfLedManagerGetStatus
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member name  |Description
+|kEsfLedManagerSuccess
+|Returned when the operation completes successfully.
+
+|kEsfLedManagerInternalError
+|Returned when an internal processing error occurs.
+
+|kEsfLedManagerInvalidArgument
+|Returned when there is an invalid argument.
+
+|kEsfLedManagerTimeOut
+|Returned when the operation times out.
+
+|kEsfLedManagerStateTransitionError
+|Returned when a state transition error occurs.
+|===
+
+* *Description* +
+** Behavior +
+*** This function updates the retention setting for the specified LED. +
+If ``**true**`` is set, the current lighting state is retained. +
+While set true, even if **``EsfLedManagerSetStatus``** is called for the same LED, the actual lighting behavior will not change.  +
+However, the status of the LED is updated. +
+If ``**false**``is set, lighting behavior is controlled based on the current highest-priority valid state, including those updated during the true state. +
+
+*** If the Led Manager has not been initialized, the function returns **``kEsfLedManagerStateTransitionError``**.
+*** Exclusive control is handled internally. +
+** *Errors* +
++
+[#EsfLedManagerSetLightingPersistence _Error]
+.EsfLedManagerSetLightingPersistence errors
+[width="100%", options="header"]
+|===
+|Return Value|Description|Error Condition|Recovery Method
+|kEsfLedManagerSuccess
+|Success
+|Success
+|None
+
+|kEsfLedManagerInvalidArgument
+|Argument errors
+|Led is invalid
+|Check the argument and try again.
+
+|kEsfLedManagerTimeOut
+|Timeout
+|Exclusive access control timeout
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerInternalError
+|Internal processing error
+|Failure in internal functions or mutex operations
+|Retry. If the error persists, restart the system.
+
+|kEsfLedManagerStateTransitionError
+|State transition error
+|State transition error
+|Check the State Transition table and retry.
+|===
+
+<<<
+
+== Example of API Usage Call
+=== Led Manager Sequencing Diagram 
+[{mermaid_block}]
+----
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+  autonumber
+  participant main as ESF main
+  participant module as App/Modules
+  participant led_manager as Led Manager
+  participant hal as PL Led
+
+  main ->>+ led_manager:EsfLedManagerInit()
+  led_manager ->> led_manager:Initialize internal resources
+  led_manager ->>+ hal:PlLedInitialize()
+  hal -->>- led_manager:Response
+  led_manager -->>- main:Response
+
+  module ->>+ led_manager:State Setting{mermaid_br}EsfLedManagerSetStatus(status)
+  note right of led_manager:State update/Lighting configuration{mermaid_br}Start LED operation
+
+  led_manager ->>+ hal: PlLedStopSeq(id)
+  hal -->>- led_manager:Response
+
+  led_manager ->>+ hal:PlLedStartSeq(id, seq, seq_len)
+  hal -->>- led_manager:Response
+
+  note right of led_manager:Stop LED operation
+  led_manager -->>- module:Response
+
+  module ->>+ led_manager:Status Retrieval{mermaid_br}EsfLedManagerGetStatus(status)
+  led_manager ->> led_manager:Retrieve LED Status
+  led_manager -->>- module:Response
+
+  module ->>+ led_manager:Status Retrieval{mermaid_br}EsfLedManagerSetLightingPersistence (led, is_enable)
+  led_manager ->> led_manager:Update LED status retention settings
+  led_manager -->>- module:Response
+
+  main ->>+ led_manager: EsfLedManagerDeinit()
+  led_manager ->> led_manager:Termination process
+  led_manager ->>+ hal: LED Stop Process{mermaid_br}PlLedStopSeq(id)
+  hal -->>- led_manager:Response
+  led_manager ->>+ hal:PlLedFinalize()
+  hal -->>- led_manager:Response
+  led_manager -->>- main:Response
+----
+
+[#_SetStatusExample]
+=== State configuration
+The following is an example of how to configure an LED status.
+
+* Example: Enabling the "forced off" status for an LED +
+Specify the target LED (Enum) by to ``**status.led**``: +
+set the desired status (Enum) to ``**status.status**``, +
+set ``**status.enabled**`` to true, +
+and pass the structure to EsfLedManagerSetStatus.
+
+[source, C]
+....
+EsfLedManagerLedStatusInfo status;
+status.led     = kEsfLedManagerTargetLedPower;         
+status.status  = kEsfLedManagerLedStatusForcedOff;  
+status.enabled = true;
+
+ret = EsfLedManagerSetStatus(&status);  
+....
+
+If the same status needs to be applied to multiple LEDs, ``**EsfLedManagerSetStatus**`` must be called separately for each target LED.
+
+[#_GetStatusExample]
+=== State retrieval
+An example of retrieving the LED status is shown below.
+
+* Example: To check whether the forced off state is enabled/disabled for a given LED +
+Assign the target LED (Enum) to ``**status.led**``: +
+set the desired status (Enum) to ``**status.status**``, +
+and pass the structure to EsfLedManagerGetStatus. +
+The result will be stored in ``**status.enabled**``.
+
+[#_KeepFlagUpdateExample]
+=== LED Lighting Retention Setting Update
+An example of updating the LED lighting retention setting is shown below.
+
+* Example: To enable lighting retention for the Service LED +
+Specify the ``**led**``: +
+set ``**is_enable**`` to ``**true**``, +
+and call EsfLedManagerSetLightingPersistence.
+
+
+
+[source, C]
+....
+EsfLedManagerTargetLed led = kEsfLedManagerTargetLedService;
+bool is_enable = true;  
+
+ret = EsfLedManagerSetLightingPersistence (led, is_enable);  
+....
+
+
+<<<
+
+==  Project/Hardware-Dependent Details
+This module includes functions that depend on specific projects or hardware platforms.  +
+Details for such dependencies are outlined below.
+
+[#_StatePriority]
+=== LED Status List and Priority
+The module maintains an internal table that defines <<#_LED1State,LED lighting behavior and status priorities>>. +
+These settings can be customized per project or hardware platform. +
+
+==== How to Modify for Specific HW/Project
+To change settings for a specific hardware or project, modify the following configurations: 
+
+* LED Behavior and Priority +
+Can be specified in Kconfig.
+
+==== LED Behavior Table for T3P, T3Ws, and T5
+The following table shows LED behavior and priorities for T3P, T3Ws, and T5 platforms. +
+[#_Annotation]
+Note: Statuses that do not affect LED behavior are not listed. +
+Even if unlisted statuses are set to **``EsfLedManagerSetStatus``**, the LED display will not change.
+
+[#_LED1State]
+.Power LED Status and Priority
+[width="100%",options="header"]
+|===
+|Priority |LED Status |Enum Value |Power LED 
+.15+^|High +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+Low
+
+|LED Forced OFF
+|kEsfLedManagerLedStatusForcedOff
+|OFF
+
+|Factory resetting
+|kEsfLedManagerLedStatusResetting
+|Green blinking [1Hz]
+
+|Peripheral driver initialization failure
+|kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed
+|Red blinking [4Hz]
+
+|Network initialization failure
+|kEsfLedManagerLedStatusErrorNetworkInitializationFailed
+|Red blinking [4Hz]
+
+|Failed to allocate memory for download
+|kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed
+|Red blinking [4Hz]
+
+|Failed to write data to flash memory
+|kEsfLedManagerLedStatusErrorDataFlashFailed
+|Red blinking [4Hz]
+
+|Detected power via legacy USB
+|kEsfLedManagerLedStatusErrorLegacyUSB
+|Red blinking [1Hz]
+
+|Detected invalid QR code
+|kEsfLedManagerLedStatusErrorInvalidQRCode
+|Red blinking [1Hz]
+
+|Upload failed
+|kEsfLedManagerLedStatusErrorUploadFailed
+|Red blinking [1Hz]
+
+|Download failed
+|kEsfLedManagerLedStatusErrorDownloadFailed
+|Red blinking [1Hz]
+
+|Proxy authentication failed
+|kEsfLedManagerLedStatusErrorAuthProxyFailed
+|Red blinking [1Hz]
+
+|Waiting for entry (Global Provisioner) to connect the Console
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner
+|Green blinking [4Hz]
+
+|Waiting for entry (QR code mode) to connect the Console
+|kEsfLedManagerLedStatusWaitingForInputsToConnectConsole
+|Green pattern blinking
+
+|Input available
+|kEsfLedManagerLedStatusAbleToAcceptInputs
+|Solid green
+
+|Input not available
+|kEsfLedManagerLedStatusUnableToAcceptInputs
+|Green blinking [1Hz]
+|===
+
+[#_LED2State]
+.Wifi LED State List and Priority
+[width="100%",options="header"]
+|===
+|Priority |LED Status |Enum Value |Wifi Led
+.4+^|High +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+ 
+Low
+
+|LED Forced OFF
+|kEsfLedManagerLedStatusForcedOff
+|OFF
+
+|Link established
+|kEsfLedManagerLedStatusLinkEstablished
+|Solid green
+
+|Authenticating AP
+|kEsfLedManagerLedStatusAPFoundAndDoingAuthentication
+|Red blinking [4Hz]
+
+|Searching for AP
+|kEsfLedManagerLedStatusSearchingAP
+|Red blinking [1Hz]
+
+|===
+
+[#_LED3State]
+.Service LED State List and Priority
+[width="100%",options="header"]
+|===
+|Priority |LED Status |Enum Value |Service Led
+.9+^|High +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+Low
+
+|LED Forced OFF
+|kEsfLedManagerLedStatusForcedOff
+|OFF
+
+|Connected with TLS
+|kEsfLedManagerLedStatusConnectedWithTLS
+|Solid green
+
+|Connected without TLS
+|kEsfLedManagerLedStatusConnectedWithoutTLS
+|Solid orange
+
+|Attempting to connect (TLS)
+|kEsfLedManagerLedStatusDisconnectedConnectingWithTLS
+|Green blinking [1Hz]
+
+|Attempting to connect (non-TLS)
+|kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS
+|Orange blinking [1Hz]
+
+|Attempting to connect (Proxy)
+|kEsfLedManagerLedStatusDisconnectedConnectingProxy
+|Red blinking [4Hz]
+
+|Attempting to connect (DNS, NTP)
+|kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP
+|Red blinking [1Hz]
+
+|Disconnected (no internet)
+|kEsfLedManagerLedStatusDisconnectedNoInternetConnection
+|Red blinking [4Hz]
+
+|Disconnected (physical link being established)
+|kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer
+|Solid red
+|===
+
+
+==== LED Forced OFF
+Forced LED OFF is the highest priority state. When this state is enabled, the corresponding LED will be turned off.
+
+.Forced LED OFF Behavior
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Forced LED OFF State |Description 
+|Enable
+|Overrides all other states and forcibly turns off the specified LED.  +
+The user must apply this setting individually to each LED (Power, Service, and Wi-Fi).
+
+|Disable
+|The LED will follow the lighting behavior of other enabled statuses.
+
+|===
+
+==== Blinking Intervals
+The blinking patterns defined in the LED status table follow the intervals listed below. +
+Each pattern repeats continuously.
+
+.LED Blinking Patterns
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Frequency |Description 
+|1Hz
+|100ms ON - 900ms OFF
+
+|4Hz
+|(100ms ON - 100ms OFF) x 4 - 200ms OFF
+
+|attern Blink
+|100ms ON - 900ms OFF - (100ms ON - 100ms OFF) x 4 - 200ms OFF
+|===
+
+[#_LEDLightingExample]
+==== LED Lighting Behavior Example
+Each LED maintains an internal state table. Once a status is enabled, it remains active until explicitly disabled. +
+Among all enabled statuses for an LED, the one with the highest priority determines the LED lighting behavior. +
+Note: If lighting retention is enabled for a given LED, the LED will continue to reflect the lighting state at the moment the retention setting was enabled.
+Example: +
+Power LED
+[width="100%", cols="15%,55%,30%",options="header"]
+|===
+|Priority |State |Enable/Disable
+.6+^|High +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+　 +
+Low
+|Status A
+|Disabled
+
+|Status B
+|Disabled
+
+|Status C
+|Disabled
+
+|Status D
+|Enabled
+
+|Status E
+|Disabled
+
+|Status F
+|Enabled
+|===
+In this example, the Power LED will reflect the lighting pattern defined for Status D. +
+If Status C is later enabled, the LED will change to reflect the lighting for Status C. +
+If Status A is subsequently enabled, the LED will update to show the lighting for Status A. +
+Once Status A is disabled, the LED will fall back to the lighting behavior for Status C. +
+In this way, users do not need to reapply their previous LED status settings even if another status with higher priority temporarily overrides the lighting behavior.
+
+
+== Remarks
+=== Requirement
+This section outlines the functionalities required to other modules. +
+
+.Requirements of This Module
+[width="100%", cols="15%,30%,55%",options="header"]
+|===
+|Module Name |Requirement |Description
+|PL Led
+|LED ON/OFF
+|Provides the functionality to turn LEDs on and off.
+|===
+
+=== Non-standard Extensions
+This module uses the following non-standard extensions: +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|Name |Description |Application
+|**``##\\__VA_ARGS__``**
+|The gcc non-standard extension of **``\__VA_ARGS__``**. +
+Allows handling macros with no arguments.
+|Used in macros for switching the log output destination.
+
+|===
+
+<<<
+
+== List of OSS Used
+This module does not use any OSS components.
+
+<<<
+
+== References
+* PL Led Functional Specification +
+https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/porting_layer/led_manager/pl_led.adoc
+
+<<<
+
+== Change history
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|First edition
+
+|v0.1.1
+|Registration of Reviewed Version of Detailed Design Document
+
+* Overall
+  ** Corrected typos
+  ** Renamed to follow coding conventions
+* Changed function type names
+  ** Changed **``SsfIndicatorRegisterCallback``**and **``SsfIndicatorUnregisterCallback``**type from +
+  **``SSF_Status``** to **``SsfIndicatorResult``**
+* Updated priority tables per LED and following elements accordingly:
+ ** Enum values for individual states
+ ** **``SsfIndicatorStatusInfo``** structure member
+* Added **``SsfIndicatorResult``** and reflected in respective functions
+* Added a note to the **``SsfIndicatorRegisterCallback``**API regarding behavior when a callback function is already registered, along with a special remark indicating the maximum number of callback registrations allowed.
+* Added description of non-standard extensions
+* Renamed final API to Deinit
+* Updated Status Table
+* Updated State Transition Table
+
+|v0.1.2
+|Renaming and implementation updates.
+
+ * Renamed module
+  ** Device Indicator -> Led Manager
+ * Updated enums
+  ** EsfLedManagerAppStatus, EsfLedManagerNetworkStatus, and  EsfLedManagerLedOnStatus
+  ** Updated internal tables
+ * Added notes about HAL LED and timer initialization/termination processing
+
+|v0.1.3
+|Reflected implementation from integration phase.
+
+ * Replaced HAL timer with Utility timer
+ * Updated initialization and termination handling
+ * Changed LED ID assignments
+  ** Led1:  unchanged
+  ** Led2:  Service -> Wifi
+  ** Led3:  Wifi -> Service
+
+|v0.1.4
+|Updated LedManage spec
+
+* Changed LedManager LED-lighting method
+  ** Changed from a model where states were set by category—such as app_state, network_state, and led_on_state— +
+  to a model where each LED individually holds multiple states. +
+  The LED lights up based on the highest-priority state currently enabled.
+* Removed state notification callbacks and state reversion via timers.
+  ** Removed **``EsfLedManagerStatusInfoMask``**, **``EsfLedManagerStatusNotifyCallback``**, **``EsfLedManagerRegisterCallback``**, **``EsfLedManagerUnregisterCallback``**.
+* Updated status retrieval API:
+  ** Checks whether a specified status for a given LED is enabled
+* Adjusted enums and structures
+  ** Removed **``EsfLedManagerAppStatus``**, **``EsfLedManagerNetworkStatus``**, **``EsfLedManagerLedOnStatus``**, **``EsfLedManagerStatusInfo``**. +
+  Added **``EsfLedManagerTargetLed``**, **``EsfLedManagerLedStatus``**, **``EsfLedManagerLedStatusInfo``**
+* Updated state transition table
+  ** Allowed **``EsfLedManagerInit``** to be called in IDLE state and **``EsfLedManagerDeinit``** in UNINIT state.
+
+|v0.1.5
+|Added support for LedManager pattern blinking.
+
+* Described each blinking intervals.
+* Supported patterned blinking for PL Led API sequences 
+
+|v0.1.6
+|LedManager error improvements.
+
+* Revised error-related entries in **``EsfLedManagerLedStatus``** +
+Split errors into two categories: +
+**``kEsfLedManagerLedStatusErrorRebootDevice``** and **``kEsfLedManagerLedStatusErrorConfirmSettingParameterData``**
+
+|v0.1.7
+|Add LedManager status
+
+* **``EsfLedManagerLedStatus``** +
+**``kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner``**
+
+|v0.1.8
+|Updated LED for LedManager status
+
+* **``kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner``**,  +
+**``kEsfLedManagerLedStatusWaitingForInputsToConnectConsole``** +
+Changed the status from Service Led to PowerLed. Lighting behavior is also updated.
+
+|v0.1.9
+|Add LedManager status
+
+* **``EsfLedManagerLedStatus``** +
+* **``kEsfLedManagerLedStatusDisconnectedEstablishingNetworkLinkOnPhysicalLayer``** +
+**``kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP``**
+
+|v0.1.10
+|Updated LedManager error status
+
+Split the error according to the LED specification so that the function to manage is easy to understand
+
+* Removed status from **``EsfLedManagerLedStatus``**
+** **``kEsfLedManagerLedStatusErrorRebootDevice``**
+** **``kEsfLedManagerLedStatusErrorConfirmSettingParameterData``**
+* **``EsfLedManagerLedStatus``**
+  ** **``kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed``**
+  ** **``kEsfLedManagerLedStatusErrorNetworkInitializationFailed``**
+  ** **``kEsfLedManagerLedStatusErrorInvalidQRCode``**
+  ** **``kEsfLedManagerLedStatusErrorUploadFailed``**
+  ** **``kEsfLedManagerLedStatusErrorDownloadFailed``**
+
+|v0.1.11
+|Added of LedManager ON/OFF retention feature +
+
+* New API **``EsfLedManagerSetLightingPersistence``**
+* Updated functional descriptions accordingly.
+
+|v0.1.12
+|Added LedManager error status +
+
+* **``EsfLedManagerLedStatus``** +
+  ** **``kEsfLedManagerLedStatusErrorLegacyUSB``**
+
+|v0.1.13
+|Aligned specification with source implementation
+
+|v0.1.14
+|Added Proxy-related states: +
+
+* **``EsfLedManagerLedStatus``** +
+  ** **``kEsfLedManagerLedStatusDisconnectedConnectingProxy``**
+  ** **``kEsfLedManagerLedStatusErrorAuthProxyFailed``**
+
+|v0.1.15
+|Added LedManager error status +
+
+* **``EsfLedManagerLedStatus``** +
+  ** **``kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed``**
+
+|v0.1.16
+|Added LedManager error status +
+
+* **``EsfLedManagerLedStatus``** +
+  ** **``kEsfLedManagerLedStatusErrorDataFlashFailed``**
+
+|v0.1.17
+|Added LedManager status +
+
+* **``EsfLedManagerLedStatus``** +
+  ** **``kEsfLedManagerLedStatusResetting``**
+
+|v0.1.18
+|Removed LedManager status +
+
+* **``EsfLedManagerLedStatus``** +
+  ** **``kEsfLedManagerLedStatusLoadingSSIDPassword``**
+|===

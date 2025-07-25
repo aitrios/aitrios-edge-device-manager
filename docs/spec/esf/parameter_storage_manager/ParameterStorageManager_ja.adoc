@@ -1,0 +1,7144 @@
+= Parameter Storage Manager 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.3.3
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+// attributes for Parameter Storage Manager
+:none: -
+
+[#_目的と適用範囲]
+== 目的と適用範囲
+
+本書はAITRIOSのデータ保存・取得および各サービスへのデータ反映の機能を有するParameter Storage Managerモジュールを定義します。
+XXのバージョンXXに適用されます。
+
+<<<
+
+[#_用語]
+== 用語
+
+[#_用語_データ構造体]
+=== データ構造体
+関連するデータをまとめた構造体です。 +
+データを格納するために使用します。 +
+仕様は<<#_データ構造体, データ構造体>>を参照してください。 +
+
+[#_用語_マスク構造体]
+=== マスク構造体
+操作対象のデータを識別するための構造体です。 +
+仕様は<<#_マスク構造体, マスク構造体>>を参照してください。 +
+
+[#_用語_データメンバ]
+=== データメンバ
+マスク構造体で指定可能な、データ構造体のメンバのことです。 +
+仕様は<<#_マスク構造体, マスク構造体>>を参照してください。 +
+
+[#_用語_実装モジュール]
+=== 実装モジュール
+Parameter Storage Managerのデータ保存領域アクセス機能を使用するESFのモジュールです。 +
+データ保存領域アクセス機能を使用するには、各モジュールが設定を作成する必要があります。 +
+詳細は<<#_データ保存領域アクセス機能の仕様, データ保存領域アクセス機能の仕様>>を参照してください。 +
+
+[#_用語_データ保存領域]
+=== データ保存領域
+基本的にはPL Storageが管理する不揮発のメモリを指しますが、ヒープメモリや定数等を含みます。 +
+
+[#_用語_保存データ]
+=== 保存データ
+データ保存領域に保存されているデータのことです。 +
+
+<<<
+
+[#_コンポーネントの説明]
+== コンポーネントの説明
+[#_コンポーネントの概要]
+=== コンポーネントの概要
+
+本モジュールは、設定情報を保存する機能を提供します。 +
+本モジュールの機能はESF内部で使用するものであり、アプリケーションは使用しません。 +
+
+
+[#_FigureOverview]
+.概要図
+[{mermaid_block}]
+----
+graph LR;
+app["ユーザー"]
+module["モジュール"]
+ds["Parameter Storage Manager"]
+repo[("データ保存領域")]
+
+app             -->|"データ"| module
+module          -->|"データ"| ds
+ds              -->|"データ"| repo
+----
+
+<<<
+
+[#_コンポーネントの詳細説明]
+=== コンポーネントの詳細説明
+
+保存、取得、削除の3種類のデータアクセスAPIを持ち、与えられたマスク情報をもとに、最低限のデータだけにアクセスします。 +
+また、Factory Reset APIにより、保存データを工場出荷状態に戻すことができます。
+
+<<<
+
+[#_状態遷移]
+=== 状態遷移
+
+Parameter Storage Managerの取り得る状態を<<#_TableStates>>に示します。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|UNINIT
+|未初期化の状態です。``**EsfParameterStorageManagerInit**``以外のAPIは呼び出さないでください。
+
+|INIT
+|初期化済みの状態です。
+
+|===
+
+[#_FigureStateTransition]
+.状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> UNINIT
+    UNINIT --> INIT : EsfParameterStorageManagerInit
+    INIT --> UNINIT : EsfParameterStorageManagerDeinit
+    UNINIT --> UNINIT : EsfParameterStorageManagerDeinit
+    INIT --> INIT : EsfParameterStorageManagerInit{mermaid_br}その他API
+----
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。 +
+表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+×はAPI受け付け不可を示し、ここでのAPI呼び出しは``**kEsfParameterStorageManagerStatusInternal**``エラーを返し状態遷移は起きません。 +
+エラーの詳細は <<#_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|状態 
+|UNINIT |INIT
+.4+|API名
+
+|``**EsfParameterStorageManagerInit**``
+|INIT
+|INIT
+
+|``**EsfParameterStorageManagerDeinit**``
+|UNINIT
+|UNINIT
+
+|その他API
+|×
+|INIT
+
+|===
+
+<<<
+
+[#_コンポーネントの機能一覧]
+=== コンポーネントの機能一覧
+以下に機能の一覧を示します。 +
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%", options="header"]
+|===
+|機能名 |概要  |節番号
+
+|初期化機能
+|Parameter Storage Managerの初期化機能を提供します。
+|<<#_初期化機能>>
+
+|ハンドル機能
+|Parameter Storage Managerの制御ハンドルに関する機能を提供します。
+|<<#_ハンドル機能>>
+
+|データ保存領域アクセス機能
+|データ保存領域にアクセスし、データを保存・取得・削除・工場出荷状態に戻す機能を提供します。 +
+|<<#_データ保存領域アクセス機能>>
+
+|データ更新キャンセル機能
+|データ保存領域の更新をキャンセルする機能を提供します。 +
+|<<#_データ更新キャンセル機能>>
+
+|ユーティリティ機能
+|Parameter Storage Managerの機能に関連するユーティリティAPIを提供します。 +
+|<<#_ユーティリティ機能>>
+
+|===
+
+<<<
+
+[#_コンポーネントの機能説明]
+=== コンポーネントの機能説明
+
+[#_初期化機能]
+==== 初期化機能
+
+* **機能概要** +
+    Parameter Storage Managerを初期化します。 +
+    Parameter Storage Managerの他のAPIを呼び出す前に実行してください。 +
+
+* **前提条件** +
+    前提条件はありません。
+
+* **機能詳細** +
+    ** ``**EsfParameterStorageManagerInit**``を呼び出すことで内部状態を初期化し、必要なリソースを確保します。 +
+        その後、``**PlStorageInitialize**``を呼び出し、PL Storageの初期化処理を行います。 PL Storageの初期化処理のエラーは無視して処理を続行します。 +
+        初期化後はParameter Storage ManagerのAPIを呼び出すことができます。 +
+    ** ``**EsfParameterStorageManagerDeinit**``を呼び出すことで、Parameter Storage Managerを終了することができます。 +
+    ``**PlStorageFinalize**``によりPL Storageの終了処理を行います。PL Storageの終了処理のエラーは無視して処理を続行します。 +
+        その後、リソースを解放し、内部状態が未初期化の状態に戻ります。 +
+    ** エラー時の挙動、復帰方法に関しては各APIの詳細説明を参照してください。
+
+[#_ハンドル機能]
+==== ハンドル機能
+
+* **機能概要** +
+    Parameter Storage ManagerのAPIを使用するためのハンドルを管理します。
+
+* **前提条件** +
+    Parameter Storage Managerが初期化されていることです。
+
+* **機能詳細** +
+    ** ``**EsfParameterStorageManagerOpen**``を呼び出すことでハンドルを取得します。 +
+        取得したハンドルでParameter Storage ManagerのAPIを使用できるようになります。 +
+    ** ``**EsfParameterStorageManagerClose**``を呼び出すことで、ハンドルを解放します。 +
+        不要となったハンドルは本APIで解放してください。 +
+    ** エラー時の挙動、復帰方法に関しては各APIの詳細説明を参照してください。 +
+
+[#_データ保存領域アクセス機能]
+==== データ保存領域アクセス機能
+
+* **機能概要** +
+    マスク構造体、データ構造体を用いてデータ保存領域にアクセスし、データを保存・取得・削除・工場出荷状態に戻す（Factory Reset）機能を提供します。 +
+    データ保存領域のFactory Resetを実行する機能と、Factory Reset実行時に呼び出すコールバック関数を登録する機能を持ちます。
+
+* **前提条件** +
+    Parameter Storage Managerの初期化が完了していることです。 +
+    ハンドルを取得していることです。 +
+
+* **機能詳細** +
+    ** データ構造体のメンバの情報を表す構造体を使用して、データ構造体を操作します。 +
+    ** マスク構造体、データ構造体を用いてデータ保存領域にアクセスする機能
+        *** ``**EsfParameterStorageManagerSave**``を呼び出すことで、マスク構造体で指定したデータメンバをデータ保存領域へ保存します。
+        *** ``**EsfParameterStorageManagerLoad**``を呼び出すことで、マスク構造体で指定したデータをデータ保存領域から取得し、データメンバへ格納します。
+        *** ``**EsfParameterStorageManagerClear**``を呼び出すことで、マスク構造体で指定したデータを、データ保存領域から削除します。
+        *** ``**EsfParameterStorageManagerGetSize**``を呼び出すことで、データ保存領域へ保存済みのデータサイズを取得します。
+    ** データ保存領域のFactory Resetを実行する機能 +
+        ``**EsfParameterStorageManagerInvokeFactoryReset**``は、データ保存領域のデータを工場出荷状態に戻すトリガーとなる関数です。以下の処理により、データ保存領域は工場出荷状態に戻ります。
+        . <<#_DataSettingTable, Factory Reset対象>>のデータを工場出荷状態に戻します。
+        . ``**EsfParameterStorageManagerRegisterFactoryReset**``で登録された関数を呼び出します。 +
+    ** Factory Reset実行時に呼び出すコールバック関数を登録する機能
+        *** ``**EsfParameterStorageManagerRegisterFactoryReset**``を呼び出すことで、``**EsfParameterStorageManagerInvokeFactoryReset**``実行時に呼び出すコールバック関数を、Parameter Storage Managerへ登録します。 +
+            Parameter Storage Managerが工場出荷状態に戻す対象ではないデータを工場出荷状態に戻したい場合や、Factory Reset実行後の後処理に使用します。 +
+    ** 本機能のAPIは、データ保存領域へのアクセスを排他制御して行います。
+            実装モジュール側の処理が本機能のAPIの排他制御区間を共有したい場合、以下の2つのAPIを使用します。これらのAPIは再帰的に呼び出すことができます。 +
+        *** ``**EsfParameterStorageManagerLock**``を呼び出すことで、排他制御を開始します。 +
+        *** ``**EsfParameterStorageManagerUnlock**``を呼び出すことで、排他制御を終了します。 +
+
+[#_データ更新キャンセル機能]
+==== データ更新キャンセル機能
+
+* **機能概要** +
+    データ保存領域の更新をキャンセルする機能を提供します。 +
+
+* **前提条件** +
+    Parameter Storage Managerの初期化が完了していることです。 +
+    ハンドルを取得していることです。 +
+
+* **機能詳細** +
+    ** 一時的なデータ保存領域を使用することで、データ保存領域アクセス機能によるデータの更新内容を実際のデータ保存領域へ反映する、反映しないを選択できます。 +
+    ** ``**EsfParameterStorageManagerUpdateBegin**``を呼び出すことで、対象のデータは一時的なデータ保存領域を取得します。 +
+        データ保存領域アクセス機能によるデータのアクセスは、一時的なデータ保存領域が対象になります。
+    ** ``**EsfParameterStorageManagerUpdateComplete**``を呼び出すことで、一時的なデータ保存領域のデータを、実際のデータ保存領域へ反映します。
+    ** ``**EsfParameterStorageManagerUpdateCancel**``を呼び出すことで、一時的なデータ保存領域のデータを、実際のデータ保存領域へ反映せずに破棄します。
+    ** 本機能が利用不可である場合、本機能のAPIは内部処理を行わず、``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+        本機能が利用可能であるかは``**EsfParameterStorageManagerGetCapabilities**``を呼び出し、``**EsfParameterStorageManagerCapabilities::cancellable**``を参照することで判定できます。
+
+[#_ユーティリティ機能]
+==== ユーティリティ機能
+
+* **機能概要** +
+    Parameter Storage Managerの機能に関連するユーティリティAPIを提供します。 +
+
+* **前提条件** +
+    Parameter Storage Managerの初期化が完了していることです。 +
+
+* **機能詳細** +
+    ** ``**EsfParameterStorageManagerIsDataEmpty**``を呼び出すことで、データ構造体の指定したメンバにデータが格納されているかを判定できます。 +
+        ``**ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY**``等のIS_EMPTYで終わるマクロ群は同じ機能を持ちます。
+    ** ``**EsfParameterStorageManagerGetCapabilities**``を呼び出すことで、Parameter Storage Managerの各機能が利用可能であるかを判定できます。 +
+        詳細は<<#_EsfParameterStorageManagerCapabilities, EsfParameterStorageManagerCapabilities>>および<<#_EsfParameterStorageManagerGetCapabilities, EsfParameterStorageManagerGetCapabilities>>の項目を参照してください。
+    ** ``**EsfParameterStorageManagerGetItemCapabilities**``を呼び出すことで、Parameter Storage Managerが管理するデータに対して、各機能が利用可能であるかを判定できます。 +
+        詳細は<<#_EsfParameterStorageManagerItemCapabilities, EsfParameterStorageManagerItemCapabilities>>および<<#_EsfParameterStorageManagerGetItemCapabilities, EsfParameterStorageManagerGetItemCapabilities>>の項目を参照してください。
+    ** ``**ESF_PARAMETER_STORAGE_MANAGER_<TYPE NAME>_IS_EMPTY**``マクロは、``TYPE NAME``に対応したデータ型のメンバにデータが格納されているかを判定できます。
+    ** ``**ESF_PARAMETER_STORAGE_MANAGER_<TYPE_NAME>_SIZEOF**``マクロは、``TYPE NAME``に対応したデータ型のメンバの最大サイズを取得できます。 +
+        ``**EsfParameterStorageManagerMemberInfo::size**``に設定する際に使用します。
+    ** ``**ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED**``マクロは、``**EsfParameterStorageManagerMemberInfo::enabled*``に設定する関数を定義する際に使用します。
+
+<<<
+
+[#_コンポーネントの非機能要件一覧]
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+
+|連続処理実行時間
+|最大でかかる処理時間です。
+|<<#_連続処理実行時間>>
+
+|スタックメモリ使用量
+|最大で使用するスタックメモリ量です。
+|<<#_スタックメモリ使用量>>
+
+|ヒープメモリ使用量
+|最大で使用するヒープメモリ量です。
+|<<#_ヒープメモリ使用量>>
+
+|静的メモリ使用量
+|使用する静的メモリ量です。
+|<<#_静的メモリ使用量>>
+
+|スレッド使用数
+|使用するスレッド数です。
+|<<#_スレッド使用数>>
+
+|===
+
+<<<
+
+[#_コンポーネントの非機能要件説明]
+=== コンポーネントの非機能要件説明
+[#_連続処理実行時間]
+==== 連続処理実行時間
+本コンポーネントの処理時間は最大10msです。 +
+他モジュールに依存するデータアクセスやサービス設定の所要時間は、上記処理時間から除きます。 +
+排他制御の待機時間は最大1000msです。コンフィグ値により設定変更可能です。 +
+
+[#_スタックメモリ使用量]
+==== スタックメモリ使用量
+最大で1024Byteです。
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+最大で8KBです。
+
+[#_静的メモリ使用量]
+==== 静的メモリ使用量
+128Byteです。
+
+[#_スレッド使用数]
+==== スレッド使用数
+スレッドを使用しません。
+
+<<<
+
+[#_API仕様]
+== API仕様
+[#_定義一覧]
+=== 定義一覧
+
+==== Kconfig
+
+[#_TableKconfig]
+.コンフィグ一覧
+[width="100%", cols="30%,25%,45%a",options="header"]
+|===
+|コンフィグ名 |デフォルト値  |概要
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_TIMEOUT_MS
+|1000
+|排他制御のタイムアウト時間[ms]です。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_HANDLE_MAX
+|8
+|``**EsfParameterStorageManagerOpen**``で同時に取得可能なハンドルの最大数です。 +
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_FACTORY_RESET_MAX
+|8
+|``**EsfParameterStorageManagerRegisterFactoryReset**``で登録可能な関数の最大数です。 +
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_UPDATE_MAX
+|4
+|1つのハンドルで同時に一時的なデータ保存領域を使用可能なデータ数の最大数です。 +
+``**EsfParameterStorageManagerUpdateBegin**``で一時的なデータ保存領域を使用するデータを指定します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_BUFFER_LENGTH
+|4096
+|Large HeapのFile I/Oを使用する時の作業用のバッファサイズです。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG
+|y
+|Parameter Storage Managerのログを有効化します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG_ERROR
+|y
+|Parameter Storage ManagerのErrorログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG_WARN
+|y
+|Parameter Storage ManagerのWarningログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG_INFO
+|y
+|Parameter Storage ManagerのInformationログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG_DEBUG
+|y
+|Parameter Storage ManagerのDebugログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG_TRACE
+|n
+|Parameter Storage ManagerのTraceログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG
+|y
+|Parameter Storage Managerのログを有効化します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG_ERROR
+|y
+|Parameter Storage ManagerのErrorログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG_WARN
+|y
+|Parameter Storage ManagerのWarningログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG_INFO
+|y
+|Parameter Storage ManagerのInformationログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG_DEBUG
+|y
+|Parameter Storage ManagerのDebugログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG_TRACE
+|n
+|Parameter Storage ManagerのTraceログを有効化します。 +
+``**EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG**``に依存します。
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_UTILITY_LOG_ENABLE
+|y
+|DLOG/ELOGの出力先を変更します。yの場合、Utility Logを使用します。nの場合、printfを使用します。 +
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_PL_STORAGE_STUB
+|n
+|Parameter Storage Manager内のPL Storageのスタブを有効化します。 +
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_MEMORY_MANAGER_STUB
+|n
+|Parameter Storage Manager内のUtilitiesのMemoryのスタブを有効化します。 +
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_UTILITY_LOG_STUB
+|n
+|Parameter Storage Manager内のUtilitiesのLogのスタブを有効化します。 +
+
+|EXTERNAL_PARAMETER_STORAGE_MANAGER_POWER_MANAGER_STUB
+|n
+|Parameter Storage Manager内のPower Managerのスタブを有効化します。 +
+
+|===
+
+<<<
+
+
+[#_データ型一覧]
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|EsfParameterStorageManagerStatus
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfParameterStorageManagerStatus>>
+
+|EsfParameterStorageManagerHandle
+|Parameter Storage Managerの制御ハンドルです。
+|<<#_EsfParameterStorageManagerHandle>>
+
+|EsfParameterStorageManagerMask
+|マスク構造体のポインタを表すエイリアスです。
+|<<#_EsfParameterStorageManagerMask>>
+
+|EsfParameterStorageManagerData
+|データ構造体のポインタを表すエイリアスです。
+|<<#_EsfParameterStorageManagerData>>
+
+|EsfParameterStorageManagerFactoryResetID
+|Factory Resetの登録識別子です。
+|<<#_EsfParameterStorageManagerFactoryResetID>>
+
+|EsfParameterStorageManagerUpdateType
+|更新開始時の一時的なデータ保存領域の状態を定義する列挙型です。
+|<<#_EsfParameterStorageManagerUpdateType>>
+
+|EsfParameterStorageManagerItemID
+|Parameter Storage Managerがサポートするデータを定義する列挙型です。
+|<<#_EsfParameterStorageManagerItemID>>
+
+|EsfParameterStorageManagerItemType
+|データメンバのデータ型を定義する列挙型です。
+|<<#_EsfParameterStorageManagerItemType>>
+
+|EsfParameterStorageManagerStructInfo
+|データ構造体の情報を設定する構造体です。
+|<<#_EsfParameterStorageManagerStructInfo>>
+
+|EsfParameterStorageManagerMemberInfo
+|データ構造体のメンバ情報を設定する構造体です。
+|<<#_EsfParameterStorageManagerMemberInfo>>
+
+|EsfParameterStorageManagerItemAccessor
+|データ構造体への操作を定義する構造体です。
+|<<#_EsfParameterStorageManagerItemAccessor>>
+
+|EsfParameterStorageManagerItemAccessorSave
+|データ構造体へのSave操作を実行する関数のポインタ型です。
+|<<#_EsfParameterStorageManagerItemAccessorSave>>
+
+|EsfParameterStorageManagerItemAccessorLoad
+|データ構造体へのLoad操作を実行する関数のポインタ型です。
+|<<#_EsfParameterStorageManagerItemAccessorLoad>>
+
+|EsfParameterStorageManagerItemAccessorClear
+|データ構造体へのClear操作を実行する関数のポインタ型です。
+|<<#_EsfParameterStorageManagerItemAccessorClear>>
+
+|EsfParameterStorageManagerItemAccessorCancel
+|データ構造体へのSaveまたはClear操作をキャンセルする関数のポインタ型です。
+|<<#_EsfParameterStorageManagerItemAccessorCancel>>
+
+|EsfParameterStorageManagerItemMaskIsEnabled
+|マスク構造体のメンバが有効であるか判定する関数のポインタ型です。
+|<<#_EsfParameterStorageManagerItemMaskIsEnabled>>
+
+|EsfParameterStorageManagerRegisterFactoryResetType
+|登録するFactory Reset関数のポインタ型です。
+|<<#_EsfParameterStorageManagerRegisterFactoryResetType>>
+
+|EsfParameterStorageManagerCapabilities
+|利用可能なParameter Storage Managerの機能の情報を格納する構造体です。
+|<<#_EsfParameterStorageManagerCapabilities>>
+
+|EsfParameterStorageManagerItemCapabilities
+|Parameter Storage Managerが管理するデータの機能情報を格納する構造体です。
+|<<#_EsfParameterStorageManagerItemCapabilities>>
+
+|===
+
+[#_API一覧]
+==== API一覧
+以下にAPIの一覧を示します。
+本モジュールのAPIはESF内部にのみ公開します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+
+3+|**初期化機能**
+    |EsfParameterStorageManagerInit
+    |Parameter Storage Managerを初期化します。
+    |<<#_EsfParameterStorageManagerInit>>
+
+    |EsfParameterStorageManagerDeinit
+    |Parameter Storage Managerを終了します。
+    |<<#_EsfParameterStorageManagerDeinit>>
+
+3+|**ハンドル機能**
+    |EsfParameterStorageManagerOpen
+    |Parameter Storage Managerのハンドルを取得します。
+    |<<#_EsfParameterStorageManagerOpen>>
+
+    |EsfParameterStorageManagerClose
+    |Parameter Storage Managerのハンドルを解放します。
+    |<<#_EsfParameterStorageManagerClose>>
+
+3+|**データ保存領域アクセス機能**
+    |EsfParameterStorageManagerSave
+    |データ保存領域へデータを保存します。
+    |<<#_EsfParameterStorageManagerSave>>
+
+    |EsfParameterStorageManagerLoad
+    |データ保存領域からデータを取得します。
+    |<<#_EsfParameterStorageManagerLoad>>
+
+    |EsfParameterStorageManagerClear
+    |データ保存領域のデータを削除します。
+    |<<#_EsfParameterStorageManagerClear>>
+
+    |EsfParameterStorageManagerGetSize
+    |データ保存領域のデータサイズを返します。
+    |<<#_EsfParameterStorageManagerGetSize>>
+
+    |EsfParameterStorageManagerLock
+    |データ保存領域へのアクセスの排他制御を開始します。
+    |<<#_EsfParameterStorageManagerLock>>
+
+    |EsfParameterStorageManagerUnlock
+    |データ保存領域へのアクセスの排他制御を終了します。
+    |<<#_EsfParameterStorageManagerUnlock>>
+
+    |EsfParameterStorageManagerInvokeFactoryReset
+    |保存データを工場出荷状態に戻します。
+    |<<#_EsfParameterStorageManagerInvokeFactoryReset>>
+
+    |EsfParameterStorageManagerRegisterFactoryReset
+    |Factory Reset関数を登録します。
+    |<<#_EsfParameterStorageManagerRegisterFactoryReset>>
+
+    |EsfParameterStorageManagerUnregisterFactoryReset
+    |Factory Reset関数を登録解除します。
+    |<<#_EsfParameterStorageManagerUnregisterFactoryReset>>
+
+    |EsfParameterStorageManagerDowngrade
+    |データ保存領域をv2からv1へダウングレードします。
+    |<<#_EsfParameterStorageManagerDowngrade>>
+
+3+|**データ更新キャンセル機能**
+    |EsfParameterStorageManagerUpdateBegin
+    |データ保存領域の更新を開始します。
+    |<<#_EsfParameterStorageManagerUpdateBegin>>
+
+    |EsfParameterStorageManagerUpdateComplete
+    |データ保存領域の更新を完了します。
+    |<<#_EsfParameterStorageManagerUpdateComplete>>
+
+    |EsfParameterStorageManagerUpdateCancel
+    |データ保存領域の更新をキャンセルします。
+    |<<#_EsfParameterStorageManagerUpdateCancel>>
+
+3+|**ユーティリティ機能**
+    |EsfParameterStorageManagerIsDataEmpty
+    |データ構造体の指定したメンバにデータが格納されているかを判定します。
+    |<<#_EsfParameterStorageManagerIsDataEmpty>>
+
+    |EsfParameterStorageManagerGetCapabilities
+    |利用可能なParameter Storage Managerの機能の情報を取得します。
+    |<<#_EsfParameterStorageManagerGetCapabilities>>
+
+    |EsfParameterStorageManagerGetItemCapabilities
+    |Parameter Storage Managerが管理するデータの機能情報を取得します。
+    |<<#_EsfParameterStorageManagerGetItemCapabilities>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF
+    |構造体のメンバのサイズ[Byte]を取得します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF
+    |データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>のサイズ[Byte]を取得します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF
+    |データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>のサイズ[Byte]を取得します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF
+    |データ構造体のメンバの<<#_文字列, 文字列型>>のサイズ[Byte]を取得します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF
+    |データ構造体のメンバの<<#_生データ, 生データ型>>のサイズ[Byte]を取得します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED
+    |マスク構造体の特定のメンバが有効であるかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY
+    |データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>にデータが格納されているかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_BINARY_POINTER_IS_EMPTY
+    |データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータのポインタ型>>にデータが格納されているかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_BINARY_POINTER_IS_EMPTY>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_IS_EMPTY
+    |データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>にデータが格納されているかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_IS_EMPTY>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_OFFSET_POINTER_IS_EMPTY
+    |データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータのポインタ型>>にデータが格納されているかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_POINTER_IS_EMPTY>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY
+    |データ構造体のメンバの<<#_文字列, 文字列型>>にデータが格納されているかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY>>
+
+    |ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY
+    |データ構造体のメンバの<<#_生データ, 生データ型>>にデータが格納されているかを判定します。
+    |<<#_ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY>>
+
+|===
+
+
+<<<
+
+[#_データ型定義]
+=== データ型定義
+
+[#_EsfParameterStorageManagerStatus]
+==== EsfParameterStorageManagerStatus
+APIの実行結果を定義する列挙型です。
+
+* *書式* +
++
+[source, c]
+....
+typedef enum EsfParameterStorageManagerStatus {
+  kEsfParameterStorageManagerStatusOk,
+  kEsfParameterStorageManagerStatusInvalidArgument,
+  kEsfParameterStorageManagerStatusFailedPrecondition,
+  kEsfParameterStorageManagerStatusNotFound,
+  kEsfParameterStorageManagerStatusOutOfRange,
+  kEsfParameterStorageManagerStatusPermissionDenied,
+  kEsfParameterStorageManagerStatusResourceExhausted,
+  kEsfParameterStorageManagerStatusDataLoss,
+  kEsfParameterStorageManagerStatusUnavailable,
+  kEsfParameterStorageManagerStatusInternal,
+  kEsfParameterStorageManagerStatusTimedOut,
+} EsfParameterStorageManagerStatus;
+....
+
+* *値* +
++
+[#_Table_EsfParameterStorageManagerStatus]
+.EsfParameterStorageManagerStatusの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfParameterStorageManagerStatusOk
+|成功です。
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+|引数が正しくありません。
+
+|kEsfParameterStorageManagerStatusFailedPrecondition
+|操作が拒否されました。
+
+|kEsfParameterStorageManagerStatusNotFound
+|リソースが見つかりませんでした。
+
+|kEsfParameterStorageManagerStatusOutOfRange
+|無効な範囲が指定されています。
+
+|kEsfParameterStorageManagerStatusPermissionDenied
+|データへのアクセスが許可されていません。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+|リソースが不足しています。
+
+|kEsfParameterStorageManagerStatusDataLoss
+|復帰不可の要因でデータへのアクセスが失敗しました。
+
+|kEsfParameterStorageManagerStatusUnavailable
+|一時的な要因でデータへのアクセスが失敗しました。
+
+|kEsfParameterStorageManagerStatusInternal
+|内部処理に失敗しました。
+
+|kEsfParameterStorageManagerStatusTimedOut
+|排他処理がタイムアウトしました。 +
+タイムアウト時間については<<#_連続処理実行時間>>を参照してください。
+
+|===
+
+[#_EsfParameterStorageManagerHandle]
+==== EsfParameterStorageManagerHandle
+Parameter Storage Managerの制御ハンドルです。
+
+* *書式* +
++
+[source, C]
+....
+typedef int32_t EsfParameterStorageManagerHandle;
+#define ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE ((EsfParameterStorageManagerHandle)-1)
+....
+
+* *値* +
++
+[#_Table_EsfParameterStorageManagerHandle]
+.EsfParameterStorageManagerHandleの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE
+|無効なハンドルです。
+
+|===
+
+[#_EsfParameterStorageManagerMask]
+==== EsfParameterStorageManagerMask
+マスク構造体のポインタを表すエイリアスです。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef uintptr_t EsfParameterStorageManagerMask;
+#define ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK ((EsfParameterStorageManagerMask)NULL)
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerMask]
+.EsfParameterStorageManagerMaskの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+
+|メンバ名  |説明
+|ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK
+|マスク構造体の無効値を表します。
+
+|===
+
+[#_EsfParameterStorageManagerData]
+==== EsfParameterStorageManagerData
+データ構造体のポインタを表すエイリアスです。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef uintptr_t EsfParameterStorageManagerData;
+#define ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA ((EsfParameterStorageManagerData)NULL)
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerData]
+.EsfParameterStorageManagerDataの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA
+|データ構造体の無効値を表します。
+
+|===
+
+[#_EsfParameterStorageManagerFactoryResetID]
+==== EsfParameterStorageManagerFactoryResetID
+Factory Resetの登録識別子です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef int32_t EsfParameterStorageManagerFactoryResetID;
+#define ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID ((EsfParameterStorageManagerFactoryResetID)-1)
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerFactoryResetID]
+.EsfParameterStorageManagerFactoryResetIDの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID
+|Factory Resetの登録識別子の無効値を表します。
+
+|===
+
+[#_EsfParameterStorageManagerUpdateType]
+==== EsfParameterStorageManagerUpdateType
+更新開始時の一時的なデータ保存領域の状態を定義する列挙型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef enum EsfParameterStorageManagerUpdateType {
+    kEsfParameterStorageManagerUpdateEmpty,
+    kEsfParameterStorageManagerUpdateCopy,
+    kEsfParameterStorageManagerUpdateTypeMax,
+} EsfParameterStorageManagerUpdateType;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerUpdateType]
+.EsfParameterStorageManagerUpdateTypeの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|kEsfParameterStorageManagerUpdateEmpty
+|データが何も保存されていない状態です。
+
+|kEsfParameterStorageManagerUpdateCopy
+|実際のデータ保存領域と同じデータが保存されている状態です。
+
+|kEsfParameterStorageManagerUpdateTypeMax
+|データの状態の最大数を表します。
+
+|===
+
+[#_EsfParameterStorageManagerItemID]
+==== EsfParameterStorageManagerItemID
+Parameter Storage Managerがサポートするデータを定義する列挙型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef enum EsfParameterStorageManagerItemID {
+  kEsfParameterStorageManagerItemDpsURL,
+  kEsfParameterStorageManagerItemCommonName,
+  kEsfParameterStorageManagerItemDpsScopeID,
+  kEsfParameterStorageManagerItemProjectID,
+  kEsfParameterStorageManagerItemRegisterToken,
+  kEsfParameterStorageManagerItemWiFiSSID,
+  kEsfParameterStorageManagerItemWiFiPassword,
+  kEsfParameterStorageManagerItemWiFiEncryption,
+  kEsfParameterStorageManagerItemIPAddress,
+  kEsfParameterStorageManagerItemSubnetMask,
+  kEsfParameterStorageManagerItemGateway,
+  kEsfParameterStorageManagerItemDNS,
+  kEsfParameterStorageManagerItemIPMethod,
+  kEsfParameterStorageManagerItemNetIfKind,
+  kEsfParameterStorageManagerItemIPv6IPAddress,
+  kEsfParameterStorageManagerItemIPv6SubnetMask,
+  kEsfParameterStorageManagerItemIPv6Gateway,
+  kEsfParameterStorageManagerItemIPv6DNS,
+  kEsfParameterStorageManagerItemWiFiApSSID,
+  kEsfParameterStorageManagerItemWiFiApPassword,
+  kEsfParameterStorageManagerItemWiFiApEncryption,
+  kEsfParameterStorageManagerItemWiFiApChannel,
+  kEsfParameterStorageManagerItemWiFiApIPAddress,
+  kEsfParameterStorageManagerItemWiFiApSubnetMask,
+  kEsfParameterStorageManagerItemWiFiApGateway,
+  kEsfParameterStorageManagerItemWiFiApDNS,
+  kEsfParameterStorageManagerItemProxyURL,
+  kEsfParameterStorageManagerItemProxyPort,
+  kEsfParameterStorageManagerItemProxyUserName,
+  kEsfParameterStorageManagerItemProxyPassword,
+  kEsfParameterStorageManagerItemEvpHubURL,
+  kEsfParameterStorageManagerItemEvpHubPort,
+  kEsfParameterStorageManagerItemEvpIotPlatform,
+  kEsfParameterStorageManagerItemPkiRootCerts,
+  kEsfParameterStorageManagerItemPkiRootCertsHash,
+  kEsfParameterStorageManagerItemEvpTls,
+  kEsfParameterStorageManagerItemDeviceManifest,
+  kEsfParameterStorageManagerItemDebugLogLevel,
+  kEsfParameterStorageManagerItemEventLogLevel,
+  kEsfParameterStorageManagerItemDebugLogDestination,
+  kEsfParameterStorageManagerItemLogFilter,
+  kEsfParameterStorageManagerItemLogUseFlash,
+  kEsfParameterStorageManagerItemStorageName,
+  kEsfParameterStorageManagerItemStorageSubDirectoryPath,
+  kEsfParameterStorageManagerItemDebugLogLevel2,
+  kEsfParameterStorageManagerItemEventLogLevel2,
+  kEsfParameterStorageManagerItemDebugLogDestination2,
+  kEsfParameterStorageManagerItemLogFilter2,
+  kEsfParameterStorageManagerItemLogUseFlash2,
+  kEsfParameterStorageManagerItemStorageName2,
+  kEsfParameterStorageManagerItemStorageSubDirectoryPath2,
+  kEsfParameterStorageManagerItemDebugLogLevel3,
+  kEsfParameterStorageManagerItemEventLogLevel3,
+  kEsfParameterStorageManagerItemDebugLogDestination3,
+  kEsfParameterStorageManagerItemLogFilter3,
+  kEsfParameterStorageManagerItemLogUseFlash3,
+  kEsfParameterStorageManagerItemStorageName3,
+  kEsfParameterStorageManagerItemStorageSubDirectoryPath3,
+  kEsfParameterStorageManagerItemDebugLogLevel4,
+  kEsfParameterStorageManagerItemEventLogLevel4,
+  kEsfParameterStorageManagerItemDebugLogDestination4,
+  kEsfParameterStorageManagerItemLogFilter4,
+  kEsfParameterStorageManagerItemLogUseFlash4,
+  kEsfParameterStorageManagerItemStorageName4,
+  kEsfParameterStorageManagerItemStorageSubDirectoryPath4,
+  kEsfParameterStorageManagerItemNTPServer,
+  kEsfParameterStorageManagerItemNTPSyncInterval,
+  kEsfParameterStorageManagerItemNTPPollingTime,
+  kEsfParameterStorageManagerItemSkipModeSettings,
+  kEsfParameterStorageManagerItemLimitPacketTime,
+  kEsfParameterStorageManagerItemLimitRTCCorrectionValue,
+  kEsfParameterStorageManagerItemSanityLimit,
+  kEsfParameterStorageManagerItemSlewModeSettings,
+  kEsfParameterStorageManagerItemStableRTCCorrectionValue,
+  kEsfParameterStorageManagerItemStableSyncNumber,
+  kEsfParameterStorageManagerItemSystemError,
+  kEsfParameterStorageManagerItemFactoryResetFlag,
+  kEsfParameterStorageManagerItemRTCErrorDetection,
+  kEsfParameterStorageManagerItemRTCPQAParameter,
+  kEsfParameterStorageManagerItemBatteryInformation,
+  kEsfParameterStorageManagerItemRTCNetworkInformation,
+  kEsfParameterStorageManagerItemRTCConfig,
+  kEsfParameterStorageManagerItemHoursMeter,
+  kEsfParameterStorageManagerItemSAS,
+  kEsfParameterStorageManagerItemQRModeStateFlag,
+  kEsfParameterStorageManagerItemInitialSettingFlag,
+  kEsfParameterStorageManagerItemHWInfoText,
+  kEsfParameterStorageManagerItemMCULoaderVersion,
+  kEsfParameterStorageManagerItemSensorLoaderVersion,
+  kEsfParameterStorageManagerItemMCUFWLastUpdate,
+  kEsfParameterStorageManagerItemSensorLoaderLastUpdate,
+  kEsfParameterStorageManagerItemSensorFWLastUpdate,
+  kEsfParameterStorageManagerItemSensorAIModelFlashAddress,
+  kEsfParameterStorageManagerItemSensorLoaderFlashAddress,
+  kEsfParameterStorageManagerItemSensorFWFlashAddress,
+  kEsfParameterStorageManagerItemAIModelParameterSlot0,
+  kEsfParameterStorageManagerItemAIModelParameterSlot1,
+  kEsfParameterStorageManagerItemAIModelParameterSlot2,
+  kEsfParameterStorageManagerItemAIModelParameterSlot3,
+  kEsfParameterStorageManagerItemAIModelParameterSlot4,
+  kEsfParameterStorageManagerItemAIModelParameterHashSlot1,
+  kEsfParameterStorageManagerItemAIModelParameterHashSlot2,
+  kEsfParameterStorageManagerItemAIModelParameterHashSlot3,
+  kEsfParameterStorageManagerItemAIModelParameterHashSlot4,
+  kEsfParameterStorageManagerItemLMTStd,
+  kEsfParameterStorageManagerItemPreWBStd,
+  kEsfParameterStorageManagerItemGAMMAStd,
+  kEsfParameterStorageManagerItemLSCStd,
+  kEsfParameterStorageManagerItemLSCRawStd,
+  kEsfParameterStorageManagerItemDEWARPStd,
+  kEsfParameterStorageManagerItemLMTCustom,
+  kEsfParameterStorageManagerItemPreWBCustom,
+  kEsfParameterStorageManagerItemGAMMACustom,
+  kEsfParameterStorageManagerItemGAMMAAutoCustom,
+  kEsfParameterStorageManagerItemLSCCustom,
+  kEsfParameterStorageManagerItemLSCRawCustom,
+  kEsfParameterStorageManagerItemDEWARPCustom,
+  kEsfParameterStorageManagerItemAIISPAIModelParameterSlot0,
+  kEsfParameterStorageManagerItemAIISPLoaderFlashAddress,
+  kEsfParameterStorageManagerItemAIISPFWFlashAddress,
+  kEsfParameterStorageManagerItemAIISPAIModelParameterSlot1,
+  kEsfParameterStorageManagerItemAIISPAIModelParameterSlot2,
+  kEsfParameterStorageManagerItemAIISPAIModelParameterSlot3,
+  kEsfParameterStorageManagerItemAIISPAIModelParameterSlot4,
+  kEsfParameterStorageManagerItemAIModelSlotInfo,
+  kEsfParameterStorageManagerItemAIISPAIModelSlotInfo,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo0,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo1,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo2,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo3,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo4,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo5,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo6,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo7,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo8,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo9,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo10,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo11,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo12,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo13,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo14,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo15,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo16,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo17,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo18,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo19,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo20,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo21,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo22,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo23,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo24,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo25,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo26,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo27,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo28,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfo29,
+  kEsfParameterStorageManagerItemFwMgrBinaryInfoMcuFirmware,
+  kEsfParameterStorageManagerItemEsfSensorConfig,
+  kEsfParameterStorageManagerItemSpiBootLoader,
+  kEsfParameterStorageManagerItemSpiBootFirmware,
+  kEsfParameterStorageManagerItemSpiBootAIModel,
+  kEsfParameterStorageManagerItemPreInstallAIModelInfo,
+  kEsfParameterStorageManagerItemPreInstallAIModel,
+  kEsfParameterStorageManagerItemInputTensorOnlyModel,
+  kEsfParameterStorageManagerItemInputTensorOnlyParam,
+  kEsfParameterStorageManagerItemExceptionFactor,
+  kEsfParameterStorageManagerItemExceptionInfo,
+  kEsfParameterStorageManagerItemEvpExceptionFactor,
+  kEsfParameterStorageManagerItemCustom,
+  kEsfParameterStorageManagerItemMax
+} EsfParameterStorageManagerItemID;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerItemID]
+.EsfParameterStorageManagerItemIDの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfParameterStorageManagerItemDpsURL
+|DPS URLです。
+|kEsfParameterStorageManagerItemCommonName
+|Common Nameです。
+|kEsfParameterStorageManagerItemDpsScopeID
+|DPS Scope IDです。
+|kEsfParameterStorageManagerItemProjectID
+|Project IDです。
+|kEsfParameterStorageManagerItemRegisterToken
+|Register Tokenです。
+|kEsfParameterStorageManagerItemWiFiSSID
+|Wi-Fi SSIDです。
+|kEsfParameterStorageManagerItemWiFiPassword
+|Wi-Fi Passwordです。
+|kEsfParameterStorageManagerItemWiFiEncryption
+|Wi-Fi Encryptionです。
+|kEsfParameterStorageManagerItemIPAddress
+|IPアドレスです。
+|kEsfParameterStorageManagerItemSubnetMask
+|サブネットマスクです。
+|kEsfParameterStorageManagerItemGateway
+|ゲートウェイです。
+|kEsfParameterStorageManagerItemDNS
+|DNSです。
+|kEsfParameterStorageManagerItemIPMethod
+|DHCP有効無効の設定です。
+|kEsfParameterStorageManagerItemNetIfKind
+|Wi-Fi/Ethの指定です。
+|kEsfParameterStorageManagerItemIPv6IPAddress
+|IPv6のIPアドレスです。
+|kEsfParameterStorageManagerItemIPv6SubnetMask
+|IPv6のサブネットマスクです。
+|kEsfParameterStorageManagerItemIPv6Gateway
+|IPv6のゲートウェイです。
+|kEsfParameterStorageManagerItemIPv6DNS
+|IPv6のDNSです。
+|kEsfParameterStorageManagerItemWiFiApSSID
+|Wi-Fi APのSSIDです。
+|kEsfParameterStorageManagerItemWiFiApPassword
+|Wi-Fi APのPasswordです。
+|kEsfParameterStorageManagerItemWiFiApEncryption
+|Wi-Fi APのEncryptionの設定です。
+|kEsfParameterStorageManagerItemWiFiApChannel
+|Wi-Fi APのChannelの設定です。
+|kEsfParameterStorageManagerItemWiFiApIPAddress
+|Wi-Fi APのIPアドレスです。
+|kEsfParameterStorageManagerItemWiFiApSubnetMask
+|Wi-Fi APのサブネットマスクです。
+|kEsfParameterStorageManagerItemWiFiApGateway
+|Wi-Fi APのゲートウェイです。
+|kEsfParameterStorageManagerItemWiFiApDNS
+|Wi-Fi APのDNSです。
+|kEsfParameterStorageManagerItemProxyURL
+|ProxyサーバーのURLです。
+|kEsfParameterStorageManagerItemProxyPort
+|Proxyサーバーのポート番号です。
+|kEsfParameterStorageManagerItemProxyUserName
+|Proxyサーバーのユーザー名です。
+|kEsfParameterStorageManagerItemProxyPassword
+|Proxyサーバーのパスワードです。
+|kEsfParameterStorageManagerItemEvpHubURL
+|EVP HubのURLです。
+|kEsfParameterStorageManagerItemEvpHubPort
+|EVP Hubのポート番号です。
+|kEsfParameterStorageManagerItemEvpIotPlatform
+|EVP RuntimeのIoT Platformです。
+|kEsfParameterStorageManagerItemPkiRootCerts
+|PkiRootCertsです。
+|kEsfParameterStorageManagerItemPkiRootCertsHash
+|PkiRootCertsのハッシュ値です。
+|kEsfParameterStorageManagerItemEvpTls
+|TLS認証の要否を決めるパラメータです。
+|kEsfParameterStorageManagerItemDeviceManifest
+|Device Manifestです。
+|kEsfParameterStorageManagerItemDebugLogLevel
+|デバッグログのレベルです。（1セット目）
+|kEsfParameterStorageManagerItemEventLogLevel
+|イベントログのレベルです。（1セット目）
+|kEsfParameterStorageManagerItemDebugLogDestination
+|デバッグログの出力先です。（1セット目）
+|kEsfParameterStorageManagerItemLogFilter
+|Log Filterです。（1セット目）
+|kEsfParameterStorageManagerItemLogUseFlash
+|Log Use Flashです。（1セット目）
+|kEsfParameterStorageManagerItemStorageName
+|Storage Nameです。（1セット目）
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath
+|Storage Sub Directory Pathです。（1セット目）
+|kEsfParameterStorageManagerItemDebugLogLevel2
+|デバッグログのレベルです。（2セット目）
+|kEsfParameterStorageManagerItemEventLogLevel2
+|イベントログのレベルです。（2セット目）
+|kEsfParameterStorageManagerItemDebugLogDestination2
+|デバッグログの出力先です。（2セット目）
+|kEsfParameterStorageManagerItemLogFilter2
+|Log Filterです。（2セット目）
+|kEsfParameterStorageManagerItemLogUseFlash2
+|Log Use Flashです。（2セット目）
+|kEsfParameterStorageManagerItemStorageName2
+|Storage Nameです。（2セット目）
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath2
+|Storage Sub Directory Pathです。（2セット目）
+|kEsfParameterStorageManagerItemDebugLogLevel3
+|デバッグログのレベルです。（3セット目）
+|kEsfParameterStorageManagerItemEventLogLevel3
+|イベントログのレベルです。（3セット目）
+|kEsfParameterStorageManagerItemDebugLogDestination3
+|デバッグログの出力先です。（3セット目）
+|kEsfParameterStorageManagerItemLogFilter3
+|Log Filterです。（3セット目）
+|kEsfParameterStorageManagerItemLogUseFlash3
+|Log Use Flashです。（3セット目）
+|kEsfParameterStorageManagerItemStorageName3
+|Storage Nameです。（3セット目）
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath3
+|Storage Sub Directory Pathです。（3セット目）
+|kEsfParameterStorageManagerItemDebugLogLevel4
+|デバッグログのレベルです。（4セット目）
+|kEsfParameterStorageManagerItemEventLogLevel4
+|イベントログのレベルです。（4セット目）
+|kEsfParameterStorageManagerItemDebugLogDestination4
+|デバッグログの出力先です。（4セット目）
+|kEsfParameterStorageManagerItemLogFilter4
+|Log Filterです。（4セット目）
+|kEsfParameterStorageManagerItemLogUseFlash4
+|Log Use Flashです。（4セット目）
+|kEsfParameterStorageManagerItemStorageName4
+|Storage Nameです。（4セット目）
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath4
+|Storage Sub Directory Pathです。（4セット目）
+|kEsfParameterStorageManagerItemNTPServer
+|NTPサーバーのURLです。
+|kEsfParameterStorageManagerItemNTPSyncInterval
+|NTPクライアントの同期周期です。
+|kEsfParameterStorageManagerItemNTPPollingTime
+|NTPクライアントの監視周期です。
+|kEsfParameterStorageManagerItemSkipModeSettings
+|Skip Mode Settingsです。
+|kEsfParameterStorageManagerItemLimitPacketTime
+|Limit Packet Timeです。
+|kEsfParameterStorageManagerItemLimitRTCCorrectionValue
+|Limit RTC Corection Valueです。
+|kEsfParameterStorageManagerItemSanityLimit
+|Sanity Limitです。
+|kEsfParameterStorageManagerItemSlewModeSettings
+|Slew Mode Settingsです。
+|kEsfParameterStorageManagerItemStableRTCCorrectionValue
+|Stable RTC Corection Valueです。
+|kEsfParameterStorageManagerItemStableSyncNumber
+|Stable Sync Numberです。
+|kEsfParameterStorageManagerItemSystemError
+|SystemError発生状況です。
+|kEsfParameterStorageManagerItemFactoryResetFlag
+|Factory Resetフラグです。
+|kEsfParameterStorageManagerItemRTCErrorDetection
+|間欠動作の異常検出です。
+|kEsfParameterStorageManagerItemRTCPQAParameter
+|間欠動作用PQAパラメータです。
+|kEsfParameterStorageManagerItemBatteryInformation
+|バッテリー情報です。
+|kEsfParameterStorageManagerItemRTCNetworkInformation
+|間欠動作用ネットワーク情報です。
+|kEsfParameterStorageManagerItemRTCConfig
+|間欠動作用Configです。
+|kEsfParameterStorageManagerItemHoursMeter
+|Hours Meterです。
+|kEsfParameterStorageManagerItemSAS
+|SAS URL/Cert/Directory Pathの暗号化データです。
+|kEsfParameterStorageManagerItemQRModeStateFlag
+|QR Mode State flagです。
+|kEsfParameterStorageManagerItemInitialSettingFlag
+|Initial Setting flagです。
+|kEsfParameterStorageManagerItemHWInfoText
+|HW Info textです。
+|kEsfParameterStorageManagerItemMCULoaderVersion
+|MCU Loaderバージョンです。
+|kEsfParameterStorageManagerItemSensorLoaderVersion
+|Sensor Loaderバージョンです。
+|kEsfParameterStorageManagerItemMCUFWLastUpdate
+|MCU FWの更新時刻です。
+|kEsfParameterStorageManagerItemSensorLoaderLastUpdate
+|Sensor Loaderの更新時刻です。
+|kEsfParameterStorageManagerItemSensorFWLastUpdate
+|Sensor FWの更新時刻です。
+|kEsfParameterStorageManagerItemSensorAIModelFlashAddress
+|AI Model Flash Addressです。
+|kEsfParameterStorageManagerItemSensorLoaderFlashAddress
+|SensorLoader Flash Addressです。
+|kEsfParameterStorageManagerItemSensorFWFlashAddress
+|SensorFW Flash Addressです。
+|kEsfParameterStorageManagerItemAIModelParameterSlot0
+|AI Modelのスロット0のパラメータです。
+|kEsfParameterStorageManagerItemAIModelParameterSlot1
+|AI Modelのスロット1のパラメータです。
+|kEsfParameterStorageManagerItemAIModelParameterSlot2
+|AI Modelのスロット2のパラメータです。
+|kEsfParameterStorageManagerItemAIModelParameterSlot3
+|AI Modelのスロット3のパラメータです。
+|kEsfParameterStorageManagerItemAIModelParameterSlot4
+|AI Modelのスロット4のパラメータです。
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot1
+|AI Modelのスロット1のハッシュ値です。
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot2
+|AI Modelのスロット2のハッシュ値です。
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot3
+|AI Modelのスロット3のハッシュ値です。
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot4
+|AI Modelのスロット4のハッシュ値です。
+|kEsfParameterStorageManagerItemLMTStd
+|LMT（STD面）です。
+|kEsfParameterStorageManagerItemPreWBStd
+|PreWB（STD面）です。
+|kEsfParameterStorageManagerItemGAMMAStd
+|GAMMA（STD面）です。
+|kEsfParameterStorageManagerItemLSCStd
+|LSC（STD面）です。
+|kEsfParameterStorageManagerItemLSCRawStd
+|LSC RAW（STD面）です。
+|kEsfParameterStorageManagerItemDEWARPStd
+|DEWARP（STD面）です。
+|kEsfParameterStorageManagerItemLMTCustom
+|LMT（Custom面）です。
+|kEsfParameterStorageManagerItemPreWBCustom
+|PreWB（Custom面）です。
+|kEsfParameterStorageManagerItemGAMMACustom
+|GAMMA（Custom面）です。
+|kEsfParameterStorageManagerItemGAMMAAutoCustom
+|GAMMA Auto（Custom面）です。
+|kEsfParameterStorageManagerItemLSCCustom
+|LSC（Custom面）です。
+|kEsfParameterStorageManagerItemLSCRawCustom
+|LSC RAW（Custom面）です。
+|kEsfParameterStorageManagerItemDEWARPCustom
+|DEWARP（Custom面）です。
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot0
+|AI-ISPのAI Modelのスロット0のパラメータです。
+|kEsfParameterStorageManagerItemAIISPLoaderFlashAddress
+|AI-ISPのLoader Flash Addressです。
+|kEsfParameterStorageManagerItemAIISPFWFlashAddress
+|AI-ISPのFW Flash Addressです。
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot1
+|AI-ISPのAI Modelのスロット1のパラメータです。
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot2
+|AI-ISPのAI Modelのスロット2のパラメータです。
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot3
+|AI-ISPのAI Modelのスロット3のパラメータです。
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot4
+|AI-ISPのAI Modelのスロット4のパラメータです。
+|kEsfParameterStorageManagerItemAIModelSlotInfo
+|AIモデルのスロット情報です。
+|kEsfParameterStorageManagerItemAIISPAIModelSlotInfo
+|AI-ISPのAI Modelのスロット情報です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo0
+|Firmware Manager管理のバイナリデータ0です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo1
+|Firmware Manager管理のバイナリデータ1です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo2
+|Firmware Manager管理のバイナリデータ2です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo3
+|Firmware Manager管理のバイナリデータ3です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo4
+|Firmware Manager管理のバイナリデータ4です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo5
+|Firmware Manager管理のバイナリデータ5です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo6
+|Firmware Manager管理のバイナリデータ6です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo7
+|Firmware Manager管理のバイナリデータ7です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo8
+|Firmware Manager管理のバイナリデータ8です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo9
+|Firmware Manager管理のバイナリデータ9です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo10
+|Firmware Manager管理のバイナリデータ10です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo11
+|Firmware Manager管理のバイナリデータ11です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo12
+|Firmware Manager管理のバイナリデータ12です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo13
+|Firmware Manager管理のバイナリデータ13です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo14
+|Firmware Manager管理のバイナリデータ14です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo15
+|Firmware Manager管理のバイナリデータ15です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo16
+|Firmware Manager管理のバイナリデータ16です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo17
+|Firmware Manager管理のバイナリデータ17です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo18
+|Firmware Manager管理のバイナリデータ18です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo19
+|Firmware Manager管理のバイナリデータ19です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo20
+|Firmware Manager管理のバイナリデータ20です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo21
+|Firmware Manager管理のバイナリデータ21です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo22
+|Firmware Manager管理のバイナリデータ22です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo23
+|Firmware Manager管理のバイナリデータ23です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo24
+|Firmware Manager管理のバイナリデータ24です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo25
+|Firmware Manager管理のバイナリデータ25です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo26
+|Firmware Manager管理のバイナリデータ26です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo27
+|Firmware Manager管理のバイナリデータ27です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo28
+|Firmware Manager管理のバイナリデータ28です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo29
+|Firmware Manager管理のバイナリデータ29です。
+|kEsfParameterStorageManagerItemFwMgrBinaryInfoMcuFirmware
+|Firmware Manager管理のMCU FW情報です。
+|kEsfParameterStorageManagerItemEsfSensorConfig
+|ESF Sensor Configです。
+|kEsfParameterStorageManagerItemSpiBootLoader
+|SPIブート用のローダーファイルです。
+|kEsfParameterStorageManagerItemSpiBootFirmware
+|SPIブート用のメインファームです。
+|kEsfParameterStorageManagerItemSpiBootAIModel
+|SPIブート用AIモデル(InputTensorOnly)です。
+|kEsfParameterStorageManagerItemPreInstallAIModelInfo
+|プリインストールされたAIモデルの情報です。
+|kEsfParameterStorageManagerItemPreInstallAIModel
+|プリインストールされたAIモデルです。
+|kEsfParameterStorageManagerItemInputTensorOnlyModel
+|MOBILE APP の network.fpkです。
+|kEsfParameterStorageManagerItemInputTensorOnlyParam
+|MOBILE APP の network_info.txtです。
+|kEsfParameterStorageManagerItemExceptionFactor
+|Exception 要因です。
+|kEsfParameterStorageManagerItemExceptionInfo
+|Exception 情報です。
+|kEsfParameterStorageManagerItemEvpExceptionFactor
+|EVP が原因の Exception 要因です。
+|kEsfParameterStorageManagerItemCustom
+|カスタム動作用の識別子です。
+|kEsfParameterStorageManagerItemMax
+|データIDの最大数を表します。
+
+|===
+
+[#_EsfParameterStorageManagerItemType]
+==== EsfParameterStorageManagerItemType
+データメンバのデータ型を定義する列挙型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef enum EsfParameterStorageManagerItemType {
+  kEsfParameterStorageManagerItemTypeBinaryArray,
+  kEsfParameterStorageManagerItemTypeBinaryPointer,
+  kEsfParameterStorageManagerItemTypeOffsetBinaryArray,
+  kEsfParameterStorageManagerItemTypeOffsetBinaryPointer,
+  kEsfParameterStorageManagerItemTypeString,
+  kEsfParameterStorageManagerItemTypeRaw,
+  kEsfParameterStorageManagerItemTypeMax,
+} EsfParameterStorageManagerItemType;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerItemType]
+.EsfParameterStorageManagerItemTypeの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|kEsfParameterStorageManagerItemTypeBinaryArray
+|<<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>です。
+
+|kEsfParameterStorageManagerItemTypeBinaryPointer
+|<<#_EsfParameterStorageManagerBinary, バイナリデータのポインタ型>>です。
+
+|kEsfParameterStorageManagerItemTypeOffsetBinaryArray
+|<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>です。
+
+|kEsfParameterStorageManagerItemTypeOffsetBinaryPointer
+|<<#_EsfParameterStorageManagerOffsetBinary, オフセット指定バイナリデータのポインタ型>>です。
+
+|kEsfParameterStorageManagerItemTypeString
+|<<#_文字列, 文字列型>>です。
+
+|kEsfParameterStorageManagerItemTypeRaw
+|<<#_生データ, 生データ型>>です。
+
+|kEsfParameterStorageManagerItemTypeMax
+|データ型の最大数を表します。
+
+|===
+
+[#_EsfParameterStorageManagerStructInfo]
+==== EsfParameterStorageManagerStructInfo
+データ構造体の情報を設定する構造体です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerStructInfo {
+    size_t items_num;
+    const EsfParameterStorageManagerMemberInfo{asterisk} items;
+} EsfParameterStorageManagerStructInfo;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerStructInfo]
+.EsfParameterStorageManagerStructInfoの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|items_num
+|データ構造体のメンバ情報の数です。
+
+|items
+|データ構造体のメンバ情報です。
+
+|===
+
+[#_EsfParameterStorageManagerMemberInfo]
+==== EsfParameterStorageManagerMemberInfo
+データ構造体のメンバ情報を設定する構造体です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerMemberInfo {
+    EsfParameterStorageManagerItemID id;
+    EsfParameterStorageManagerItemType type;
+    size_t offset;
+    size_t size;
+    EsfParameterStorageManagerItemMaskIsEnabled enabled;
+    const EsfParameterStorageManagerItemAccessor{asterisk} custom;
+} EsfParameterStorageManagerMemberInfo;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerMemberInfo]
+.EsfParameterStorageManagerMemberInfoの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+
+|id
+|データ種別です。``**kEsfParameterStorageManagerItemCustom**``を設定することで、カスタム動作を実装できます。 +
+その場合、``**custom**``メンバにカスタム動作用の関数を設定してください。
+
+|type
+|データメンバのデータ型です。該当するデータ型を設定してください。
+
+|offset
+|データメンバへのオフセットです。``**offsetof**``を使用して設定してください。
+
+|size
+|データメンバの最大サイズ [Byte]です。 +
+
+* <<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>> +
+``**ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF**``を使用して設定してください。
+
+* <<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>> +
+``**ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF**``を使用して設定してください。
+
+* <<#_文字列, 文字列型>> +
+``**ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF**``を使用して設定してください。
+
+* <<#_生データ, 生データ型>> +
+``**ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF**``を使用して設定してください。
+
+* その他 +
+参照しません。
+
+|enabled
+|マスク構造体のメンバが有効であるかを判定する関数です。
+
+|custom
+|カスタム動作用の関数です。``**id**``メンバが``**kEsfParameterStorageManagerItemCustom**``以外の場合、``**NULL**``を設定してください。
+
+|===
+
+[#_EsfParameterStorageManagerItemAccessor]
+==== EsfParameterStorageManagerItemAccessor
+データ構造体への操作を定義する構造体です。 +
+``**EsfParameterStorageManagerItemID**``で定義されていないデータを扱う場合に使用します。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerItemAccessor {
+    EsfParameterStorageManagerItemAccessorSave save;
+    EsfParameterStorageManagerItemAccessorLoad load;
+    EsfParameterStorageManagerItemAccessorClear clear;
+    EsfParameterStorageManagerItemAccessorCancel cancel;
+} EsfParameterStorageManagerItemAccessor;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerItemAccessor]
+.EsfParameterStorageManagerItemAccessorの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|save
+|Save操作を実行する関数です。``**NULL**``は設定できません。
+
+|load
+|Load操作を実行する関数です。``**NULL**``は設定できません。
+
+|clear
+|Clear操作を実行する関数です。``**NULL**``は設定できません。
+
+|cancel
+|SaveまたはClear操作をキャンセルする関数です。``**NULL**``は設定できません。
+
+|===
+
+[#_EsfParameterStorageManagerItemAccessorSave]
+==== EsfParameterStorageManagerItemAccessorSave
+* *機能* +
+    Save操作を実行する関数のポインタ型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+typedef EsfParameterStorageManagerStatus ({asterisk}EsfParameterStorageManagerItemAccessorSave)(
+    const void{asterisk} item,
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] const void{asterisk} item``**::
+    ``**offsetof**``で指定したデータメンバです。``**NULL**``は許容しません。
+
+    **``[IN] void{asterisk} private_data``**::
+    ユーザーデータです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが作成する関数です。 +
+        作成した関数を``**EsfParameterStorageManagerItemAccessor**``の``**save**``メンバに関数ポインタを設定してください。 +
+    ** データの保存に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** データを保存する前に、``**private_data**``へ保存する前のデータを退避してください。 +
+        他のデータメンバの保存処理でエラーが発生し、``**EsfParameterStorageManagerItemAccessorCancel**``が呼び出された時に、退避したデータで、保存前の状態に復元してください。 +
+
+    ** **実行情報** +
+        <<#_TableEsfParameterStorageManagerSaveContext, EsfParameterStorageManagerSaveの実行情報>>を参照してください。
+
+    ** **エラー情報** +
+        <<#_TableEsfParameterStorageManagerSaveError, EsfParameterStorageManagerSaveのエラー情報>>を参照してください。 +
+
+[#_EsfParameterStorageManagerItemAccessorLoad]
+==== EsfParameterStorageManagerItemAccessorLoad
+* *機能* +
+    Load操作を実行する関数のポインタ型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+typedef EsfParameterStorageManagerStatus ({asterisk}EsfParameterStorageManagerItemAccessorLoad)(
+    void{asterisk} item,
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[OUT] void{asterisk} item``**::
+    ``**offsetof**``で指定したデータメンバです。``**NULL**``は許容しません。
+
+    **``[IN] void{asterisk} private_data``**::
+    ユーザーデータです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが作成する関数です。 +
+    ** データの取得に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+
+    ** **実行情報** +
+        <<#_TableEsfParameterStorageManagerLoadContext, EsfParameterStorageManagerLoadの実行情報>>を参照してください。
+
+    ** **エラー情報** +
+        <<#_TableEsfParameterStorageManagerLoadError, EsfParameterStorageManagerLoadのエラー情報>>を参照してください。
+
+[#_EsfParameterStorageManagerItemAccessorClear]
+==== EsfParameterStorageManagerItemAccessorClear
+* *機能* +
+    Clear操作を実行する関数のポインタ型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+typedef EsfParameterStorageManagerStatus ({asterisk}EsfParameterStorageManagerItemAccessorClear)(
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] void{asterisk} private_data``**::
+    ユーザーデータです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが作成する関数です。 +
+    ** データの削除に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** データを削除する前に、``**private_data**``へ削除する前のデータを退避してください。 +
+        他のデータメンバの削除処理でエラーが発生し、``**EsfParameterStorageManagerItemAccessorCancel**``が呼び出された時に、退避したデータで、削除前の状態に復元してください。 +
+
+    ** **実行情報** +
+        <<#_TableEsfParameterStorageManagerClearContext, EsfParameterStorageManagerClearの実行情報>>を参照してください。
+
+    ** **エラー情報** +
+        <<#_TableEsfParameterStorageManagerClearError, EsfParameterStorageManagerClearのエラー情報>>を参照してください。
+
+[#_EsfParameterStorageManagerItemAccessorCancel]
+==== EsfParameterStorageManagerItemAccessorCancel
+* *機能* +
+    SaveまたはClear操作をキャンセルする関数のポインタ型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+typedef EsfParameterStorageManagerStatus ({asterisk}EsfParameterStorageManagerItemAccessorCancel)(
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] void{asterisk} private_data``**::
+    ユーザーデータです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが作成する関数です。 +
+    ** データの保存または削除する前の状態に復元成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerItemAccessorCancelContext]
+.EsfParameterStorageManagerItemAccessorCancelの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerItemAccessorCancelError]
+.EsfParameterStorageManagerItemAccessorCancelのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusDataLoss
+a|データを保存前の状態に復元できませんでした。
+|{none}
+|復旧できません。
+
+|kEsfParameterStorageManagerStatusInternal
+a|内部処理に失敗しました。
+|{none}
+|デバイスを再起動してください。
+
+|===
+
+[#_EsfParameterStorageManagerItemMaskIsEnabled]
+==== EsfParameterStorageManagerItemMaskIsEnabled
+* *機能* +
+    マスク構造体のメンバが有効であるか判定する関数のポインタ型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+typedef bool ({asterisk}EsfParameterStorageManagerItemMaskIsEnabled)(
+    EsfParameterStorageManagerMask mask);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerMask mask``**::
+    マスク構造体です。``**NULL**``は許容しません。
+
+* *戻り値* +
+    マスクが有効である場合、``**true**``を返します。 +
+    それ以外の場合は``**false**``を返します。 +
+
+* *説明* +
+    ** 実装モジュールが作成する関数です。 +
+    ** マスク構造体の特定の1つのメンバが有効である場合、``**true**``を返します。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerItemMaskIsEnabledContext]
+.EsfParameterStorageManagerItemMaskIsEnabledの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングしません。
+
+|===
+
+[#_EsfParameterStorageManagerRegisterFactoryResetType]
+==== EsfParameterStorageManagerRegisterFactoryResetType
+* *機能* +
+    登録するFactory Reset関数のポインタ型です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+typedef EsfParameterStorageManagerStatus ({asterisk}EsfParameterStorageManagerRegisterFactoryResetType)(
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] void{asterisk} private_data``**::
+    ユーザーデータです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが作成する関数です。 +
+
+    ** 対象のデータを全て工場出荷状態に戻します。 +
+    ** エラー発生時のデータ復元は行いません。 +
+    ** 致命的なエラーが発生した場合に、エラーコードを返します。 +
+    ** 致命的なエラーではない場合、ログ出力して処理を継続します。 +
+
+    ** **実行情報** +
+        <<#_TableEsfParameterStorageManagerInvokeFactoryResetTypeContext, EsfParameterStorageManagerInvokeFactoryResetTypeの実行情報>>を参照してください。
+    
+    ** **エラー情報** +
+        <<#_TableEsfParameterStorageManagerInvokeFactoryResetTypeError, EsfParameterStorageManagerInvokeFactoryResetTypeのエラー情報>>を参照してください。
+
+
+[#_EsfParameterStorageManagerCapabilities]
+==== EsfParameterStorageManagerCapabilities
+利用可能なParameter Storage Managerの機能の情報を格納する構造体です。 +
+デバイス毎の対応情報は<<#_Capabilities, Capabilities>>の表を参照してください。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerCapabilities {
+    uint32_t cancellable : 1;
+} EsfParameterStorageManagerCapabilities;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerCapabilities]
+.EsfParameterStorageManagerCapabilitiesの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|cancellable
+a|**データ更新キャンセル機能**のAPIが使用可能な場合の値は1です。利用不可の場合の値は0です。 +
+対象のAPIは以下です。
+
+* ``**EsfParameterStorageManagerUpdateBegin**``
+* ``**EsfParameterStorageManagerUpdateComplete**``
+* ``**EsfParameterStorageManagerUpdateCancel**``
+
+|===
+
+[#_EsfParameterStorageManagerItemCapabilities]
+==== EsfParameterStorageManagerItemCapabilities
+Parameter Storage Managerが管理するデータの機能情報を格納する構造体です。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerItemCapabilities {
+    uint32_t read_only : 1;
+    uint32_t enable_offset : 1;
+} EsfParameterStorageManagerItemCapabilities;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerItemCapabilities]
+.EsfParameterStorageManagerItemCapabilitiesの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|read_only
+a|1の場合、``**EsfParameterStorageManagerSave**``, ```**EsfParameterStorageManagerClear**``によるデータ変更はできず、``**EsfParameterStorageManagerRead**``, ``**EsfParameterStorageManagerGetSize**``によるデータ取得のみ可能です。 +
+0の場合、制限はありません。
+
+|enable_offset
+a|1の場合、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>が利用可能です。0の場合は利用できません。
+
+|===
+
+
+<<<
+
+[#_API定義]
+=== API定義
+
+[#_EsfParameterStorageManagerInit]
+==== EsfParameterStorageManagerInit
+* *機能* +
+    Parameter Storage Managerを初期化します。
+
+* *書式* +
+    ``**EsfParameterStorageManagerStatus EsfParameterStorageManagerInit(void)**``::
+
+* *引数の説明* +
+    **``[IN, OUT] void``**::
+    なし
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 内部状態を初期化し、必要なリソースを確保します。 +
+    ** ``**PlStorageInitialize**``を呼び出し、PL Storageの初期化処理を行います。 +
+        ``**PlStorageInitialize**``のエラーは無視して処理を続行します。 +
+    ** 本APIの呼び出しが成功した後、Parameter Storage ManagerのAPIを使用可能になります。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerInitContext]
+.EsfParameterStorageManagerInitの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerInitError]
+.EsfParameterStorageManagerInitのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusFailedPrecondition
+a|Parameter Storage Managerが初期化済みです。
+|{none}
+|UNINIT状態でリトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+a|リソースを確保できませんでした。
+|{none}
+|システムのリソース状態を確認してからリトライしてください。
+
+|kEsfParameterStorageManagerStatusInternal
+a|内部エラーが発生しました。
+|{none}
+|復旧できません。
+
+|===
+
+[#_EsfParameterStorageManagerDeinit]
+==== EsfParameterStorageManagerDeinit
+* *機能* +
+    Parameter Storage Managerを終了します。
+
+* *書式* +
+    ``**EsfParameterStorageManagerStatus EsfParameterStorageManagerDeinit(void)**``::
+
+* *引数の説明* +
+    **``[IN, OUT] void``**::
+    なし
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** ``**PlStorageFinalize**``を呼び出し、PL Storageの終了処理を行います。 +
+        ``**PlStorageFinalize**``のエラーは無視して処理を続行します。 +
+    ** Parameter Storage Managerのリソースを解放します。 +
+    ** 本APIの呼び出しが成功した後、Parameter Storage ManagerのAPIは使用不可能になります。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerDeinitContext]
+.EsfParameterStorageManagerDeinitの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerDeinitError]
+.EsfParameterStorageManagerDeinitのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInternal
+a|内部エラーが発生しました。
+|{none}
+|復旧できません。
+
+|===
+
+[#_EsfParameterStorageManagerOpen]
+==== EsfParameterStorageManagerOpen
+* *機能* +
+    Parameter Storage Managerのハンドルを取得します。
+
+* *書式* +
+    ``**EsfParameterStorageManagerStatus EsfParameterStorageManagerOpen(EsfParameterStorageManagerHandle{asterisk} handle)**``::
+
+* *引数の説明* +
+    **``[OUT] EsfParameterStorageManagerHandle{asterisk} handle``**::
+    Parameter Storage Managerの操作ハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** Parameter Storage Managerの操作ハンドルを確保します。 +
+    ** 本APIを呼び出すことでParameter Storage ManagerのAPIを使用できるようになります。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerOpenContext]
+.EsfParameterStorageManagerOpenの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerOpenError]
+.EsfParameterStorageManagerOpenのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+a|引数が無効値です。
+
+* ``**handle**`` == ``**NULL**``
+|変更しません。
+|正しい引数を指定してリトライしてください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+a|排他制御でタイムアウトしました。
+|変更しません。
+|リトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+a|ハンドルを取得できませんでした。
+|変更しません。
+|使用中のハンドルを解放してからリトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |変更しません。
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部エラーが発生しました。
+    |変更しません。
+    |復旧できません。
+
+|===
+
+[#_EsfParameterStorageManagerClose]
+==== EsfParameterStorageManagerClose
+* *機能* +
+    Parameter Storage Managerのハンドルを解放します。
+
+* *書式* +
+    ``**EsfParameterStorageManagerStatus EsfParameterStorageManagerClose(EsfParameterStorageManagerHandle handle)**``::
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    Parameter Storage Managerの操作ハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** Parameter Storage Managerの操作ハンドルを解放します。 +
+    解放済みのハンドルが指定された場合、``**kEsfParameterStorageManagerStatusOk**``を返します。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerCloseContext]
+.EsfParameterStorageManagerCloseの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerCloseError]
+.EsfParameterStorageManagerCloseのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+a|引数が無効値です。
+
+* ``**handle**`` == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+|{none}
+|正しい引数を指定してリトライしてください。
+
+|kEsfParameterStorageManagerStatusNotFound
+a|ハンドルが異常値です。
+|{none}
+|ハンドルを取得してリトライしてください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+a|排他制御でタイムアウトしました。
+|{none}
+|リトライしてください。
+
+|kEsfParameterStorageManagerStatusFailedPrecondition
+a|ハンドルを解放できませんでした。
+|{none}
+|ハンドルが使用中ではない状態でリトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |{none}
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部エラーが発生しました。
+    |{none}
+    |復旧できません。
+
+|===
+
+[#_EsfParameterStorageManagerSave]
+==== EsfParameterStorageManagerSave
+* *機能* +
+    データ保存領域へデータを保存します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerSave(
+    EsfParameterStorageManagerHandle handle,
+    EsfParameterStorageManagerMask mask,
+    EsfParameterStorageManagerData data,
+    const EsfParameterStorageManagerStructInfo{asterisk} info,
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    Parameter Storage Managerのハンドルです。
+
+    **``[IN] EsfParameterStorageManagerMask mask``**::
+    マスク構造体です。
+
+    **``[IN] EsfParameterStorageManagerData data``**::
+    データ構造体です。
+
+    **``[IN] const EsfParameterStorageManagerStructInfo{asterisk} info``**::
+    構造体へのアクセス情報です。
+
+    **``[IN] void{asterisk} private_data``**::
+    カスタム動作時に使用するユーザー用データです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** マスク構造体で指定された全てのデータの保存に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** 引数``data``で与えられたメンバのうち、サイズ0が指定された<<#_バイナリデータ, バイナリデータ>>、<<#_文字列, 文字列>>のメンバのデータは削除されます。 +
+        詳細は<<#_データ構造体>>の各データ型の項目を参照してください。
+    ** ``**info**``で与えられたデータ構造体の情報を先頭から順番に処理します。 +
+        エラーが発生した場合、保存とは逆の順番で保存前の状態に復元します。 +
+    ** カスタム動作の場合、``**private_data**``をコールバック関数の引数に渡します。 +
+    ** Parameter Storage Managerのデータ操作と一貫性を保ちたい場合など、Parameter Storage Managerの排他制御区間を共有したい場合は、<<#_EsfParameterStorageManagerLock, EsfParameterStorageManagerLock>>と<<#_EsfParameterStorageManagerUnlock, EsfParameterStorageManagerUnlock>>を使用してください。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerSaveContext]
+.EsfParameterStorageManagerSaveの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerSaveError]
+.EsfParameterStorageManagerSaveのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効値です。
+
+        * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+        * mask == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK**``
+        * data == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA**``
+        * ``**EsfParameterStorageManagerItemCapabilities::enable_offset == 0**``かつ<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>でoffsetに0以外を指定
+        * その他、<<#_データ構造体_データ型一覧, データ構造体 データ型一覧>>を参照してください。
+    |{none}
+    |有効なハンドルもしくはマスク構造体を指定してください。
+
+|kEsfParameterStorageManagerStatusInternal
+    a|引数``**info**``が無効値です。
+
+        * info == ``**NULL**``
+        * +info->items_num+ == 0
+        * +info->items+ == ``**NULL**``
+        * +info->items->id+ が範囲外
+        * +info->items->type+ が範囲外
+        * +info->items->id+ == ``**kEsfParameterStorageManagerItemCustom**``の場合 +
+            +info->items->custom+ == ``**NULL**``または +info->items->custom+ のメンバが``**NULL**``
+        * メンバサイズの指定が必要な場合に +info->items->size == 0+ が設定されている
+    |{none}
+    |復旧できません。正しい``**EsfParameterStorageManagerStructInfo**``を実装してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusNotFound
+    a|有効なハンドルが見つかりませんでした。
+    |{none}
+    |有効なハンドルを取得してリトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |{none}
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusPermissionDenied
+    a|変更できないデータが含まれています。
+    |{none}
+    |保存できないデータをマスク構造体で対象外にしてリトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusDataLoss
+    a|データを変更前の状態に復元できませんでした。
+    |{none}
+    |復旧できません。
+
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|データの変更に失敗しました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusOutOfRange
+    a|データ保存領域の範囲を超過しました。 +
+    |{none}
+    |データサイズやオフセットの指定をデータ保存領域の範囲内に変更してリトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |{none}
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部処理に失敗しました。
+    |{none}
+    |デバイスを再起動してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant custom as CustomAccessor
+participant storage as データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerSave({mermaid_br}EsfParameterStorageManagerHandle handle,{mermaid_br}EsfParameterStorageManagerMask mask,{mermaid_br}EsfParameterStorageManagerData data,{mermaid_br}const EsfParameterStorageManagerStructInfo{asterisk} info,{mermaid_br}void{asterisk} private_data)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument{mermaid_br}or{mermaid_br}kEsfParameterStorageManagerStatusInternal
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        Note over internal,storage: 保存処理
+        loop index < info->items_size
+            opt info->items[index]->enabled(mask)
+                alt info->items[index]->id =={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: カスタム動作
+                    internal ->>+ custom: info->items[index]->{mermaid_br}custom->save({mermaid_br}data + info->items[index]->offset,{mermaid_br}info->items[index]->size,{mermaid_br}private_data)
+                    custom -->>- internal: EsfParameterStorageManagerStatus
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                else info->items[index]->id !={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: デフォルト動作
+                    internal ->>+ storage: サイズ取得
+                    storage -->>- internal: サイズ取得結果
+                    internal ->>+ storage: データアクセス
+                    storage -->>- internal: 読み込み結果
+                    opt 書き込みデータ != 読み込みデータ
+                        alt 書き込みデータサイズ != 0
+                            internal ->>+ storage: データ保存
+                            storage -->>- internal: 保存結果
+                        else 書き込みデータサイズ == 0
+                            internal ->>+ storage: データ削除
+                            storage -->>- internal: 削除結果
+                        end
+                    end
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                end
+            end
+            {mermaid_break} ret != kEsfParameterStorageManagerStatusOk
+                Note over internal,custom: ループを抜ける
+            end
+        end
+
+        {mermaid_break} ret == kEsfParameterStorageManagerStatusOk
+            Note left of internal: 処理成功
+            internal -->> ds: kEsfParameterStorageManagerStatusOk
+        end
+        {mermaid_break} ret == kEsfParameterStorageManagerStatusDataLoss
+            Note left of internal: 復元不可
+            internal -->> ds: kEsfParameterStorageManagerStatusDataLoss
+        end
+
+        Note over internal,storage: 復元処理
+        loop 0 <= index
+            opt info->items[index]->enabled(mask)
+                alt info->items[index]->id =={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: カスタム動作
+                    internal ->>+ custom: info->{mermaid_br}items[index]->{mermaid_br}custom->cancel({mermaid_br}private_data)
+                    custom -->>- internal: EsfParameterStorageManagerStatus
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                else
+                    Note over internal: デフォルト動作
+                    internal ->>+ storage: データアクセス
+                    storage -->>- internal: 書き込み結果
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                end
+            end
+            {mermaid_break} ret != kEsfParameterStorageManagerStatusOk
+                Note over internal,custom: ループを抜ける{mermaid_br}戻り値をkEsfParameterStorageManagerStatusDataLossに設定する
+            end
+        end
+    end
+
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerLoad]
+==== EsfParameterStorageManagerLoad
+* *機能* +
+    データ保存領域からデータを取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerLoad(
+    EsfParameterStorageManagerHandle handle,
+    EsfParameterStorageManagerMask mask,
+    EsfParameterStorageManagerData data,
+    const EsfParameterStorageManagerStructInfo{asterisk} info,
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    Parameter Storage Managerのハンドルです。
+
+    **``[IN] EsfParameterStorageManagerMask mask``**::
+    マスク構造体です。
+
+    **``[OUT] EsfParameterStorageManagerData data``**::
+    データ構造体です。
+
+    **``[IN] const EsfParameterStorageManagerStructInfo{asterisk} info``**::
+    構造体へのアクセス情報です。
+
+    **``[IN] void{asterisk} private_data``**::
+    カスタム動作時に使用するユーザー用データです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** マスク構造体で指定された全てのデータの取得に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** ``**info**``で与えられたデータ構造体の情報を先頭から順番に処理します。 +
+    ** カスタム動作の場合、``**private_data**``をコールバック関数の引数に渡します。 +
+    ** Parameter Storage Managerのデータ操作と一貫性を保ちたい場合など、Parameter Storage Managerの排他制御区間を共有したい場合は、<<#_EsfParameterStorageManagerLock, EsfParameterStorageManagerLock>>と<<#_EsfParameterStorageManagerUnlock, EsfParameterStorageManagerUnlock>>を使用してください。
+    ** データが削除されている場合、対応するデータメンバの``**size**``へ0を設定します。 +
+        ``**offset**``メンバを持つデータ型である場合、``**offset**``メンバにも0を設定します。 +
+        文字列型の場合、メンバの先頭に``**'{backslash}0'**``を設定します。 +
+        ``**EsfParameterStorageManagerIsDataEmpty**``関数や``**ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY**``等のマクロを使用して、メンバへデータが格納されているかを判定できます。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerLoadContext]
+.EsfParameterStorageManagerLoadの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerLoadError]
+.EsfParameterStorageManagerLoadのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|ユーザーが設定する引数が無効値です。
+
+        * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+        * mask == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK**``
+        * data == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA**``
+        * ``**EsfParameterStorageManagerItemCapabilities::enable_offset == 0**``かつ<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>でoffsetに0以外を指定
+        * その他、<<#_データ構造体_データ型一覧, データ構造体 データ型一覧>>を参照してください。
+    |変更しません。
+    |有効なハンドルもしくはマスク構造体を指定してください。
+
+|kEsfParameterStorageManagerStatusInternal
+    a|引数``**info**``が無効値です。
+
+        * info == ``**NULL**``
+        * +info->items_num+ == 0
+        * +info->items+ == ``**NULL**``
+        * +info->items->id+ が範囲外
+        * +info->items->type+ が範囲外
+        * +info->items->id+ == ``**kEsfParameterStorageManagerItemCustom**``の場合 +
+            +info->items->custom+ == ``**NULL**``または +info->items->custom+ のメンバが``**NULL**``
+        * メンバサイズの指定が必要な場合に +info->items->size == 0+ が設定されている
+    |変更しません。
+    |復旧できません。正しい``**EsfParameterStorageManagerStructInfo**``を実装してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |変更しません。
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusNotFound
+    a|有効なハンドルが見つかりませんでした。
+    |変更しません。
+    |有効なハンドルを取得してリトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |変更しません。
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+    a|データ保存領域へアクセスできません。
+    |エラー発生までに取得したデータが設定されています。
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|データの取得に失敗しました。
+    |エラー発生までに取得したデータが設定されています。
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusOutOfRange
+    |データ保存領域の範囲を超過しました。 +
+    |エラー発生までに取得したデータが設定されています。
+    |データサイズやオフセットの指定をデータ保存領域の範囲内に変更してリトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |変更しません。
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部処理に失敗しました。
+    |エラー発生までに取得したデータが設定されています。
+    |デバイスを再起動してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant accessor as ItemAccessor
+participant custom as CustomAccessor
+participant storage as データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerLoad({mermaid_br}EsfParameterStorageManagerHandle handle,{mermaid_br}EsfParameterStorageManagerMask mask,{mermaid_br}EsfParameterStorageManagerData data,{mermaid_br}const EsfParameterStorageManagerStructInfo{asterisk} info,{mermaid_br}void{asterisk} private_data)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument{mermaid_br}or{mermaid_br}kEsfParameterStorageManagerStatusInternal
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        Note over internal,storage: 取得処理
+        loop index < info->items_size
+            opt info->items[index]->enabled(mask)
+                alt info->items[index]->id =={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: カスタム動作
+                    internal ->>+ custom: info->items[index]->{mermaid_br}custom->load({mermaid_br}data + info->items[index]->offset,{mermaid_br}info->items[index]->size,{mermaid_br}private_data)
+                    custom -->>- internal: EsfParameterStorageManagerStatus
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                else info->items[index]->id !={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: デフォルト動作
+                    internal ->>+ storage: データアクセス
+                    storage -->>- internal: 読み込み結果
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                end
+            end
+            {mermaid_break} ret != kEsfParameterStorageManagerStatusOk
+                Note over internal,custom: ループを抜ける
+            end
+        end
+    end
+
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerClear]
+==== EsfParameterStorageManagerClear
+* *機能* +
+    データ保存領域のデータを削除します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerClear(
+    EsfParameterStorageManagerHandle handle,
+    EsfParameterStorageManagerMask mask,
+    const EsfParameterStorageManagerStructInfo{asterisk} info,
+    void{asterisk} private_data);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    Parameter Storage Managerのハンドルです。
+
+    **``[IN] EsfParameterStorageManagerMask mask``**::
+    マスク構造体です。
+
+    **``[IN] const EsfParameterStorageManagerStructInfo{asterisk} info``**::
+    構造体へのアクセス情報です。
+
+    **``[IN] void{asterisk} private_data``**::
+    カスタム動作時に使用するユーザー用データです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** マスク構造体で指定された全てのデータの削除に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** ``**info**``で与えられたデータ構造体の情報を先頭から順番に処理します。 +
+        エラーが発生した場合、削除とは逆の順番で削除前の状態に復元します。 +
+    ** カスタム動作の場合、``**private_data**``をコールバック関数の引数に渡します。 +
+    ** Parameter Storage Managerのデータ操作と一貫性を保ちたい場合など、Parameter Storage Managerの排他制御区間を共有したい場合は、<<#_EsfParameterStorageManagerLock, EsfParameterStorageManagerLock>>と<<#_EsfParameterStorageManagerUnlock, EsfParameterStorageManagerUnlock>>を使用してください。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerClearContext]
+.EsfParameterStorageManagerClearの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerClearError]
+.EsfParameterStorageManagerClearのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|ユーザーが設定する引数が無効値です。
+
+        * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+        * mask == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK**``
+    |{none}
+    |有効なハンドルもしくはマスク構造体を指定してください。
+
+|kEsfParameterStorageManagerStatusInternal
+    a|引数``**info**``が無効値です。
+
+        * info == ``**NULL**``
+        * +info->items_num+ == 0
+        * +info->items+ == ``**NULL**``
+        * +info->items->id+ が範囲外
+        * +info->items->type+ が範囲外
+        * +info->items->id+ == ``**kEsfParameterStorageManagerItemCustom**``の場合 +
+            +info->items->custom+ == ``**NULL**``または +info->items->custom+ のメンバが``**NULL**``
+    |{none}
+    |復旧できません。正しい``**EsfParameterStorageManagerStructInfo**``を実装してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusNotFound
+    a|有効なハンドルが見つかりませんでした。
+    |{none}
+    |有効なハンドルを取得してリトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |{none}
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusPermissionDenied
+    a|削除できないデータが含まれています。
+    |{none}
+    |削除できないデータをマスク構造体で対象外にしてリトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusDataLoss
+    a|データを削除前の状態に復元できませんでした。
+    |{none}
+    |復旧できません。
+
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|データの削除に失敗しました。
+    |{none}
+    |リトライしてください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |{none}
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部処理に失敗しました。
+    |{none}
+    |デバイスを再起動してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant accessor as ItemAccessor
+participant custom as CustomAccessor
+participant storage as データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerClear({mermaid_br}EsfParameterStorageManagerHandle handle,{mermaid_br}EsfParameterStorageManagerMask mask,{mermaid_br}const EsfParameterStorageManagerStructInfo{asterisk} info,{mermaid_br}void{asterisk} private_data)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument{mermaid_br}or{mermaid_br}kEsfParameterStorageManagerStatusInternal
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        Note over internal,storage: 削除処理
+        loop index < info->items_size
+            opt info->items[index]->enabled(mask)
+                alt info->items[index]->id =={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: カスタム動作
+                    internal ->>+ custom: info->items[index]->{mermaid_br}custom->clear({mermaid_br}private_data)
+                    custom -->>- internal: EsfParameterStorageManagerStatus
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                else info->items[index]->id !={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: デフォルト動作
+                    internal ->>+ storage: サイズ取得
+                    storage -->>- internal: サイズ取得結果
+                    internal ->>+ storage: データアクセス
+                    storage -->>- internal: 読み込み結果
+                    internal ->>+ storage: データアクセス
+                    storage -->>- internal: 削除結果
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                end
+            end
+            {mermaid_break} ret != kEsfParameterStorageManagerStatusOk
+                Note over internal,custom: ループを抜ける
+            end
+        end
+
+        {mermaid_break} ret == kEsfParameterStorageManagerStatusOk
+            Note left of internal: 処理成功
+            internal -->> ds: kEsfParameterStorageManagerStatusOk
+        end
+        {mermaid_break} ret == kEsfParameterStorageManagerStatusDataLoss
+            Note left of internal: 復元不可
+            internal -->> ds: kEsfParameterStorageManagerStatusDataLoss
+        end
+
+        Note over internal,storage: 復元処理
+        loop 0 <= index
+            opt info->items[index]->enabled(mask)
+                alt info->items[index]->id =={mermaid_br}kEsfParameterStorageManagerItemCustom
+                    Note over internal: カスタム動作
+                    internal ->>+ custom: info->{mermaid_br}items[index]->{mermaid_br}custom->cancel({mermaid_br}private_data)
+                    custom -->>- internal: EsfParameterStorageManagerStatus
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                else
+                    Note over internal: デフォルト動作
+                    internal ->>+ storage: データアクセス
+                    storage -->>- internal: 書き込み結果
+                    internal -->> internal: ret: EsfParameterStorageManagerStatus
+                end
+            end
+            {mermaid_break} ret != kEsfParameterStorageManagerStatusOk
+                Note over internal,custom: ループを抜ける{mermaid_br}戻り値をkEsfParameterStorageManagerStatusDataLossに設定する
+            end
+        end
+    end
+
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerGetSize]
+==== EsfParameterStorageManagerGetSize
+* *機能* +
+    データ保存領域のデータサイズを返します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerGetSize(
+    EsfParameterStorageManagerHandle handle,
+    EsfParameterStorageManagerItemID id,
+    uint32_t{asterisk} loadable_size);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    Parameter Storage Managerのハンドルです。 +
+    ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``を指定可能です。
+
+    **``[IN] EsfParameterStorageManagerItemID id``**::
+    サイズを取得したいデータのIDです。
+
+    **``[IN] uint32_t{asterisk} loadable_size``**::
+    データサイズです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** データ保存領域のデータサイズを返します。 +
+    このサイズを使用して、``**EsfParameterStorageManagerLoad**``でデータを取得できます。 +
+    ** 引数``**handle**``へ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``を指定した場合、実際のデータ保存領域のデータサイズを取得します。 +
+        それ以外の値を指定した場合、ハンドルに紐づいたデータ保存領域のデータサイズを取得します。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerGetSizeContext]
+.EsfParameterStorageManagerGetSizeの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerGetSize]
+.EsfParameterStorageManagerGetSizeのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効な値です。
+
+        * id < 0
+        * ``**kEsfParameterStorageManagerItemCustom**`` +<=+ id
+        * loadable_size == ``**NULL**``
+    |変更しません。
+    |有効な引数を設定してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |変更しません。
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusNotFound
+    a|有効なハンドルが見つかりませんでした。
+    |{none}
+    |``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``または有効なハンドルを取得してリトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |変更しません。
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+    a|データ保存領域へアクセスできません。
+    |変更しません。
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|データサイズの取得に失敗しました。
+    |変更しません。
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusInternal
+    a|内部処理に失敗しました。
+    |変更しません。
+    |エラー内容を確認してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant storage as データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerGetSize({mermaid_br}EsfParameterStorageManagerHandle handle,{mermaid_br}EsfParameterStorageManagerItemID id,{mermaid_br}uint32_t{asterisk} loadable_size)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        internal ->>+ storage: データサイズ取得
+        storage -->>- internal: データサイズ
+    end
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerLock]
+==== EsfParameterStorageManagerLock
+* *機能* +
+    データ保存領域へのアクセスの排他制御を開始します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerLock(void);
+----
+
+* *引数の説明* +
+    **``[IN, OUT] void``**::
+    なし
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** データ保存領域へのアクセスの排他制御を開始します。 +
+        実装モジュールが本機能のAPIと同じ排他制御区間で処理を行いたい場合に本APIを使用してください。
+    ** 再帰的にロックを取得可能です。 +
+        本APIを呼び出した回数分だけ、必ず<<#_EsfParameterStorageManagerUnlock, EsfParameterStorageManagerUnlock>>を呼び出してください。 +
+    ** 一定時間以内に排他制御を開始できない場合、エラーを返します。 +
+        タイムアウト時間については<<#_連続処理実行時間>>を参照してください。 +
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerLock]
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusTimedOut
+|排他制御がタイムアウトしました。
+|{none}
+|リトライしてください。
+
+|kEsfParameterStorageManagerStatusInternal
+|内部処理に失敗しました。
+|{none}
+|デバイスを再起動してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant mutex as Parameter Storage Manager{mermaid_br}Mutex
+participant recursive as Parameter Storage Manager{mermaid_br}Mutex管理情報
+
+ds ->>+ internal: EsfParameterStorageManagerLock(void)
+    internal ->>+ mutex: pthread_mutex_trylock(&mutex)
+    mutex -->>- internal: ret: int
+    alt ret == 0
+        internal ->>+ recursive: 管理情報初期化
+            recursive ->> recursive: pid = pthread_self(){mermaid_br}lock_count = 1
+        recursive -->>- internal: kEsfParameterStorageManagerStatusOk
+        internal -->> ds: kEsfParameterStorageManagerStatusOk
+    else ret == EBUSY
+        Note over recursive: ロック済み && スレッドIDが同一の場合はロック不要
+        internal ->>+ recursive: 管理情報確認
+            {mermaid_break} pthread_equal({mermaid_br}pid,{mermaid_br}pthread_self()) != 0
+                recursive ->> recursive: ++lock_count
+                recursive -->> internal: kEsfParameterStorageManagerStatusOk
+                internal -->> ds: kEsfParameterStorageManagerStatusOk
+            end
+            recursive -->>- internal: kEsfParameterStorageManagerStatusFailedPrecondition
+
+        internal ->>+ mutex: pthread_mutex_timedlock({mermaid_br}&mutex,{mermaid_br}&timeout)
+        mutex -->>- internal: ret: int
+        {mermaid_break} ret == ETIMEDOUT
+            internal -->> ds: kEsfParameterStorageManagerStatusTimedOut
+        end
+        {mermaid_break} ret != 0
+            internal -->> ds: kEsfParameterStorageManagerStatusInternal
+        end
+        internal -->> ds: kEsfParameterStorageManagerStatusOk
+    else その他エラー
+        {mermaid_break}
+            internal -->>- ds: kEsfParameterStorageManagerStatusInternal
+        end
+    end
+
+----
+
+[#_EsfParameterStorageManagerUnlock]
+==== EsfParameterStorageManagerUnlock
+* *機能* +
+    データ保存領域へのアクセスの排他制御を終了します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerUnlock(void);
+----
+
+* *引数の説明* +
+    **``[IN, OUT] void``**::
+    なし
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** データ保存領域へのアクセスの排他制御を終了します。 +
+        実装モジュールが本機能のAPIと同じ排他制御区間で処理を行いたい場合に本APIを使用してください。
+    ** 再帰的にロックを取得可能です。 +
+        <<#_EsfParameterStorageManagerLock, EsfParameterStorageManagerLock>>を呼び出した回数分だけ、必ず本APIを呼び出してください。 +
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerUnlock]
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInternal
+|内部処理に失敗しました。
+|{none}
+|デバイスを再起動してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant mutex as Parameter Storage Manager{mermaid_br}Mutex
+participant recursive as Parameter Storage Manager{mermaid_br}Mutex管理情報
+
+ds ->>+ internal: EsfParameterStorageManagerUnlock(void)
+    internal ->>+ recursive: 管理情報確認
+        {mermaid_break} lock_count == 0 ||{mermaid_br}pthread_equal({mermaid_br}pid,{mermaid_br}pthread_self()) == 0
+            recursive -->> internal: kEsfParameterStorageManagerStatusInternal
+            internal -->> ds: kEsfParameterStorageManagerStatusInternal
+        end
+        recursive ->> recursive: --lock_count
+        alt lock_count == 0
+            recursive -->> internal: kEsfParameterStorageManagerStatusOk
+        else lock_count != 0
+            recursive -->>- internal: kEsfParameterStorageManagerStatusFailedPrecondition
+        end
+
+    {mermaid_break} kEsfParameterStorageManagerStatusFailedPrecondition
+        Note over internal: lock_countが0ではない場合{mermaid_br}unlockせずに成功を返す
+        internal -->> ds: kEsfParameterStorageManagerStatusOk
+    end
+    internal ->>+ mutex: pthread_mutex_unlock(&mutex)
+    mutex -->>- internal: ret: int
+    {mermaid_break} ret != 0
+        internal -->> ds: kEsfParameterStorageManagerStatusInternal
+    end
+
+internal -->>- ds: kEsfParameterStorageManagerStatusOk
+----
+
+[#_EsfParameterStorageManagerInvokeFactoryReset]
+==== EsfParameterStorageManagerInvokeFactoryReset
+* *機能* +
+    保存データを工場出荷状態に戻します。
+
+* *書式* +
+    ``**EsfParameterStorageManagerStatus EsfParameterStorageManagerInvokeFactoryReset(void)**``::
+
+* *引数の説明* +
+    **``[IN, OUT] void``**::
+    なし
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 保存データを工場出荷状態に戻します。 +
+    ** 本APIの呼び出しが成功した後、保存データは工場出荷時のデータに戻ります。 +
+    ** 対象の保存データを工場出荷状態に戻すことに成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** 続行不可能な致命的なエラーが発生した場合に、``**kEsfParameterStorageManagerStatusDataLoss**``を返します。 +
+        その場合の保存データの状態は不定です。
+    ** 本API内部で<<#_DataSettingTable, Factory Reset対象>>を工場出荷状態に戻した後、``**<<#_EsfParameterStorageManagerRegisterFactoryReset, EsfParameterStorageManagerRegisterFactoryReset>>**``で登録された関数を呼び出します。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerInvokeFactoryResetContext]
+.EsfParameterStorageManagerInvokeFactoryResetの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerInvokeFactoryResetError]
+.EsfParameterStorageManagerInvokeFactoryResetのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusTimedOut
+a|排他制御でタイムアウトしました。
+|{none}
+|リトライしてください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+a|復帰不可能なエラーが発生しました。
+|{none}
+|デバイスを再起動してください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |{none}
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部エラーが発生しました。
+    |{none}
+    |復旧できません。
+
+|===
+
+[#_EsfParameterStorageManagerRegisterFactoryReset]
+==== EsfParameterStorageManagerRegisterFactoryReset
+* *機能* +
+    Factory Reset関数を登録します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerRegisterFactoryReset(
+    EsfParameterStorageManagerRegisterFactoryResetType func,
+    void{asterisk} private_data,
+    EsfParameterStorageManagerFactoryResetID{asterisk} id);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerRegisterFactoryResetType func``**::
+    登録するFactory Reset関数です。
+
+    **``[IN] void{asterisk} private_data``**::
+    登録するFactory Reset関数内で使用するユーザーデータです。
+
+    **``[OUT] EsfParameterStorageManagerFactoryResetID{asterisk} id``**::
+    Factory Resetの登録識別子です。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** ``**EsfParameterStorageManagerInvokeFactoryReset**``の実行時に、工場出荷状態に戻す対象ではないデータを工場出荷状態に戻したい場合、この関数を使用してコールバック関数を登録します。
+    ** 関数の登録に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+    ** 登録した関数とユーザーデータは、``**EsfParameterStorageManagerInvokeFactoryReset**``が呼び出された時に使用されます。 +
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerRegisterFactoryReset]
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+a|引数が無効値です。
+
+* ``**func**`` == ``**NULL**`` +
+* ``**id**`` == ``**NULL**`` +
+|{none}
+|正しい引数を指定してください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+|Factory Reset関数の登録数が上限に到達しました。
+|{none}
+|Factory Reset関数の最大登録数を変更してください。
+
+|===
+
+[#_EsfParameterStorageManagerUnregisterFactoryReset]
+==== EsfParameterStorageManagerUnregisterFactoryReset
+* *機能* +
+    Factory Reset関数を登録解除します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerUnregisterFactoryReset(
+    EsfParameterStorageManagerFactoryResetID id);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerFactoryResetID id``**::
+    登録解除するFactory Reset識別子です。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+
+    ** **挙動** +
+        *** 関数の登録解除に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+        関数が登録解除済みの場合も``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerUnregisterFactoryReset]
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+a|引数が無効値です。
+
+* id == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID**``
+|{none}
+|正しい引数を設定してください。
+
+1.2+|kEsfParameterStorageManagerStatusInternal
+    a|Parameter Storage Managerが初期化されていません。
+    |{none}
+    |``**EsfParameterStorageManagerInit**``で初期化してください。
+
+    a|内部エラーが発生しました。
+    |{none}
+    |復旧できません。
+
+|===
+
+
+[#_EsfParameterStorageManagerDowngrade]
+==== EsfParameterStorageManagerDowngrade
+* *機能* +
+    データ保存領域をv2からv1へダウングレードします。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerDowngrade(void);
+----
+
+* *引数の説明* +
+    **``[IN, OUT] void``**::
+    なし
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** データ保存領域をv2からv1へダウングレードします。 +
+
+    ** **挙動** +
+        *** 処理が成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+        *** 処理が失敗した場合に``**kEsfParameterStorageManagerStatusInternal**``を返します。 +
+        *** タイムアウトなしで排他制御を行います。
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerDowngrade]
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInternal
+a|内部処理でエラーが発生しました。
+|{none}
+|エラーログを確認してください。
+
+|===
+
+[#_EsfParameterStorageManagerUpdateBegin]
+==== EsfParameterStorageManagerUpdateBegin
+* *機能* +
+    データ保存領域の更新を開始します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerUpdateBegin(
+    EsfParameterStorageManagerHandle handle,
+    EsfParameterStorageManagerMask mask,
+    const EsfParameterStorageManagerStructInfo{asterisk} info,
+    EsfParameterStorageManagerUpdateType type);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    Parameter Storage Managerのハンドルです。
+
+    **``[IN] EsfParameterStorageManagerMask mask``**::
+    更新を開始する対象です。
+
+    **``[IN] const EsfParameterStorageManagerStructInfo{asterisk} info``**::
+    構造体へのアクセス情報です。
+
+    **``[IN] EsfParameterStorageManagerUpdateType type``**::
+    本API実行後の一時的なデータ保存領域の状態です。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** 本APIで指定したデータは一時的なデータ保存領域を使用します。 +
+        本APIで指定したハンドルを使用して``**EsfParameterStorageManagerSave**``, ``**EsfParameterStorageManagerLoad**``, ``**EsfParameterStorageManagerClear**``, ``**EsfParameterStorageManagerGetSize**``を呼び出すと、本APIで指定したデータに関しては一時的なデータ保存領域を操作します。それ以外のデータは実際のデータ保存領域を操作します。 +
+        本APIで指定したハンドルを使用せずに``**EsfParameterStorageManagerSave**``, ``**EsfParameterStorageManagerLoad**``, ``**EsfParameterStorageManagerClear**``, ``**EsfParameterStorageManagerGetSize**``を呼び出すと、実際のデータ保存領域を操作します。 +
+    ** ``**EsfParameterStorageManagerUpdateComplete**``で一時的なデータ保存領域のデータを、実際のデータ保存領域へ反映します。
+    ** ``**EsfParameterStorageManagerUpdateCancel**``で一時的なデータ保存領域のデータを、実際のデータ保存領域へ反映せずに破棄します。
+    ** 本APIを呼び出した後の一時的なデータ保存領域のデータは、引数``**type**``によって指定できます。 +
+        ``**kEsfParameterStorageManagerUpdateEmpty**``を指定するとデータが削除された状態になります。 +
+        ``**kEsfParameterStorageManagerUpdateCopy**``を指定すると、実際のデータ保存領域のデータと同一のデータが保存された状態になります。 +
+    ** 本APIによって一時的なデータ保存領域を持つことができるデータは、PL Configにより指定されたデータだけです。 +
+        一時的なデータ保存領域を持つことができないデータを指定した場合、``**kEsfParameterStorageManagerStatusPermissionDenied**``エラーを返します。 +
+        一時的なデータ保存領域に関する詳細は<<#_参考文献, PL Storageの仕様書>>の``**PlStorageSwitchData**``の説明を参照してください。 +
+    ** 対象のハンドルもしくはデータがすでに更新開始している場合、``**kEsfParameterStorageManagerStatusFailedPrecondition**``エラーを返します。
+    ** 更新開始している状態で``**EsfParameterStorageManagerClose**``によってハンドルを解放した場合、``**EsfParameterStorageManagerUpdateCancel**``と同様に、一時的なデータ保存領域は破棄されます。
+    ** ``**EsfParameterStorageManagerInvokeFactoryReset**``によって工場出荷状態に戻す対象は、実際のデータ保存領域です。一時的なデータ保存領域は工場出荷状態に戻されません。
+    ** ``**EsfParameterStorageManagerCapabilities::cancellable**``が0の場合、引数``**type**``に応じて本APIは以下の通りの処理を行います。
+        *** ``**kEsfParameterStorageManagerUpdateEmpty**``を指定するとデータ削除後、``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+        *** ``**kEsfParameterStorageManagerUpdateCopy**``を指定すると、処理を行わず``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerUpdateBeginContext]
+.EsfParameterStorageManagerUpdateBeginの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerUpdateBegin]
+.EsfParameterStorageManagerUpdateBeginのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効値です。
+
+        * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+        * mask == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK**``
+        * type < 0
+        * kEsfParameterStorageManagerUpdateTypeMax +<=+ type
+    |{none}
+    |有効な引数を設定してください。
+
+|kEsfParameterStorageManagerStatusFailedPrecondition
+    a|* 指定したハンドルは既に更新を開始しています。 +
+      * 更新対象のItemIDが、他のハンドルで既に更新開始しています。
+    |{none}
+    |``**EsfParameterStorageManagerUpdateComplete**``, ``**EsfParameterStorageManagerUpdateCancel**``で更新を終了してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |{none}
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|一時的なデータ保存領域の取得に失敗しました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusPermissionDenied
+    a|一時的なデータ保存領域が存在しないデータです。
+    |{none}
+    |別のデータIDを指定してください。
+
+|kEsfParameterStorageManagerStatusNotFound
+    a|有効なハンドルが見つかりませんでした。
+    |{none}
+    |有効なハンドルを取得してリトライしてください。
+
+|kEsfParameterStorageManagerStatusOutOfRange
+    |更新対象のItemID数が``**EXTERNAL_PARAMETER_STORAGE_MANAGER_UPDATE_MAX**``を超過しています。 +
+    |{none}
+    |``**EXTERNAL_PARAMETER_STORAGE_MANAGER_UPDATE_MAX**``より少ない数のItemIDを指定してください。
+
+.2+|kEsfParameterStorageManagerStatusInternal
+    a|引数``**info**``が無効値です。
+
+        * info == ``**NULL**``
+        * +info->items_num+ == 0
+        * +info->items+ == ``**NULL**``
+        * +info->items->id+ が範囲外
+        * +info->items->type+ が範囲外
+        * +info->items->id+ == ``**kEsfParameterStorageManagerItemCustom**``の場合 +
+            +info->items->custom+ == ``**NULL**``または +info->items->custom+ のメンバが``**NULL**``
+    |{none}
+    |復旧できません。正しい``**EsfParameterStorageManagerStructInfo**``を実装してください。
+
+    a|内部処理に失敗しました。
+    |{none}
+    |エラー内容を確認してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant storage as データ保存領域
+participant temp as 一時的な{mermaid_br}データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerUpdateBegin({mermaid_br}EsfParameterStorageManagerHandle handle,{mermaid_br}EsfParameterStorageManagerMask mask,{mermaid_br}const EsfParameterStorageManagerStructInfo{asterisk} info,{mermaid_br}EsfParameterStorageManagerUpdateType type)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument{mermaid_br}or{mermaid_br}kEsfParameterStorageManagerStatusInternal
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        {mermaid_break} 対象のハンドルもしくはデータIDは{mermaid_br}すでに更新開始している
+            internal -->> ds: kEsfParameterStorageManagerStatusFailedPrecondition
+        end
+
+        internal ->>+ storage: 一時的なデータ保存領域の取得
+            storage -->> temp: 一時的なデータ保存領域の確保
+        storage -->>- internal: 一時的なデータ保存領域
+        {mermaid_break} 対象のデータIDは{mermaid_br}一時的なデータ保存領域を持たない
+            internal -->> ds: kEsfParameterStorageManagerStatusPermissionDenied
+        end
+
+        internal ->>+ temp: データ削除
+        temp -->>- internal: 削除結果
+
+        opt type == kEsfParameterStorageManagerUpdateCopy
+            internal ->>+ storage: データ読み出し
+            storage -->>- internal: データ
+            internal ->>+ temp: データ書き込み
+            temp -->>- internal: 書き込み結果
+        end
+    end
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerUpdateComplete]
+==== EsfParameterStorageManagerUpdateComplete
+* *機能* +
+    データ保存領域の更新を完了します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerUpdateComplete(
+    EsfParameterStorageManagerHandle handle);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    ``**EsfParameterStorageManagerUpdateBegin**``で指定したParameter Storage Managerのハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** ``**EsfParameterStorageManagerUpdateBegin**``で取得した一時的なデータ保存領域のデータを、実際のデータ保存領域へ反映します。
+    ** 本APIの成功後、``**EsfParameterStorageManagerUpdateBegin**``で再び更新を開始することが可能です。
+    ** ``**EsfParameterStorageManagerCapabilities::cancellable**``が0の場合、本APIは処理を行わず、``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerUpdateCompleteContext]
+.EsfParameterStorageManagerUpdateCompleteの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerUpdateComplete]
+.EsfParameterStorageManagerUpdateCompleteのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効値です。
+
+        * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+    |{none}
+    |有効な引数を設定してください。
+
+|kEsfParameterStorageManagerStatusFailedPrecondition
+    a|更新を開始していません。
+    |{none}
+    |``**EsfParameterStorageManagerUpdateBegin**``で更新を開始してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |{none}
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|一時的なデータ保存領域の割り当てに失敗しました。
+    |{none}
+    |リトライしてください。
+
+.1+|kEsfParameterStorageManagerStatusInternal
+    a|内部処理に失敗しました。
+    |{none}
+    |エラー内容を確認してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant storage as データ保存領域
+participant temp as 一時的な{mermaid_br}データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerUpdateComplete({mermaid_br}EsfParameterStorageManagerHandle handle)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        {mermaid_break} 対象のハンドルは更新開始していない
+            internal -->> ds: kEsfParameterStorageManagerStatusFailedPrecondition
+        end
+
+        internal ->>+ storage: 一時的なデータ保存領域の割り当て
+            storage ->>+ temp: 一時的なデータ保存領域と{mermaid_br}実際のデータ保存領域の入れ替え
+            temp -->>- storage: 入れ替え結果
+        storage -->>- internal: 入れ替え結果
+    end
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerUpdateCancel]
+==== EsfParameterStorageManagerUpdateCancel
+* *機能* +
+    データ保存領域の更新をキャンセルします。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerUpdateCancel(
+    EsfParameterStorageManagerHandle handle);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerHandle handle``**::
+    ``**EsfParameterStorageManagerUpdateBegin**``で指定したParameter Storage Managerのハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** ``**EsfParameterStorageManagerUpdateBegin**``で取得した一時的なデータ保存領域のデータを、実際のデータ保存領域へ反映せずに破棄します。
+    ** 本APIの成功後、``**EsfParameterStorageManagerUpdateBegin**``で再び更新を開始することが可能です。
+    ** ``**EsfParameterStorageManagerCapabilities::cancellable**``が0の場合、本APIは処理を行わず、``**kEsfParameterStorageManagerStatusOk**``を返します。 +
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerUpdateCancelContext]
+.EsfParameterStorageManagerUpdateCancelの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングします。 +
+既に他のコンテキストでParameter Storage Managerが動作中の場合、完了を待ってから実行されます。 +
+一定時間以上待機した場合、タイムアウト応答します。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableFunctionEsfParameterStorageManagerUpdateCancel]
+.EsfParameterStorageManagerUpdateCancelのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効値です。
+
+        * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
+    |{none}
+    |有効な引数を設定してください。
+
+|kEsfParameterStorageManagerStatusFailedPrecondition
+    a|更新を開始していません。
+    |{none}
+    |``**EsfParameterStorageManagerUpdateBegin**``で更新を開始してください。
+
+|kEsfParameterStorageManagerStatusTimedOut
+    a|排他制御でタイムアウトしました。
+    |{none}
+    |リトライしてください。
+
+|kEsfParameterStorageManagerStatusResourceExhausted
+    a|リソースが不足しました。
+    |{none}
+    |リソースを解放してリトライしてください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|一時的なデータ保存領域の破棄に失敗しました。
+    |{none}
+    |リトライしてください。
+
+.1+|kEsfParameterStorageManagerStatusInternal
+    a|内部処理に失敗しました。
+    |{none}
+    |エラー内容を確認してください。
+
+|===
+
+    ** **シーケンス図** +
++
+[{mermaid_block}]
+----
+sequenceDiagram
+participant ds as 実装モジュール
+participant internal as Parameter Storage Manager
+participant storage as データ保存領域
+participant temp as 一時的な{mermaid_br}データ保存領域
+
+ds ->>+ internal: EsfParameterStorageManagerUpdateCancel({mermaid_br}EsfParameterStorageManagerHandle handle)
+    {mermaid_break} 引数確認
+        internal -->> ds: kEsfParameterStorageManagerStatusInvalidArgument
+    end
+
+    {mermaid_critical} Parameter Storage Manager排他制御区間
+        {mermaid_break} 対象のハンドルは更新開始していない
+            internal -->> ds: kEsfParameterStorageManagerStatusFailedPrecondition
+        end
+
+        internal ->>+ storage: 一時的なデータ保存領域の破棄
+            storage -x temp: 一時的なデータ保存領域の破棄
+        storage -->>- internal: 破棄結果
+    end
+internal -->>- ds: EsfParameterStorageManagerStatus
+----
+
+[#_EsfParameterStorageManagerIsDataEmpty]
+==== EsfParameterStorageManagerIsDataEmpty
+* *機能* +
+    データ構造体の指定したメンバにデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+bool EsfParameterStorageManagerIsDataEmpty(
+    EsfParameterStorageManagerData data,
+    const EsfParameterStorageManagerStructInfo{asterisk} info,
+    size_t index);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerData data``**::
+    データ構造体です。
+
+    **``[IN] const EsfParameterStorageManagerStructInfo{asterisk} info``**::
+    構造体へのアクセス情報です。
+
+    **``[IN] size_t index``**::
+    対象のデータメンバのインデックスです。``**++info->items_num++**``より小さい値を指定してください。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用する関数です。 +
+    ** ``**info**``で与えられたデータ構造体の情報のうち、``**index**``で指定されたメンバを処理します。 +
+    ** 対応するデータメンバの``**size**``が0である場合に``**true**``を返します。 +
+        ``**offset**``メンバを持つデータ型である場合、``**offset**``メンバも0である場合に``**true**``を返します。 +
+        文字列型の場合、メンバの先頭に``**'{backslash}0'**``である場合に``**true**``を返します。 +
+    ** 引数の指定が正しくない場合は``**false**``を返します。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerIsDataEmptyContext]
+.EsfParameterStorageManagerIsDataEmptyの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングしません。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerIsDataEmptyError]
+.EsfParameterStorageManagerIsDataEmptyのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+.2+|false
+    a|引数が無効値です。
+
+        * data == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA**``
+        * info == ``**NULL**``
+        * ++info->items_num <= index++
+    |{none}
+    |有効な引数を指定してください。
+
+    a|引数``**info**``が無効値です。
+
+        * +info->items_num+ == 0
+        * +info->items+ == ``**NULL**``
+        * +info->items->id+ が範囲外
+        * +info->items->type+ が範囲外
+        * +info->items->id+ == ``**kEsfParameterStorageManagerItemCustom**``の場合 +
+            +info->items->custom+ == ``**NULL**``または +info->items->custom+ のメンバが``**NULL**``
+    |{none}
+    |復旧できません。正しい``**EsfParameterStorageManagerStructInfo**``を実装してください。
+
+|===
+
+[#_EsfParameterStorageManagerGetCapabilities]
+==== EsfParameterStorageManagerGetCapabilities
+* *機能* +
+    利用可能なParameter Storage Managerの機能の情報を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerGetCapabilities(
+    EsfParameterStorageManagerCapabilities{asterisk} capabilities);
+----
+
+* *引数の説明* +
+    **``[OUT] EsfParameterStorageManagerCapabilities{asterisk} capabilities``**::
+    利用可能なParameter Storage Managerの機能の情報を格納する構造体です。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** 利用可能な機能の情報を取得します。 +
+       利用可能な機能はデバイス毎に異なります。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerGetCapabilitiesContext]
+.EsfParameterStorageManagerGetCapabilitiesの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングしません。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerGetCapabilitiesError]
+.EsfParameterStorageManagerGetCapabilitiesのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+.1+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効値です。
+
+        * capabilities == ``**NULL**``
+    |{none}
+    |有効な引数を指定してください。
+
+.1+|kEsfParameterStorageManagerStatusInternal
+    a|内部処理に失敗しました。
+    |{none}
+    |エラーログを確認してください。
+
+|===
+
+[#_EsfParameterStorageManagerGetItemCapabilities]
+==== EsfParameterStorageManagerGetItemCapabilities
+* *機能* +
+    Parameter Storage Managerが管理するデータの機能情報を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
+    EsfParameterStorageManagerItemID id,
+    EsfParameterStorageManagerItemCapabilities{asterisk} capabilities);
+----
+
+* *引数の説明* +
+    **``[IN] EsfParameterStorageManagerItemID id``**::
+    機能情報を取得したいデータIDです。
+
+    **``[OUT] EsfParameterStorageManagerItemCapabilities{asterisk} capabilities``**::
+    Parameter Storage Managerが管理するデータの機能情報を格納する構造体です。
+
+* *戻り値* +
+    実行結果に応じて<<#_Table_EsfParameterStorageManagerStatus, EsfParameterStorageManagerStatus>>のいずれかの値が返ります。
+
+* *説明* +
+    ** データの機能情報を取得します。 +
+       利用可能な機能はデバイス毎、データID毎に異なります。
+
+    ** **実行情報** +
++
+[#_TableEsfParameterStorageManagerGetItemCapabilitiesContext]
+.EsfParameterStorageManagerGetItemCapabilitiesの実行情報
+[width="100%", options="header"]
+|===
+|実行情報 |説明
+
+|API種別
+|同期APIです。
+
+|実行コンテキスト
+|呼び元のコンテキストで動作します。
+
+|同時呼び出し
+|可能です。
+
+|複数スレッドからの呼び出し
+|可能です。
+
+|複数タスクからの呼び出し
+|可能です。
+
+|ブロッキング
+|API内部でブロッキングしません。
+
+|===
+
+    ** **エラー情報** +
++
+[#_TableEsfParameterStorageManagerGetItemCapabilitiesError]
+.EsfParameterStorageManagerGetItemCapabilitiesのエラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |エラー条件 |OUT引数の状態 |復旧方法
+
+.1+|kEsfParameterStorageManagerStatusInvalidArgument
+    a|引数が無効値です。
+
+        * id == ``**kEsfParameterStorageManagerItemCustom**``
+        * id == ``**kEsfParameterStorageManagerItemMax**``
+        * capabilities == ``**NULL**``
+    |{none}
+    |有効な引数を指定してください。
+
+|kEsfParameterStorageManagerStatusDataLoss
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |復旧できません。
+
+|kEsfParameterStorageManagerStatusUnavailable
+    a|データ保存領域へアクセスできません。
+    |{none}
+    |リトライしてください。
+
+.1+|kEsfParameterStorageManagerStatusInternal
+    a|内部処理に失敗しました。
+    |{none}
+    |エラーログを確認してください。
+
+|===
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF]
+==== ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF
+* *機能* +
+    構造体のメンバのサイズ [Byte]を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF(type, member) \
+    (sizeof(((type *)NULL)->member))
+----
+
+* *引数の説明* +
+    **``[IN] type``**::
+    構造体の型名です。
+
+    **``[IN] member``**::
+    構造体のメンバ名です。
+
+* *戻り値* +
+    構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
+
+* *説明* +
+    ** 他のマクロ関数のヘルパ用マクロ関数です。 +
+
+    ** **挙動** +
+        構造体のメンバのサイズを``**sizeof**``演算子で取得します。 +
+        ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF]
+==== ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF
+* *機能* +
+    データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>のサイズ[Byte]を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF(type, member) \
+    ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF(type, member.data)
+----
+
+* *引数の説明* +
+    **``[IN] type``**::
+    データ構造体の型名です。
+
+    **``[IN] member``**::
+    <<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>のメンバ名です。
+
+* *戻り値* +
+    構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        <<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>のサイズを``**sizeof**``演算子で取得します。 +
+        ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF]
+==== ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF
+* *機能* +
+    データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>のサイズ[Byte]を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF(type, member) \
+    ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF(type, member.data)
+----
+
+* *引数の説明* +
+    **``[IN] type``**::
+    データ構造体の型名です。
+
+    **``[IN] member``**::
+    <<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>のメンバ名です。
+
+* *戻り値* +
+    構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        <<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>のサイズを``**sizeof**``演算子で取得します。 +
+        ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF]
+==== ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF
+* *機能* +
+    データ構造体のメンバの<<#_文字列, 文字列型>>のサイズ[Byte]を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF(type, member) \
+    ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF(type, member)
+----
+
+* *引数の説明* +
+    **``[IN] type``**::
+    データ構造体の型名です。
+
+    **``[IN] member``**::
+    <<#_文字列, 文字列型>>のメンバ名です。
+
+* *戻り値* +
+    構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        <<#_文字列, 文字列型>>のサイズを``**sizeof**``演算子で取得します。 +
+        ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF]
+==== ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF
+* *機能* +
+    データ構造体のメンバの<<#_生データ, 生データ型>>のサイズ[Byte]を取得します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF(type, tail_member) \
+  offsetof(type, tail_member) +                                     \
+      ESF_PARAMETER_STORAGE_MANAGER_MEMBER_SIZEOF(type, tail_member)
+----
+
+* *引数の説明* +
+    **``[IN] type``**::
+    <<#_生データ, 生データ型>>として扱うメンバの型名です。
+
+    **``[IN] tail_member``**::
+    <<#_生データ, 生データ型>>の末尾のメンバ名です。
+
+* *戻り値* +
+    構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+    ** 他のSIZEOFマクロとは、引数で指定する値が異なります。 +
+        使用例は<<#_データ保存領域アクセス機能の使用例, データ保存領域アクセス機能の使用例>>を参照してください。 +
+
+    ** **挙動** +
+        <<#_生データ, 生データ型>>のサイズを``**offsetof**``と``**sizeof**``演算子で取得します。 +
+        ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED]
+==== ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED
+* *機能* +
+    マスク構造体の特定のメンバが有効であるかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(type, member, obj) \
+    ((obj) != ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK) && \
+    (((const type *)(obj))->member)
+----
+
+* *引数の説明* +
+    **``[IN] type``**::
+    マスク構造体の型名です。
+
+    **``[IN] member``**::
+    マスクが有効であるか判定したいメンバ名です。
+
+    **``[IN] EsfParameterStorageManagerMask obj``**::
+    マスク構造体（<<#_EsfParameterStorageManagerMask>>）です。
+
+* *戻り値* +
+    マスクの有効判定の結果が``**bool**``型で返ります。 +
+    trueの場合、メンバが有効であることを表します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        マスク構造体の特定のメンバが有効であるかを判定します。 +
+        マスク構造体が無効（ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK）である場合、``**false**``を返します。 +
+        マスク構造体が有効である場合、``**member**``で指定されたメンバの値を``**bool**``型で返します。 +
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY]
+==== ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY
+* *機能* +
+    データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>にデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_IS_EMPTY(obj) \
+  ((obj) != NULL && (obj)->size == 0)
+----
+
+* *引数の説明* +
+    **``[IN] const EsfParameterStorageManagerBinaryArray{asterisk} obj``**::
+    <<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>のメンバへのポインタです。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータの配列型>>にデータが格納されているかを判定します。 +
+        データが格納されていない場合、``**true**``を返します。 +
+        データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_BINARY_POINTER_IS_EMPTY]
+==== ESF_PARAMETER_STORAGE_MANAGER_BINARY_POINTER_IS_EMPTY
+* *機能* +
+    データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータのポインタ型>>にデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_BINARY_POINTER_IS_EMPTY(obj) \
+  ((obj) != NULL && (obj)->data != NULL && (obj)->size == 0)
+----
+
+* *引数の説明* +
+    **``[IN] const EsfParameterStorageManagerBinary{asterisk} obj``**::
+    <<#_EsfParameterStorageManagerBinaryArray, バイナリデータのポインタ型>>のメンバへのポインタです。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        データ構造体のメンバの<<#_EsfParameterStorageManagerBinaryArray, バイナリデータのポインタ型>>にデータが格納されているかを判定します。 +
+        データが格納されていない場合、``**true**``を返します。 +
+        データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_IS_EMPTY]
+==== ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_IS_EMPTY
+* *機能* +
+    データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>にデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_OFFSET_BINARY_ARRAY_IS_EMPTY(obj) \
+  ((obj) != NULL && (obj)->offset == 0 && (obj)->size == 0)
+----
+
+* *引数の説明* +
+    **``[IN] const EsfParameterStorageManagerOffsetBinaryArray{asterisk} obj``**::
+    <<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>のメンバへのポインタです。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>>にデータが格納されているかを判定します。 +
+        データが格納されていない場合、``**true**``を返します。 +
+        データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_POINTER_IS_EMPTY]
+==== ESF_PARAMETER_STORAGE_MANAGER_OFFSET_POINTER_IS_EMPTY
+* *機能* +
+    データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータのポインタ型>>にデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_OFFSET_BINARY_POINTER_IS_EMPTY(obj) \
+  ((obj) != NULL && (obj)->data != NULL && (obj)->offset == 0 &&          \
+   (obj)->size == 0)
+----
+
+* *引数の説明* +
+    **``[IN] const EsfParameterStorageManagerOffsetBinary{asterisk} obj``**::
+    <<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータのポインタ型>>のメンバへのポインタです。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        データ構造体のメンバの<<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータのポインタ型>>にデータが格納されているかを判定します。 +
+        データが格納されていない場合、``**true**``を返します。 +
+        データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY]
+==== ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY
+* *機能* +
+    データ構造体のメンバの<<#_文字列, 文字列型>>にデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY(obj) \
+  ((obj) != NULL && (obj)[0] == '\0')
+----
+
+* *引数の説明* +
+    **``[IN] const char{asterisk} obj``**::
+    <<#_文字列, 文字列型>>のメンバへのポインタです。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        データ構造体のメンバの<<#_文字列, 文字列型>>にデータが格納されているかを判定します。 +
+        データが格納されていない場合、``**true**``を返します。 +
+        データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+[#_ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY]
+==== ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY
+* *機能* +
+    データ構造体のメンバの<<#_生データ, 生データ型>>にデータが格納されているかを判定します。
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+----
+#define ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY(obj) \
+  ((obj) != NULL && (obj)->size == 0)
+----
+
+* *引数の説明* +
+    **``[IN] const EsfParameterStorageManagerRaw{asterisk} obj``**::
+    <<#_生データ, 生データ型>>のメンバへのポインタです。
+
+* *戻り値* +
+    データが格納されていない場合、``**true**``を返します。 +
+    データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+* *説明* +
+    ** 実装モジュールが使用するマクロ関数です。 +
+
+    ** **挙動** +
+        データ構造体のメンバの<<#_生データ, 生データ型>>にデータが格納されているかを判定します。 +
+        データが格納されていない場合、``**true**``を返します。 +
+        データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
+
+<<<
+
+[#_APIの呼び出し例]
+== APIの呼び出し例
+
+各APIを使用する場合の呼び出し例を以下に示します。
+
+[#_呼び出し例_初期化・終了処理]
+.初期化・終了処理
+[{mermaid_block}]
+----
+sequenceDiagram
+participant main as ESF main
+participant ds as Parameter Storage Manager
+participant modules as 実装モジュール
+
+Note left of main: Parameter Storage Managerの初期化
+main ->>+ ds: EsfParameterStorageManagerInit(void)
+ds -->>- main: kEsfParameterStorageManagerStatusOk
+
+rect rgba(0, 0, 255, .1)
+    Note over main,modules: Parameter Storage ManagerのAPI呼び出し可能
+
+    modules ->>+ ds : EsfParameterStorageManagerRegisterFactoryReset({mermaid_br}func,{mermaid_br}private_data, &factory_reset_id)
+    ds -->>- modules: EsfParameterStorageManagerStatus
+end
+
+Note left of main: Parameter Storage Managerの終了
+rect rgba(0, 0, 255, .1)
+    Note over main,modules: Parameter Storage ManagerのAPI呼び出し可能
+
+    modules ->>+ ds : EsfParameterStorageManagerUnregisterFactoryReset({mermaid_br}factory_reset_id)
+    ds -->>- modules: EsfParameterStorageManagerStatus
+end
+
+main ->>+ ds: EsfParameterStorageManagerDeinit(void)
+    Note over ds: リソース解放{mermaid_br}状態遷移 INIT -> UNINIT
+ds -->>- main: kEsfParameterStorageManagerStatusOk
+----
+
+[#_呼び出し例_データアクセス処理]
+.データアクセス処理
+[{mermaid_block}]
+----
+sequenceDiagram
+participant modules as 実装モジュール
+participant ds as Parameter Storage Manager
+participant struct as データ構造体{mermaid_br}マスク構造体
+participant storage as データ保存領域
+
+Note left of modules: Parameter Storage Managerのハンドル取得
+modules ->>+ ds: EsfParameterStorageManagerOpen(&handle)
+ds -->>- modules: kEsfParameterStorageManagerStatusOk
+
+rect rgba(0, 0, 255, .1)
+    Note over modules: Save, Load, Clear, GetSizeのAPI呼び出し可能
+
+    Note over modules: マスク構造体の設定
+    modules ->>+ struct: マスクを有効化
+    struct -->>- modules: -
+
+    Note over modules: データ構造体の設定
+    modules ->>+ struct: memset(&data, 0, sizeof(data))
+    struct -->>- modules: -
+
+    Note over modules: Save, Load, Clear, GetSizeのAPIを呼び出す
+    modules ->>+ ds : EsfParameterStorageManagerLoad({mermaid_br}handle,{mermaid_br}&mask,{mermaid_br}&data, &info, NULL)
+        ds ->>+ struct: マスク判定
+        struct -->>- ds: enabled: bool
+        opt enabled == true
+            ds ->>+ storage: データ取得
+            storage -->>- ds: 取得したデータ
+            ds ->>+ struct: データ格納
+            struct -->>- ds: データ格納結果
+        end
+    ds -->>- modules: EsfParameterStorageManagerStatus
+end
+
+Note left of modules: Parameter Storage Managerのハンドル解放
+modules ->>+ ds: EsfParameterStorageManagerClose(handle)
+ds -->>- modules: kEsfParameterStorageManagerStatusOk
+----
+
+[#_呼び出し例_FactoryReset処理]
+.FactoryReset処理
+[{mermaid_block}]
+----
+sequenceDiagram
+participant main as ESF Main
+participant modules as 実装モジュール
+participant ds as Parameter Storage Manager
+participant storage as データ保存領域
+
+Note over modules: Factory Reset関数の登録
+modules ->>+ ds: EsfParameterStorageManagerRegisterFactoryReset({mermaid_br}&func,{mermaid_br}private_data,{mermaid_br}&factory_reset_id)
+ds -->>- modules: EsfParameterStorageManagerStatus
+
+main ->>+ ds : EsfParameterStorageManagerInvokeFactoryReset()
+    Note over ds: 対象のデータを工場出荷状態に戻す
+    loop i < kEsfParameterStorageManagerItemMax
+        opt EsfParameterStorageManagerStorageAdapterConvertItemIDToFactoryResetRequired(i)
+            ds ->>+ storage: 対象のデータを工場出荷状態に戻す
+            storage -->>- ds: EsfParameterStorageManagerStatus
+        end
+    end
+
+    ds ->>+ modules: 登録されたFactoryReset関数呼び出し
+        modules ->>+ storage: 工場出荷状態に戻す
+        storage -->>- modules: -
+    modules -->>- ds: EsfParameterStorageManagerStatus
+ds -->>- main: EsfParameterStorageManagerStatus
+----
+
+<<<
+
+[#_データ保存領域アクセス機能の仕様]
+== データ保存領域アクセス機能の仕様
+
+[#_データ構造体]
+=== データ構造体
+データ構造体は、関連するデータをまとめた構造体です。 +
+1つのAPIでアクセスする単位で定義してください。 +
+データを格納するために使用します。 +
+
+==== 定義規則
+* 命名 +
+    ** メンバ名はコーディングルールに従ってください。 +
+        ただし<<#_バイナリデータ, バイナリデータ>>、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>が持つメンバ名は変更しないでください。
+
+* サイズ +
+    ** 1メンバのサイズは``**EXTERNAL_PARAMETER_STORAGE_MANAGER_BUFFER_LENGTH**``の値までにしてください。 +
+        メンバのサイズが``**EXTERNAL_PARAMETER_STORAGE_MANAGER_BUFFER_LENGTH**``を超える場合は、オフセット指定バイナリデータのポインタ型を使用してください。 +
+        取得関数のみ定義されている場合は``**EXTERNAL_PARAMETER_STORAGE_MANAGER_BUFFER_LENGTH**``を超えても構いません。 +
+    ** 1構造体のサイズ（データのサイズの合計）やメンバ数を制限していませんが、データサイズやメンバ数に応じたサイズのLarge Heapや通常ヒープメモリをParameter Storage Managerの内部処理で使用しますので、デバイス毎の使用可能なサイズを超過しないように調整してください。 +
+    ** データの取得には、データサイズよりメンバのサイズが大きくなければなりません。 +
+        メンバのサイズがデータサイズより小さい場合、``**kEsfParameterStorageManagerStatusUnavailable**``を返します。 +
+        そのため、想定されるデータサイズ以上のメンバサイズとなるように定義してください。
+
+* メンバ型 +
+    ** <<#_生データ, 生データ>>の型指定に制限はありません。<<#_生データ, 生データ>>の型として構造体を指定することができます。 +
+    **  <<#_バイナリデータ, バイナリデータ>>、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>、<<#_文字列, 文字列>>のメンバは、データメンバとして扱うことができます。 +
+    ** <<#_生データ, 生データ>>のメンバはデータメンバとして扱うことができます。 +
+        ただし、<<#_生データ, 生データ>>が構造体である場合、そのメンバはデータメンバとして扱うことができません。 +
+    ** 独自に定義した構造体を入れ子にしても構いません。 +
+        ただし、<<#_生データ, 生データ>>として扱わない場合は、その構造体全体をデータメンバとして扱うことはできません。その構造体のメンバをデータメンバとして扱うことはできます。 +
+    **  <<#_バイナリデータ, バイナリデータ>>、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>、<<#_文字列, 文字列>>の配列サイズは実装モジュールが決めて、構造体を定義してください。 +
+    メンバの型や定義順など配列サイズ以外は変更しないでください。 +
+    配列サイズは``**#define**``で定義してください。 +
+    **  <<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>を使用できないデバイスやデータIDが存在します。 +
+        詳細は<<#_デバイス毎の仕様, デバイス毎の仕様・制限事項>>を参照してください。
+    ** データメンバを配列として定義しても構いません。 +
+
+[#_データ構造体_データ型一覧]
+==== データ型一覧
+以下の表にデータ構造体のメンバに使用可能なデータ型の一覧を示します。
+
+[#_Tableデータ構造体一覧]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|バイナリデータ
+    |バイト列とバイト列の有効なデータサイズを持つ構造体です。 +
+    |<<#_バイナリデータ>>
+
+|オフセット指定バイナリデータ
+    |バイト列とバイト列の有効なデータサイズを持つ構造体です。 +
+    オフセット指定が可能です。 +
+    |<<#_オフセット指定バイナリデータ>>
+
+|文字列
+    |``**'{backslash}0'**``終端が保証されている文字列です。 +
+    |<<#_文字列>>
+
+|生データ
+    |データ型不定のバイナリデータです。 +
+    |<<#_生データ>>
+
+|===
+
+[#_バイナリデータ]
+==== バイナリデータ
+バイト列とバイト列の有効なデータサイズを持つ構造体です。
+
+[#_EsfParameterStorageManagerBinaryArray]
+===== 配列型
+バイト列を配列型のメンバとして持つ構造体です。
+``**data**``メンバのサイズを指定した構造体を各実装モジュールが定義して使用してください。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerBinaryArray {
+  uint32_t size;
+  uint8_t data[];
+} EsfParameterStorageManagerBinaryArray;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerBinaryArray]
+.EsfParameterStorageManagerBinaryArrayの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|size
+|``**data**``メンバのデータサイズ [Byte] です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータサイズを設定してください。 +
+    ``**data**``メンバのサイズより大きい値を指定した場合、``**kEsfParameterStorageManagerStatusInvalidArgument**``を返します。 +
+    0が指定されている場合、データを削除します。 +
+    ``**data**``メンバの先頭から指定されたサイズ分だけ保存します。 +
+
+* 取得時の使用方法 +
+    ユーザーは設定する必要はありません。 +
+    Parameter Storage Managerは取得したデータサイズを設定します。データが削除されている場合、0を設定します。 +
+
+|data
+|データを格納する領域です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータを``**data**``メンバに設定してください。 +
+
+* 取得時の使用方法 +
+    ユーザーは設定する必要はありません。 +
+    Parameter Storage Managerは取得したデータを``**data**``メンバに設定します。 +
+
+|===
+
+[#_EsfParameterStorageManagerBinary]
+===== ポインタ型
+バイト列をポインタ型のメンバとして持つ構造体です。 +
+このデータ型は、``parameter_storage_manager_common.h``をインクルードすることで使用できます。 +
+構造体の型名を変更したい場合は、``**typedef**``を使用してください。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerBinary {
+  uint32_t size;
+  uint8_t* data;
+} EsfParameterStorageManagerBinary;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerBinary]
+.EsfParameterStorageManagerBinaryの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|size
+|``**data**``メンバのデータサイズ [Byte] です。 +
+``**data**``メンバのバッファサイズより大きい値を設定してはいけません。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータサイズを設定してください。 +
+    ``**data**``メンバの先頭から指定されたサイズ分だけ保存されます。 +
+    0が指定されている場合、データを削除します。 +
+
+* 取得時の使用方法 +
+    ユーザーは取得するデータサイズを設定してください。 +
+    0が指定されている場合、``**kEsfParameterStorageManagerStatusInvalidArgument**``を返します。 +
+    Parameter Storage Managerは取得したデータサイズを設定します。データが削除されている場合、0を設定します。 +
+    データ保存領域の書き込み済みサイズを超える場合、書き込み済みの最大サイズまでデータを取得します。 +
+
+|data
+|データを格納する領域です。ユーザーはバッファを``**data**``メンバに設定してください。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータを``**data**``メンバのバッファに設定してください。 +
+    ``**NULL**``が指定されている場合、データを削除します。 +
+
+* 取得時の使用方法 +
+    ユーザーはバッファを``**data**``メンバに設定してください。 +
+    Parameter Storage Managerは``**size**``メンバで指定されたサイズまで、取得したデータを``**data**``メンバに設定します。 +
+    ``**NULL**``が指定されている場合、``**kEsfParameterStorageManagerStatusInvalidArgument**``を返します。 +
+
+|===
+
+[#_オフセット指定バイナリデータ]
+==== オフセット指定バイナリデータ
+バイト列とバイト列の有効なデータサイズを持つ構造体です。 +
+データ保存またはデータ取得のオフセット指定が可能です。 +
+<<#_DataSettingTable, 保存先情報>>または``**EsfParameterStorageManagerGetItemCapabilities**``でデータがオフセット指定に対応しているか確認できます。 +
+オフセット指定に対応していない場合は使用しないでください。 +
+
+[#_EsfParameterStorageManagerOffsetBinaryArray]
+===== 配列型
+バイト列を配列型のメンバとして持つ構造体です。 +
+``**data**``メンバのサイズを指定した構造体を各実装モジュールが定義して使用してください。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerOffsetBinaryArray {
+  uint32_t offset;
+  uint32_t size;
+  uint8_t data[];
+} EsfParameterStorageManagerOffsetBinaryArray;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerOffsetBinaryArray]
+.EsfParameterStorageManagerOffsetBinaryArrayの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|offset
+|データ保存領域のオフセット指定です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存したいオフセット位置を設定してください。 +
+    データ保存領域の書き込み済みデータサイズを超えるオフセットを指定した場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。
+
+* 取得時の使用方法 +
+    ユーザーは取得したいオフセット位置を設定してください。 +
+    データが削除されている場合、Parameter Storage Managerは``**offset**``メンバへ0を設定します。 +
+    データ保存領域の書き込み済みデータサイズを超えるオフセットを指定した場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。
+
+|size
+|``**data**``メンバのデータサイズ [Byte] です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータサイズを設定してください。 +
+    0が指定されている場合、``**kEsfParameterStorageManagerStatusInvalidArgument**``を返します。 +
+    ``**data**``メンバのサイズより大きい値を設定してはいけません。 +
+    ``**data**``メンバの先頭から指定されたサイズ分だけ保存されます。 +
+    ``**offset**``がデータ保存領域の書き込み済みサイズを超える場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。 +
+    オフセット指定のデータサイズは自動的に縮小されません。データサイズを縮小したい場合はデータを削除してから書き込んでください。
+
+* 取得時の使用方法 +
+    ユーザーは設定する必要はありません。 +
+    Parameter Storage Managerは取得したデータサイズを設定します。データが削除されている場合、0を設定します。 +
+    ``**data**``メンバの先頭から設定されたサイズ分だけ有効なデータが取得されています。 +
+    ``**offset**``がデータ保存領域の書き込み済みサイズを超える場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。 +
+    ``**offset**``+``**size**``がデータ保存領域の書き込み済みサイズを超える場合、書き込み済みの最大サイズまでデータを取得します。 +
+
+|data
+|データを格納する領域です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータを``**data**``メンバに設定してください。 +
+
+* 取得時の使用方法 +
+    ユーザーは設定する必要はありません。 +
+    Parameter Storage Managerは取得したデータを``**data**``メンバに設定します。 +
+
+|===
+
+[#_EsfParameterStorageManagerOffsetBinary]
+===== ポインタ型
+バイト列をポインタ型のメンバとして持つ構造体です。 +
+このデータ型は、``parameter_storage_manager_common.h``をインクルードすることで使用できます。 +
+構造体の型名を変更したい場合は、``**typedef**``を使用してください。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerOffsetBinary {
+  uint32_t offset;
+  uint32_t size;
+  uint8_t* data;
+} EsfParameterStorageManagerOffsetBinary;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerOffsetBinary]
+.EsfParameterStorageManagerOffsetBinaryの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|offset
+|データ保存領域のオフセット指定です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存したいオフセット位置を設定してください。 +
+    データ保存領域の書き込み済みデータサイズを超えるオフセットを指定した場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。
+
+* 取得時の使用方法 +
+    ユーザーは取得したいオフセット位置を設定してください。 +
+    データが削除されている場合、Parameter Storage Managerは``**offset**``メンバへ0を設定します。 +
+    データ保存領域の書き込み済みデータサイズを超えるオフセットを指定した場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。
+
+|size
+|``**data**``メンバのデータサイズ [Byte] です。 +
+0が指定されている場合、``**kEsfParameterStorageManagerStatusInvalidArgument**``を返します。 +
+``**data**``メンバのバッファサイズより大きい値を設定してはいけません。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータサイズを設定してください。 +
+    ``**data**``メンバのサイズより大きい値を設定してはいけません。 +
+    ``**data**``メンバの先頭から指定されたサイズ分だけ保存されます。 +
+    ``**offset**``がデータ保存領域の書き込み済みサイズを超える場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。 +
+    オフセット指定のデータサイズは自動的に縮小されません。データサイズを縮小したい場合はデータを削除してから書き込んでください。
+
+* 取得時の使用方法 +
+    ユーザーは取得するデータサイズを設定してください。 +
+    Parameter Storage Managerは取得したデータサイズを設定します。データが削除されている場合、0を設定します。 +
+    ``**data**``メンバの先頭から設定されたサイズ分だけ有効なデータが取得されています。 +
+    ``**offset**``がデータ保存領域の書き込み済みサイズを超える場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。 +
+    ``**offset**``+``**size**``がデータ保存領域の書き込み済みサイズを超える場合、書き込み済みの最大サイズまでデータを取得します。 +
+
+|data
+|データを格納する領域です。ユーザーはバッファを``**data**``メンバに設定してください。 ``**NULL**``は指定できません。 +
+``**NULL**``が指定されている場合、``**kEsfParameterStorageManagerStatusInvalidArgument**``を返します。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータを``**data**``メンバのバッファに設定してください。 +
+    ``**data**``メンバのバッファサイズを超えてデータを設定してはいけません。 +
+
+* 取得時の使用方法 +
+    ユーザーはバッファを``**data**``メンバに設定してください。 +
+    Parameter Storage Managerは取得したデータを``**data**``メンバに設定します。 +
+
+|===
+
+[#_文字列]
+==== 文字列
+``**'{backslash}0'**``終端が保証されている文字列です。 +
+文字列メンバのサイズは実装モジュールが各自定義します。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+char [];
+....
+
+* *値* +
+    ``**char**``型の配列で定義してください。 +
+    メンバ名は実装モジュールが各自定義します。 +
+
+    ** 保存時の使用方法 +
+        ユーザーは保存するデータを文字列のメンバへ設定してください。 +
+        ``**'{backslash}0'**``終端が設定されていない場合、``**kEsfParameterStorageManagerStatusOutOfRange**``を返します。 +
+        文字列長が0である場合、データを削除します。 +
+
+    ** 取得時の使用方法 +
+        Parameter Storage Managerは取得したデータを文字列のメンバに設定します。 +
+        Parameter Storage Managerは文字列の``**'{backslash}0'**``終端を保証します。 +
+        データが削除されている場合、先頭へ``**'{backslash}0'**``を設定します。 +
+
+[#_生データ]
+==== 生データ
+データ型不定のバイナリデータです。 +
+``**uint32_t size**``をメンバの先頭に配置し、その下にメンバを自由に追加した構造体を、実装モジュールが定義してください。 +
+Parameter Storage Managerはその他メンバの領域を``**uint8_t**``のバイト列として解釈して、保存・取得します。``**size**``メンバは保存しません。 +
+定義した構造体の使用方法は各データ構造体の説明に記載してください。 +
+
+* *書式* +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerRaw {
+  uint32_t size;
+  // sizeメンバの下に、自由にメンバを追加可能
+  // int64_t example1;
+  // struct timespec example2;
+} EsfParameterStorageManagerRaw;
+....
+
+* *値* +
++
+[#_TableEsfParameterStorageManagerRaw]
+.EsfParameterStorageManagerRawの値の説明
+[width="100%", cols="30%a,70%a",options="header"]
+|===
+|メンバ名  |説明
+|size
+|取得したその他メンバのデータサイズ [Byte] です。 +
+
+* 保存時の使用方法 +
+    使用しません。
+
+* 取得時の使用方法 +
+    ユーザーは設定する必要はありません。 +
+    Parameter Storage Managerは取得したデータサイズを設定します。データが削除されている場合、0を設定します。 +
+
+|その他メンバ
+|データを格納する領域です。 +
+
+* 保存時の使用方法 +
+    ユーザーは保存するデータをその他メンバに設定してください。 +
+    ポインタがメンバに含まれる場合、そのポインタが持つアドレスがそのまま保存されます。 +
+
+* 取得時の使用方法 +
+    Parameter Storage Managerは取得したデータをその他メンバに設定します。 +
+
+|===
+
+
+
+[#_マスク構造体]
+=== マスク構造体
+データメンバに対応する同名のメンバをビットフィールドまたは``**uint8_t**``型の配列で持つ構造体です。 +
+マスク構造体はアクセスする必要があるデータメンバを表します。
+
+* **書式** +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerMask {
+  // uint8_t member_name : 1;
+  // uint8_t array_member_name[array_size];
+  // ...
+} EsfParameterStorageManagerMask;
+....
+
+* **説明** +
+    ** マスク構造体名は、対応するデータ構造体名の末尾に``**Mask**``を付加した名前にしてください。 +
+    ** データ構造体のデータメンバと同名のメンバを用意します。 +
+        入れ子の構造体が存在する場合は、マスク構造体も同様に入れ子の構造体で表現します。 +
+    ** マスクは``**member_name**``と同様に``**uint8_t**``の1ビットフィールドで表現します。 +
+    ** データメンバが配列で定義されている場合、マスクも配列で定義してください。 +
+        その場合、マスクは``**array_member_name**``と同様に``**uint8_t**``型の配列で定義してください。 +
+        *** ``**char**``型の一次元配列は文字列型として扱います。``**char**``型は二次元配列以上である場合にマスクを配列で定義してください。 +
+        *** 生データ型の場合、データ構造体のメンバが配列であっても、配列全体を一つのデータとして扱う場合はマスクを配列で定義する必要はありません。``**uint8_t**``の1ビットフィールドで定義してください。 +
+            配列の要素1つ1つを異なるデータとして扱う場合は、``**uint8_t**``の配列でマスクを定義してください。
+    ** メンバの値が0以外の場合、データへアクセスします。 +
+        メンバの値が0の場合、データへアクセスしません。
+    ** <<#_EsfParameterStorageManagerItemMaskIsEnabled, EsfParameterStorageManagerItemMaskIsEnabled>>で判定可能であれば、上記ルールに従わない独自の形式のマスク構造体を定義しても構いません。 +
+
+[#_データ保存領域アクセス機能の使用例]
+=== データ保存領域アクセス機能の使用例
+
+[#_データ構造体_定義例]
+==== データ構造体 定義例
+* **書式** +
++
+[source, c, subs="+attributes"]
+....
+#define EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_DATA_SIZE (64)
+#define EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_STRING_SIZE (64)
+
+typedef struct EsfParameterStorageManagerExampleBinary {
+  uint32_t size;
+  uint8_t data[EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_DATA_SIZE];
+} EsfParameterStorageManagerExampleBinary;
+
+typedef struct EsfParameterStorageManagerExampleOffset {
+  uint32_t offset;
+  uint32_t size;
+  uint8_t data[EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_DATA_SIZE];
+} EsfParameterStorageManagerExampleOffset;
+
+// 生データとして扱う構造体
+typedef struct EsfParameterStorageManagerExampleRaw {
+  uint32_t size;
+  int64_t data1;
+  double data2;
+} EsfParameterStorageManagerExampleRaw;
+
+// 入れ子として扱う構造体
+typedef struct EsfParameterStorageManagerExampleNested {
+  EsfParameterStorageManagerExampleBinary binary_nested;
+  char string_nested[EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_STRING_SIZE];
+} EsfParameterStorageManagerExampleNested;
+
+typedef struct EsfParameterStorageManagerExample {
+  // 配列を使用する型は、実装モジュールが各自定義します。
+  EsfParameterStorageManagerExampleBinary binary;
+  EsfParameterStorageManagerExampleOffset offset;
+
+  // ポインタを使用する型は、Parameter Storage Managerが定義した型をそのまま使用します。
+  EsfParameterStorageManagerBinary binary_pointer;
+  EsfParameterStorageManagerOffsetBinary offset_pointer;
+
+  // 文字列はそのまま使用します。
+  char string[EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_STRING_SIZE];
+
+  // 生データ型は、先頭メンバにuint32_t sizeを定義した構造体を使用します。
+  EsfParameterStorageManagerExampleRaw raw;
+
+  // 配列で定義することも可能です。
+  EsfParameterStorageManagerExampleBinary binary_array[2];
+  EsfParameterStorageManagerBinary binary_pointer_array[3];
+  char string_array[4][EXTERNAL_PARAMETER_STORAGE_MANAGER_EXAMPLE_STRING_SIZE];
+  EsfParameterStorageManagerExampleRaw raw_array[5];
+
+  // 入れ子の構造体
+  EsfParameterStorageManagerExampleNested nested;
+} EsfParameterStorageManagerExample;
+....
+
+* **説明** +
+    ``**binary**``, ``**offset**``, ``**binary_pointer**``, ``**offset_pointer**``, ``**string**``, ``**raw**``, ``**nested.binary_nested**``, ``**nested.string_nested**``がデータメンバです。 +
+    ** ``**raw**``は<<#_生データ, 生データ>>として扱うため、``**EsfParameterStorageManagerExampleRaw**``のメンバをデータメンバとして扱うことができません。 +
+        <<#_生データ, 生データ>>として扱わない場合は、メンバの``**data1**``、``**data2**``をデータとして扱うことができます。 +
+    ** ``**nested**``は<<#_生データ, 生データ>>として扱わないため、``**EsfParameterStorageManagerExampleNested**``のメンバをデータメンバとして扱うことができます。 +
+    ** <<#_生データ, 生データ>>として扱うか扱わないかは、マスク構造体およびParameter Storage Managerに対する設定（``**EsfParameterStorageManagerMemberInfo**``）で表現します。 +
+        詳細は<<#_マスク構造体_定義例, マスク構造体 定義例>>を参照してください。 +
+
+[#_マスク構造体_定義例]
+==== マスク構造体 定義例
+* **書式** +
++
+[source, c, subs="+attributes"]
+....
+typedef struct EsfParameterStorageManagerExampleNestedMask {
+  uint8_t binary_nested : 1;
+  uint8_t string_nested : 1;
+} EsfParameterStorageManagerExampleNestedMask;
+
+typedef struct EsfParameterStorageManagerExampleMask {
+  uint8_t binary : 1;
+  uint8_t offset : 1;
+  uint8_t binary_pointer : 1;
+  uint8_t offset_pointer : 1;
+  uint8_t string : 1;
+  uint8_t raw : 1;
+  uint8_t binary_array[2];
+  uint8_t binary_pointer_array[3];
+  uint8_t string_array[4];
+  uint8_t raw_array[5];
+  EsfParameterStorageManagerExampleNestedMask nested;
+} EsfParameterStorageManagerExampleMask;
+....
+
+* **説明** +
+    メンバ名はデータメンバと同様です。 +
+    ** ``**nested**``は<<#_生データ, 生データ>>として扱わないため、入れ子のマスク構造体を作成します。 +
+
+==== 非カスタム動作
+マスク判定関数、``**EsfParameterStorageManagerMemberInfo**``、``**EsfParameterStorageManagerStructInfo**``を定義することで、データ保存領域アクセス機能のAPIを使用できます。 +
+
+.構造体および関数定義例
+====
+[source, c, subs="+attributes"]
+....
+// マスク判定関数
+static bool ExampleBinaryMaskEnabled(
+    EsfParameterStorageManagerMask mask) {
+    return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
+        EsfParameterStorageManagerExampleMask,
+        binary,
+        mask);
+}
+static bool ExampleRawMaskEnabled(
+    EsfParameterStorageManagerMask mask) {
+    return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
+        EsfParameterStorageManagerExampleMask,
+        raw,
+        mask);
+}
+static bool ExampleNestedStringMaskEnabled(
+    EsfParameterStorageManagerMask mask) {
+    return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
+        EsfParameterStorageManagerExampleMask,
+        nested.string_nested,
+        mask);
+}
+// メンバ情報構造体の配列
+static const EsfParameterStorageManagerMemberInfo kExampleMembersInfo[] = {
+    {
+        // データ種別（Wi-Fi SSID等）
+        .id = kEsfParameterStorageManagerItemIDExample0,
+        // データ型（文字列、オフセット指定バイナリデータ等）
+        .type = kEsfParameterStorageManagerItemTypeBinaryArray,
+        // 構造体先頭を基準としたメンバのオフセット
+        .offset = offsetof(
+            EsfParameterStorageManagerExample,
+            binary),
+        // データメンバの最大サイズ
+        .size = ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF(
+            EsfParameterStorageManagerExample,
+            binary),
+        // マスクの有効判定関数
+        .enabled = ExampleBinaryMaskEnabled,
+        // カスタム動作用
+        .custom = NULL,
+    },
+    {
+        .id = kEsfParameterStorageManagerItemIDExample1,
+        .type = kEsfParameterStorageManagerItemTypeRaw,
+        .offset = offsetof(
+            EsfParameterStorageManagerExample,
+            raw),
+        .size = ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF(
+            EsfParameterStorageManagerExampleRaw,
+            data2),
+        .enabled = ExampleRawMaskEnabled,
+        .custom = NULL,
+    },
+    {
+        .id = kEsfParameterStorageManagerItemIDExample2,
+        .type = kEsfParameterStorageManagerItemTypeString,
+        .offset = offsetof(
+            EsfParameterStorageManagerExample,
+            nested.string_nested),
+        .size = ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF(
+            EsfParameterStorageManagerExample,
+            nested.string_nested),
+        .enabled = ExampleNestedStringMaskEnabled,
+        .custom = NULL,
+    },
+    // ...
+    // 残りのメンバ情報も定義する必要がある
+};
+// 構造体情報
+static const EsfParameterStorageManagerStructInfo kExampleStructInfo = {
+    .items_num = sizeof(kExampleMembersInfo) / sizeof(kExampleMembersInfo[0]),
+    .items = kExampleMembersInfo,
+};
+....
+
+====
+
+.データ保存領域アクセス機能のAPIの呼び出し例
+====
+[source, c, subs="+attributes"]
+....
+EsfParameterStorageManagerStatus EsfParameterStorageManagerSaveExample(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerExampleMask{asterisk} mask,
+    const EsfParameterStorageManagerExample{asterisk} data) {
+    // Parameter Storage ManagerのAPIを呼び出す
+    return EsfParameterStorageManagerSave(
+        handle,
+        (EsfParameterStorageManagerMask)mask,
+        (EsfParameterStorageManagerData)data,
+        &kExampleStructInfo,
+        NULL);
+}
+....
+
+====
+
+==== カスタム動作
+``**EsfParameterStorageManagerItemID**``に定義されていないデータを扱う場合はカスタム動作を使用してください。 +
+カスタム動作は``**EsfParameterStorageManagerItemAccessor**``を定義する必要があります。 +
+``**EsfParameterStorageManagerItemAccessor**``には、Save, Load, Clear, Cancelの4つの関数を設定してください。
+
+以下のカスタム動作の例では``**raw_storage**``というグローバル変数をデータ保存領域の代替として扱っています。 +
+Save, Load, Clear, Cancelの引数``**private_data**``には``**EsfParameterStorageManagerExampleRaw{asterisk}**``が渡されるように、Parameter Storage ManagerのAPIを呼び出す際に設定しています。
+
+.カスタム動作実装例
+====
+[source, c, subs="+attributes"]
+....
+// 初期値
+static const EsfParameterStorageManagerExampleRaw kRawDefault = {
+        .string = "",
+        .number = 1,
+};
+// データ保存領域(グローバル変数)
+static EsfParameterStorageManagerExampleRaw raw_storage = kRawDefault;
+
+// Save機能
+static EsfParameterStorageManagerStatus ExampleRawSave(
+        const void* item,
+        void* private_data) {
+    const EsfParameterStorageManagerExampleRaw* raw =
+                (const EsfParameterStorageManagerExampleRaw*)item;
+    EsfParameterStorageManagerExampleRaw* raw_backup =
+                (EsfParameterStorageManagerExampleRaw*)private_data;
+    // private_dataに保存前のデータを退避する
+    memcpy(raw_backup, raw, sizeof(*raw_backup));
+    memcpy(&raw_storage, raw, sizeof(raw_storage));
+    return kEsfParameterStorageManagerStatusOk;
+}
+// Load機能
+static EsfParameterStorageManagerStatus ExampleRawLoad(
+        void* item,
+        void* private_data) {
+    (void) private_data;
+    EsfParameterStorageManagerExampleRaw* raw = (EsfParameterStorageManagerExampleRaw*)item;
+    memcpy(raw, &raw_storage, sizeof(*raw));
+    return kEsfParameterStorageManagerStatusOk;
+}
+// Clear機能
+static EsfParameterStorageManagerStatus ExampleRawClear(
+        void* private_data) {
+    EsfParameterStorageManagerExampleRaw* raw_backup = 
+                (EsfParameterStorageManagerExampleRaw*)private_data;
+    // private_dataに削除前のデータを退避する
+    memcpy(raw_backup, &raw_storage, sizeof(*raw_backup));
+    memset(&raw_storage, 0, sizeof(raw_storage));
+    return kEsfParameterStorageManagerStatusOk;
+}
+// Save/Clearキャンセル機能
+static EsfParameterStorageManagerStatus ExampleRawCancel(
+        void* private_data) {
+    EsfParameterStorageManagerExampleRaw* raw_backup =
+                (EsfParameterStorageManagerExampleRaw*)private_data;
+    // private_dataに退避していたデータを書き込む
+    memcpy(&raw_storage, raw_backup, sizeof(raw_storage));
+    return kEsfParameterStorageManagerStatusOk;
+}
+// マスク判定関数
+static bool ExampleRawMaskEnabled(
+        EsfParameterStorageManagerMask mask) {
+    return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
+        EsfParameterStorageManagerExampleMask,
+        raw,
+        mask);
+}
+// カスタム動作用の構造体
+static const EsfParameterStorageManagerItemAccessor kExampleRawItemAccessor = {
+    .save = ExampleRawSave,
+    .load = ExampleRawLoad,
+    .clear = ExampleRawClear,
+    .cancel = ExampleRawCancel,
+};
+// メンバ情報
+static const EsfParameterStorageManagerMemberInfo kExampleMembersInfo[] = {
+    {
+        .id = kEsfParameterStorageManagerItemIDExample0,
+        .type = kEsfParameterStorageManagerItemTypeBinaryArray,
+        .offset = offsetof(EsfParameterStorageManagerExample, binary),
+        .size = ESF_PARAMETER_STORAGE_MANAGER_BINARY_ARRAY_SIZEOF(EsfParameterStorageManagerExample, binary),
+        .enabled = ExampleBinaryMaskEnabled,
+        .custom = NULL,
+    },
+    {
+        .id = kEsfParameterStorageManagerItemIDExample1,
+        .type = kEsfParameterStorageManagerItemTypeString,
+        .offset = offsetof(EsfParameterStorageManagerExample, nested.string_nested),
+        .size = ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF(EsfParameterStorageManagerExample, nested.string_nested),
+        .enabled = ExampleNestedStringMaskEnabled,
+        .custom = NULL,
+    },
+    {
+        // カスタム動作する場合は、idにkEsfParameterStorageManagerItemIDCustomを設定する
+        .id = kEsfParameterStorageManagerItemCustom,
+        .type = kEsfParameterStorageManagerItemTypeRaw,
+        .offset = offsetof(EsfParameterStorageManagerExample, raw),
+        .size = ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF(EsfParameterStorageManagerExampleRaw, data2),
+        .enabled = ExampleRawMaskEnabled,
+        // カスタム動作用の構造体を設定する
+        .custom = &kExampleRawItemAccessor,
+    },
+    // ...
+    // 残りのメンバ情報も定義する必要がある
+};
+// 構造体情報
+static const EsfParameterStorageManagerStructInfo kExampleStructInfo = {
+    .items_num = sizeof(kExampleMembersInfo) / sizeof(kExampleMembersInfo[0]),
+    .items = kExampleMembersInfo,
+};
+....
+
+====
+
+.カスタム動作のデータ保存領域アクセス機能のAPIの呼び出し例
+====
+[source, c, subs="+attributes"]
+....
+EsfParameterStorageManagerStatus EsfParameterStorageManagerSaveExample(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerExampleMask{asterisk} mask,
+    const EsfParameterStorageManagerExample{asterisk} data) {
+    // private_dataにraw_backupを設定（退避領域を用意する）
+    EsfParameterStorageManagerExampleRaw raw_backup;
+    return EsfParameterStorageManagerSave(
+        handle,
+        (EsfParameterStorageManagerMask)mask,
+        (EsfParameterStorageManagerData)data,
+        &kExampleStructInfo,
+        &raw_backup);
+}
+....
+
+====
+
+==== 排他制御区間の共有
+<<#_EsfParameterStorageManagerLock, EsfParameterStorageManagerLock>>を呼び出すことで、<<#_EsfParameterStorageManagerSave, EsfParameterStorageManagerSave>>等のデータ保存領域アクセス機能と排他制御区間を共有できます。
+
+.排他制御区間の共有
+====
+[source, c, subs="+attributes"]
+....
+EsfParameterStorageManagerStatus EsfParameterStorageManagerSaveExample(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerExampleMask{asterisk} mask,
+    const EsfParameterStorageManagerExample{asterisk} data) {
+
+    EsfParameterStorageManagerStatus ret = EsfParameterStorageManagerLock();
+    if (ret != kEsfParameterStorageManagerStatusOk) {
+        return ret;
+    }
+
+    // カスタム動作などで、Parameter Storage ManagerのAPIと同一の排他制御区間内で行いたい処理を実行する
+    EsfParameterStorageManagerExampleRaw raw_backup;
+    ret = EsfParameterStorageManagerSave(
+        handle,
+        (EsfParameterStorageManagerMask)mask,
+        (EsfParameterStorageManagerData)data,
+        &kExampleStructInfo,
+        &raw_backup);
+
+    EsfParameterStorageManagerStatus unlock_ret = EsfParameterStorageManagerUnlock();
+    if (unlock_ret != kEsfParameterStorageManagerStatusOk) {
+        return unlock_ret;
+    }
+    return ret;
+}
+....
+
+====
+
+[#_特記事項やコンポーネントごとの特有の説明事項]
+== 特記事項やコンポーネントごとの特有の説明事項
+
+[#_制限事項]
+=== 制限事項
+
+* Parameter Storage ManagerはWASMから利用することはできません。
+* Parameter Storage Managerのハンドル数の上限は8つです。
+
+[#_非標準拡張]
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,50%,35%",options="header"]
+|===
+|拡張名 |説明 |用途
+
+|**``##\\__VA_ARGS__``**
+|**``\\__VA_ARGS__``**のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|Flexible array member
+|C言語（C99以降）では標準機能ですが、C++では非標準拡張の機能です。 +
+構造体の最後のメンバをサイズ不定の配列として扱うことができます。 +
+|異なるサイズで定義された構造体のメンバの配列に対し、画一的にアクセスするために使用します。
+
+|===
+
+[#_DataSettingTable]
+=== 保存先情報
+
+Parameter Storage Manager で扱うデータは、T5, T5_EVT, T3R-S3ではlittlefs上に存在します。 +
+以下に保存先のパーティションおよびデータ毎の保存関連情報を記載します。 +
+定義内容詳細は<<#_参考文献, PlStorage仕様書>>を参照してください。 +
+
+[width="100%", cols="40%,40%,20%",options="header"]
+.マウント設定
+|===
+|パーティション |マウントポイント |マウントタイプ
+
+|/dev/esp/partition/camera_data_encr
+|/camera_data_encr
+|littlefs
+
+|/dev/esp/partition/camera_data_norm
+|/camera_data_norm
+|littlefs
+
+|/dev/esp/partition/fa_data2
+|/fa_data2
+|littlefs
+
+|===
+
+[width="100%", cols="20%,15%,15%,10%,10%,15%,15%",options="header"]
+.データ設定
+|===
+|EsfParameterStorageManagerItemID | PlStorageDataId | Path | Access | 一時領域 |工場出荷状態に +
+戻す/戻さない |オフセット利用可能
+
+|kEsfParameterStorageManagerItemDpsURL
+|PlStorageDataDpsURL
+|/camera_data_norm/DpsURL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemCommonName
+|PlStorageDataCommonName
+|/camera_data_norm/CommonName
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemDpsScopeID
+|PlStorageDataDpsScopeID
+|/camera_data_norm/DpsScopeID
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemProjectID
+|PlStorageDataProjectID
+|/camera_data_norm/ProjectID
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemRegisterToken
+|PlStorageDataRegisterToken
+|/camera_data_norm/RegisterToken
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemWiFiSSID
+|PlStorageDataWiFiSSID
+|/camera_data_encr/WiFiSSID
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemWiFiPassword
+|PlStorageDataWiFiPassword
+|/camera_data_encr/WiFiPassword
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemWiFiEncryption
+|PlStorageDataWiFiEncryption
+|/camera_data_encr/WiFiEncryption
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemIPAddress
+|PlStorageDataIPAddress
+|/camera_data_encr/IPAddress
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSubnetMask
+|PlStorageDataSubnetMask
+|/camera_data_encr/SubnetMask
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemGateway
+|PlStorageDataGateway
+|/camera_data_encr/Gateway
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemDNS
+|PlStorageDataDNS
+|/camera_data_encr/DNS
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemIPMethod
+|PlStorageDataIPMethod
+|/camera_data_encr/IPMethod
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemNetIfKind
+|PlStorageDataNetIfKind
+|/camera_data_encr/NetIfKind
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemIPv6IPAddress
+|PlStorageDataIPv6IPAddress
+|/camera_data_encr/IPv6IPAddress
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemIPv6SubnetMask
+|PlStorageDataIPv6SubnetMask
+|/camera_data_encr/IPv6SubnetMask
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemIPv6Gateway
+|PlStorageDataIPv6Gateway
+|/camera_data_encr/IPv6Gateway
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemIPv6DNS
+|PlStorageDataIPv6DNS
+|/camera_data_encr/IPv6DNS
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemWiFiApSSID
+|PlStorageDataWiFiApSSID
+|/camera_data_encr/WiFiApSSID
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemWiFiApPassword
+|PlStorageDataWiFiApPassword
+|/camera_data_encr/WiFiApPassword
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemWiFiApEncryption
+|PlStorageDataWiFiApEncryption
+|/camera_data_encr/WiFiApEncryption
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemWiFiApChannel
+|PlStorageDataWiFiApChannel
+|/camera_data_encr/WiFiApChannel
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemWiFiApIPAddress
+|PlStorageDataWiFiApIPAddress
+|/camera_data_encr/WiFiApIPAddress
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemWiFiApSubnetMask
+|PlStorageDataWiFiApSubnetMask
+|/camera_data_encr/WiFiApSubnetMask
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemWiFiApGateway
+|PlStorageDataWiFiApGateway
+|/camera_data_encr/WiFiApGateway
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemWiFiApDNS
+|PlStorageDataWiFiApDNS
+|/camera_data_encr/WiFiApDNS
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemProxyURL
+|PlStorageDataProxyURL
+|/camera_data_encr/ProxyURL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemProxyPort
+|PlStorageDataProxyPort
+|/camera_data_encr/ProxyPort
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemProxyUserName
+|PlStorageDataProxyUserName
+|/camera_data_encr/ProxyUserName
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemProxyPassword
+|PlStorageDataProxyPassword
+|/camera_data_encr/ProxyPassword
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemEvpHubURL
+|PlStorageDataEvpHubURL
+|/camera_data_encr/EvpHubURL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemEvpHubPort
+|PlStorageDataEvpHubPort
+|/camera_data_encr/EvpHubPort
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemEvpIotPlatform
+|PlStorageDataEvpIotPlatform
+|/camera_data_encr/EvpIotPlatform
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemPkiRootCerts
+|PlStorageDataPkiRootCerts
+|/fa_data2/PkiRootCerts
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemPkiRootCertsHash
+|PlStorageDataPkiRootCertsHash
+|/fa_data2/PkiRootCertsHash
+|Read Only
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemEvpTls
+|PlStorageDataEvpTls
+|/camera_data_encr/EvpTls
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemDeviceManifest
+|PlStorageDataDeviceManifest
+|/fa_data2/DeviceManifest
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemDebugLogLevel
+|PlStorageDataDebugLogLevel
+|/camera_data_encr/DebugLogLevel
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemEventLogLevel
+|PlStorageDataEventLogLevel
+|/camera_data_encr/EventLogLevel
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemDebugLogDestination
+|PlStorageDataDebugLogDestination
+|/camera_data_encr/DebugLogDestination
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemLogFilter
+|PlStorageDataLogFilter
+|/camera_data_encr/LogFilter
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemLogUseFlash
+|PlStorageDataLogUseFlash
+|/camera_data_encr/LogUseFlash
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageName
+|PlStorageDataStorageName
+|/camera_data_encr/StorageName
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath
+|PlStorageDataStorageSubDirectoryPath
+|/camera_data_encr/StorageSubDirectoryPath
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemDebugLogLevel2
+|PlStorageDataDebugLogLevel2
+|/camera_data_encr/DebugLogLevel2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemEventLogLevel2
+|PlStorageDataEventLogLevel2
+|/camera_data_encr/EventLogLevel2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemDebugLogDestination2
+|PlStorageDataDebugLogDestination2
+|/camera_data_encr/DebugLogDestination2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLogFilter2
+|PlStorageDataLogFilter2
+|/camera_data_encr/LogFilter2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLogUseFlash2
+|PlStorageDataLogUseFlash2
+|/camera_data_encr/LogUseFlash2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageName2
+|PlStorageDataStorageName2
+|/camera_data_encr/StorageName2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath2
+|PlStorageDataStorageSubDirectoryPath2
+|/camera_data_encr/StorageSubDirectoryPath2
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemDebugLogLevel3
+|PlStorageDataDebugLogLevel3
+|/camera_data_encr/DebugLogLevel3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemEventLogLevel3
+|PlStorageDataEventLogLevel3
+|/camera_data_encr/EventLogLevel3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemDebugLogDestination3
+|PlStorageDataDebugLogDestination3
+|/camera_data_encr/DebugLogDestination3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLogFilter3
+|PlStorageDataLogFilter3
+|/camera_data_encr/LogFilter3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLogUseFlash3
+|PlStorageDataLogUseFlash3
+|/camera_data_encr/LogUseFlash3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageName3
+|PlStorageDataStorageName3
+|/camera_data_encr/StorageName3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath3
+|PlStorageDataStorageSubDirectoryPath3
+|/camera_data_encr/StorageSubDirectoryPath3
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemDebugLogLevel4
+|PlStorageDataDebugLogLevel4
+|/camera_data_encr/DebugLogLevel4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemEventLogLevel4
+|PlStorageDataEventLogLevel4
+|/camera_data_encr/EventLogLevel4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemDebugLogDestination4
+|PlStorageDataDebugLogDestination4
+|/camera_data_encr/DebugLogDestination4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLogFilter4
+|PlStorageDataLogFilter4
+|/camera_data_encr/LogFilter4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLogUseFlash4
+|PlStorageDataLogUseFlash4
+|/camera_data_encr/LogUseFlash4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageName4
+|PlStorageDataStorageName4
+|/camera_data_encr/StorageName4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemStorageSubDirectoryPath4
+|PlStorageDataStorageSubDirectoryPath4
+|/camera_data_encr/StorageSubDirectoryPath4
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemNTPServer
+|PlStorageDataNTPServer
+|/camera_data_encr/NTPServer
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemNTPSyncInterval
+|PlStorageDataNTPSyncInterval
+|/camera_data_encr/NTPSyncInterval
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemNTPPollingTime
+|PlStorageDataNTPPollingTime
+|/camera_data_encr/NTPPollingTime
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSkipModeSettings
+|PlStorageDataSkipModeSettings
+|/camera_data_encr/SkipModeSettings
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemLimitPacketTime
+|PlStorageDataLimitPacketTime
+|/camera_data_encr/LimitPacketTime
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemLimitRTCCorrectionValue
+|PlStorageDataLimitRTCCorrectionValue
+|/camera_data_encr/LimitRTCCorrectionValue
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSanityLimit
+|PlStorageDataSanityLimit
+|/camera_data_encr/SanityLimit
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSlewModeSettings
+|PlStorageDataSlewModeSettings
+|/camera_data_encr/SlewModeSettings
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemStableRTCCorrectionValue
+|PlStorageDataStableRTCCorrectionValue
+|/camera_data_encr/StableRTCCorrectionValue
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemStableSyncNumber
+|PlStorageDataStableSyncNumber
+|/camera_data_encr/StableSyncNumber
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSystemError
+|PlStorageDataSystemError
+|/camera_data_encr/SystemError
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFactoryResetFlag
+|PlStorageDataFactoryResetFlag
+|/camera_data_norm/FactoryResetFlag
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemRTCErrorDetection
+|PlStorageDataRTCErrorDetection
+|/camera_data_norm/RTCErrorDetection
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemRTCPQAParameter
+|PlStorageDataRTCPQAParameter
+|/camera_data_norm/RTCPQAParameter
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemBatteryInformation
+|PlStorageDataBatteryInformation
+|/camera_data_norm/BatteryInformation
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemRTCNetworkInformation
+|PlStorageDataRTCNetworkInformation
+|/camera_data_norm/RTCNetworkInformation
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemRTCConfig
+|PlStorageDataRTCConfig
+|/camera_data_norm/RTCConfig
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemHoursMeter
+|PlStorageDataHoursMeter
+|/camera_data_norm/HoursMeter
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemSAS
+|PlStorageDataSAS
+|/camera_data_encr/SAS
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemQRModeStateFlag
+|PlStorageDataQRModeStateFlag
+|/camera_data_norm/QRModeStateFlag
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemInitialSettingFlag
+|PlStorageDataInitialSettingFlag
+|/camera_data_norm/InitialSettingFlag
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemHWInfoText
+|PlStorageDataHWInfoText
+|/fa_data2/HW_info.txt
+|Read Only
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemMCULoaderVersion
+|PlStorageDataMCULoaderVersion
+|/camera_data_encr/MCULoaderVersion
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemSensorLoaderVersion
+|PlStorageDataSensorLoaderVersion
+|/camera_data_encr/SensorLoaderVersion
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemMCUFWLastUpdate
+|PlStorageDataMCUFWLastUpdate
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSensorLoaderLastUpdate
+|PlStorageDataSensorLoaderLastUpdate
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSensorFWLastUpdate
+|PlStorageDataSensorFWLastUpdate
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemSensorAIModelFlashAddress
+|PlStorageDataSensorAIModelFlashAddress
+|NULL
+|Read/Write
+|〇
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemSensorLoaderFlashAddress
+|PlStorageDataSensorLoaderFlashAddress
+|/camera_data_encr/SensorLoaderFlashAddress
+|Read/Write
+|〇
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemSensorFWFlashAddress
+|PlStorageDataSensorFWFlashAddress
+|/camera_data_encr/SensorFWFlashAddress
+|Read/Write
+|〇
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemAIModelParameterSlot0
+|PlStorageDataAIModelParameterSlot0
+|/fa_data2/AIModelParameterSlot0
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemAIModelParameterSlot1
+|PlStorageDataAIModelParameterSlot1
+|/camera_data_encr/AIModelParameterSlot1
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIModelParameterSlot2
+|PlStorageDataAIModelParameterSlot2
+|/camera_data_encr/AIModelParameterSlot2
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIModelParameterSlot3
+|PlStorageDataAIModelParameterSlot3
+|/camera_data_encr/AIModelParameterSlot3
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIModelParameterSlot4
+|PlStorageDataAIModelParameterSlot4
+|/camera_data_encr/AIModelParameterSlot4
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot1
+|PlStorageDataAIModelParameterHashSlot1
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot2
+|PlStorageDataAIModelParameterHashSlot2
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot3
+|PlStorageDataAIModelParameterHashSlot3
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemAIModelParameterHashSlot4
+|PlStorageDataAIModelParameterHashSlot4
+|NULL
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemLMTStd
+|PlStorageDataLMTStd
+|NULL
+|Read Only
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemPreWBStd
+|PlStorageDataPreWBStd
+|NULL
+|Read Only
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemGAMMAStd
+|PlStorageDataGAMMAStd
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemLSCStd
+|PlStorageDataLSCStd
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemLSCRawStd
+|PlStorageDataLSCRawStd
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemDEWARPStd
+|PlStorageDataDEWARPStd
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemLMTCustom
+|PlStorageDataLMTCustom
+|/camera_data_encr/LMTCustom
+|Read/Write
+|〇
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemPreWBCustom
+|PlStorageDataPreWBCustom
+|/camera_data_encr/PreWBCustom
+|Read/Write
+|〇
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemGAMMACustom
+|PlStorageDataGAMMACustom
+|/camera_data_encr/GAMMACustom
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemGAMMAAutoCustom
+|PlStorageDataGAMMAAutoCustom
+|/camera_data_encr/GAMMAAutoCustom
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLSCCustom
+|PlStorageDataLSCCustom
+|/camera_data_encr/LSCCustom
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemLSCRawCustom
+|PlStorageDataLSCRawCustom
+|/camera_data_encr/LSCRawCustom
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemDEWARPCustom
+|PlStorageDataDEWARPCustom
+|/camera_data_encr/DEWARPCustom
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot0
+|PlStorageDataAIISPAIModelParameterSlot0
+|/fa_data2/AI-ISPAIModelParameterSlot0
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemAIISPLoaderFlashAddress
+|PlStorageDataAIISPLoaderFlashAddress
+|/camera_data_encr/AI-ISPLoaderFlashAddress
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPFWFlashAddress
+|PlStorageDataAIISPFWFlashAddress
+|/camera_data_encr/AI-ISPFWFlashAddress
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot1
+|PlStorageDataAIISPAIModelParameterSlot1
+|/camera_data_encr/AI-ISPAIModelParameterSlot1
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot2
+|PlStorageDataAIISPAIModelParameterSlot2
+|/camera_data_encr/AI-ISPAIModelParameterSlot2
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot3
+|PlStorageDataAIISPAIModelParameterSlot3
+|/camera_data_encr/AI-ISPAIModelParameterSlot3
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPAIModelParameterSlot4
+|PlStorageDataAIISPAIModelParameterSlot4
+|/camera_data_encr/AI-ISPAIModelParameterSlot4
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIModelSlotInfo
+|PlStorageDataAIModelSlotInfo
+|/camera_data_encr/AIModelSlotInfo
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemAIISPAIModelSlotInfo
+|PlStorageDataAIISPAIModelSlotInfo
+|/camera_data_encr/AI-ISPAIModelSlotInfo
+|Read/Write
+|〇
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo0
+|PlStorageDataFwMgrBinaryInfo0
+|/camera_data_encr/FwMgrBinaryInfo0
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo1
+|PlStorageDataFwMgrBinaryInfo1
+|/camera_data_encr/FwMgrBinaryInfo1
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo2
+|PlStorageDataFwMgrBinaryInfo2
+|/camera_data_encr/FwMgrBinaryInfo2
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo3
+|PlStorageDataFwMgrBinaryInfo3
+|/camera_data_encr/FwMgrBinaryInfo3
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo4
+|PlStorageDataFwMgrBinaryInfo4
+|/camera_data_encr/FwMgrBinaryInfo4
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo5
+|PlStorageDataFwMgrBinaryInfo5
+|/camera_data_encr/FwMgrBinaryInfo5
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo6
+|PlStorageDataFwMgrBinaryInfo6
+|/camera_data_encr/FwMgrBinaryInfo6
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo7
+|PlStorageDataFwMgrBinaryInfo7
+|/camera_data_encr/FwMgrBinaryInfo7
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo8
+|PlStorageDataFwMgrBinaryInfo8
+|/camera_data_encr/FwMgrBinaryInfo8
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo9
+|PlStorageDataFwMgrBinaryInfo9
+|/camera_data_encr/FwMgrBinaryInfo9
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo10
+|PlStorageDataFwMgrBinaryInfo10
+|/camera_data_encr/FwMgrBinaryInfo10
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo11
+|PlStorageDataFwMgrBinaryInfo11
+|/camera_data_encr/FwMgrBinaryInfo11
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo12
+|PlStorageDataFwMgrBinaryInfo12
+|/camera_data_encr/FwMgrBinaryInfo12
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo13
+|PlStorageDataFwMgrBinaryInfo13
+|/camera_data_encr/FwMgrBinaryInfo13
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo14
+|PlStorageDataFwMgrBinaryInfo14
+|/camera_data_encr/FwMgrBinaryInfo14
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo15
+|PlStorageDataFwMgrBinaryInfo15
+|/camera_data_encr/FwMgrBinaryInfo15
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo16
+|PlStorageDataFwMgrBinaryInfo16
+|/camera_data_encr/FwMgrBinaryInfo16
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo17
+|PlStorageDataFwMgrBinaryInfo17
+|/camera_data_encr/FwMgrBinaryInfo17
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo18
+|PlStorageDataFwMgrBinaryInfo18
+|/camera_data_encr/FwMgrBinaryInfo18
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo19
+|PlStorageDataFwMgrBinaryInfo19
+|/camera_data_encr/FwMgrBinaryInfo19
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo20
+|PlStorageDataFwMgrBinaryInfo20
+|/camera_data_encr/FwMgrBinaryInfo20
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo21
+|PlStorageDataFwMgrBinaryInfo21
+|/camera_data_encr/FwMgrBinaryInfo21
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo22
+|PlStorageDataFwMgrBinaryInfo22
+|/camera_data_encr/FwMgrBinaryInfo22
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo23
+|PlStorageDataFwMgrBinaryInfo23
+|/camera_data_encr/FwMgrBinaryInfo23
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo24
+|PlStorageDataFwMgrBinaryInfo24
+|/camera_data_encr/FwMgrBinaryInfo24
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo25
+|PlStorageDataFwMgrBinaryInfo25
+|/camera_data_encr/FwMgrBinaryInfo25
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo26
+|PlStorageDataFwMgrBinaryInfo26
+|/camera_data_encr/FwMgrBinaryInfo26
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo27
+|PlStorageDataFwMgrBinaryInfo27
+|/camera_data_encr/FwMgrBinaryInfo27
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo28
+|PlStorageDataFwMgrBinaryInfo28
+|/camera_data_encr/FwMgrBinaryInfo28
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfo29
+|PlStorageDataFwMgrBinaryInfo29
+|/camera_data_encr/FwMgrBinaryInfo29
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemFwMgrBinaryInfoMcuFirmware
+|PlStorageDataFwMgrBinaryInfoMcuFirmware
+|/camera_data_encr/FwMgrBinaryInfoMcuFirmware
+|Read/Write
+|×
+|戻さない
+|×
+
+|kEsfParameterStorageManagerItemEsfSensorConfig
+|PlStorageDataEsfSensorConfig
+|/camera_data_encr/ESF-SensorConfig
+|Read/Write
+|〇
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemSpiBootLoader
+|PlStorageDataSpiBootLoader
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemSpiBootFirmware
+|PlStorageDataSpiBootFirmware
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemSpiBootAIModel
+|PlStorageDataSpiBootAIModel
+|NULL
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemPreInstallAIModelInfo
+|PlStorageDataPreInstallAIModelInfo
+|/camera_data_encr/PreInstallAIModelInfo
+|Read/Write
+|〇
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemPreInstallAIModel
+|PlStorageDataPreInstallAIModel
+|/camera_data_encr/PreInstallAIModel
+|Read/Write
+|〇
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemInputTensorOnlyModel
+|PlStorageDataInputTensorOnlyModel
+|/camera_data_encr/InputTensorOnlyModel
+|Read/Write
+|〇
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemInputTensorOnlyParam
+|PlStorageDataInputTensorOnlyParam
+|/camera_data_encr/InputTensorOnlyParam
+|Read/Write
+|〇
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemExceptionFactor
+|PlStorageDataExceptionFactor
+|/camera_data_encr/ExceptionFactor
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemExceptionInfo
+|PlStorageDataExceptionInfo
+|/camera_data_norm/ExceptionInfo
+|Read/Write
+|×
+|戻す
+|〇
+
+|kEsfParameterStorageManagerItemEvpExceptionFactor
+|PlStorageDataEvpExceptionFactor
+|/camera_data_encr/EvpExceptionFactor
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemCustom
+|PlStorageDataCustom
+|
+|Read Only
+|×
+|戻さない
+|〇
+
+|kEsfParameterStorageManagerItemMax
+|PlStorageDataMax
+|
+|Read Only
+|〇
+|戻さない
+|〇
+
+|===
+
+* <<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>は上記表のオフセット利用可能が〇であるデータのみ使用してください。 +
+使用可能であるかは``**EsfParameterStorageManagerGetItemCapabilities**``の``**enable_offset**``でも確認可能です。
+** オフセット利用可能が×の場合、以下の制限があります。 +
+*** データ取得の場合、データサイズより小さいバッファを与えるとエラーになります。
+*** データ保存の場合、データサイズが64KB以上はエラーになります。
+** T3Pデバイスの場合、オフセット指定によるデータ保存はできません。
+
+<<<
+
+[#_使用しているOSSの一覧]
+== 使用しているOSSの一覧
+
+使用しているOSSはありません。
+
+<<<
+
+[#_参考文献]
+== 参考文献
+
+* PL Storage 機能仕様書 +
+    link:../../hal/hal_impl_storage_ja.adoc[docs/spec/hal/hal_impl_storage_ja.adoc]
+
+<<<
+
+[#_更新履歴]
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+
+|v0.1.0
+|初版リリース
+
+|v0.1.1
+a|実装フィードバック
+
+* 構造体名の統一
+* データ構造体のデータ型（オフセット指定バイナリデータ）の説明を追加
+* SsfDeviceSettingSave, SsfDeviceSettingLoadのエラー条件を追加
+* SsfDeviceSettingInit, SsfDeviceSettingDeinitの状態エラーを削除
+* SsfDeviceSettingFactoryResetのエラー種別を整理
+* define名の表記ゆれを統一
+
+|v0.1.2
+a|ESF再構成対応
+
+* キャンセル機能の追加
+* データサイズ取得APIの追加
+* Device Setting I/Fを実装モジュールが提供しなくなるため、Device Setting I/Fの表現を削除
+* Device Setting 内部I/Fをデータ保存領域アクセス機能という表現に変更
+* ドキュメントの構成を変更 +
+    Device Setting 内部I/Fの固有のセクションに記載していた内容を、既存のテンプレートのセクションに記載するように修正
+* Factory Reset対象のデータ一覧表を追加
+* 参考文献にHAL Storageの機能仕様書を追加
+* データIDを追加
+    ** Wi-Fi APのSSID
+    ** Wi-Fi APのPassword
+* ``**SSFStatus**``を``**EsfParameterStorageManagerStatus**``へ変更
+* 名称変更
+    ** SSFをESFへ変更
+    ** Device SettingをParameter Storage Managerへ変更
+* HAL Storageの初期化・終了処理を追加
+
+|v0.1.3
+a|HAL層の構成変更
+
+* HAL初期値削除
+    ** 生データ型の型定義を変更 +
+        Parameter Storage Managerがサイズ0を返せるように、``**size**``メンバを先頭に定義する形式に変更
+    ** ``**EsfParameterStorageManagerLoad**``の説明に、データが削除されている場合の振る舞いを記載
+    ** データが構造体へ格納されていないことを判定する関数とマクロを追加
+    ** ``**ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF**``の引数の指定内容を変更
+
+* データIDを整理
+    ** Device Manifest、EVP TLSのデータIDを追加
+    ** AIモデルのバージョン、最終更新時刻のデータIDを追加（4スロット分）
+    ** OTAパーティション管理、アプリケーションプロセッサのデータIDを削除
+    ** AIモデルのスロット0のデータをFactory Reset対象外に変更
+    ** CameraSetupのパラメータ毎にバージョン、最終更新時刻を追加
+    ** Security関連のデータIDを追加
+    ** SystemApp関連のデータIDを追加
+
+* ``**EsfParameterStorageManagerFactoryReset**``関数を削除
+
+|v0.1.4
+a|PL層の結合対応
+
+* MCU Loader Last Update、Co-Chip関連のデータIDを追加
+
+* PL層のデータ設定テーブルを追加
+
+|v0.1.5
+a|サイズ0のデータ保存処理対応
+
+サイズ0のデータが指定された場合、オフセット指定以外のデータは削除するように仕様変更
+
+|v0.1.6
+a|パーティションテーブルの更新対応
+
+* データIDの追加、削除、名称変更
+    ** PkiRootCertsHashを追加
+    ** Lsc Raw関連のデータIDを追加
+    ** Security関連のデータIDを削除
+    ** Co-ChipをAI-ISPへ名称変更
+    ** RootCAをPkiRootCertsへ名称変更
+* データ設定テーブルの更新
+
+|v0.1.7
+a|データファイルの統一対応
+
+* fa_data3に関連するデータIDの削除
+* データ設定テーブルの更新 +
+    ** fa_data3に関連するデータ削除
+    ** パーティション情報に合わせた名称に変更
+
+|v0.1.8
+a|一時領域を利用するデータの追加対応
+
+* データ設定テーブルの更新 +
+    一時領域を利用することになった既存データIDの一時領域の列の記載内容を×から〇へ変更 +
+
+|v0.1.9
+a|T3P 対応
+
+* 機能の情報を取得できる``**EsfParameterStorageManagerGetCapabilities**``、``**EsfParameterStorageManagerGetItemCapabilities**``を追加 +
+* データ更新キャンセル機能が利用できないデバイスの場合、この機能のAPIは``**kEsfParameterStorageManagerStatusOk**``を返すように修正
+* オフセット指定に対応していない場合、オフセット指定バイナリデータは``**kEsfParameterStorageManagerStatusInvalidArgument**``を返すことを追記
+* 7. 特記事項やコンポーネントごとの特有の説明事項 へデバイス毎の仕様・制限事項の項目を追加
+* 定義一覧へKconfigの定義を追加
+* データ構造体を定義する際のサイズに関する制限を変更
+* オフセット指定バイナリデータ型の保存・取得に関する制限を追加
+
+|v0.2.0
+a|Firmware Manager データID変更対応 +
+Firmware Managerが使用するデータIDの追加と削除を実施
+
+|v0.2.1
+a|T3P データID整理対応 +
+T3Pで使用するデータIDの追加と、使用しないデータIDの削除を実施
+
+|v0.2.2
+a|データID追加・修正対応
+
+* ItemIDのみ追加し、データアクセスは不可
+    ** kEsfParameterStorageManagerItemDebugLogLevel2
+    ** kEsfParameterStorageManagerItemEventLogLevel2
+    ** kEsfParameterStorageManagerItemDebugLogDestination2
+    ** kEsfParameterStorageManagerItemLogFilter2
+    ** kEsfParameterStorageManagerItemLogUseFlash2
+    ** kEsfParameterStorageManagerItemStorageName2
+    ** kEsfParameterStorageManagerItemStorageSubDirectoryPath2
+* データアクセス可能なItemID
+    ** kEsfParameterStorageManagerItemInputTensorOnlyModel
+    ** kEsfParameterStorageManagerItemInputTensorOnlyParam
+* データアクセス設定を変更したItemID
+    ** kEsfParameterStorageManagerItemPreInstallAIModelInfo
+    ** kEsfParameterStorageManagerItemPreInstallAIModel
+
+|v0.2.3
+a|Log関連データIDアクセス対応
+
+* ItemIDのみ追加し、データアクセスは不可
+    ** kEsfParameterStorageManagerItemDebugLogLevel2
+    ** kEsfParameterStorageManagerItemEventLogLevel2
+    ** kEsfParameterStorageManagerItemDebugLogDestination2
+    ** kEsfParameterStorageManagerItemLogFilter2
+    ** kEsfParameterStorageManagerItemLogUseFlash2
+    ** kEsfParameterStorageManagerItemStorageName2
+    ** kEsfParameterStorageManagerItemStorageSubDirectoryPath2
+    ** kEsfParameterStorageManagerItemDebugLogLevel3
+    ** kEsfParameterStorageManagerItemEventLogLevel3
+    ** kEsfParameterStorageManagerItemDebugLogDestination3
+    ** kEsfParameterStorageManagerItemLogFilter3
+    ** kEsfParameterStorageManagerItemLogUseFlash3
+    ** kEsfParameterStorageManagerItemStorageName3
+    ** kEsfParameterStorageManagerItemStorageSubDirectoryPath3
+    ** kEsfParameterStorageManagerItemDebugLogLevel4
+    ** kEsfParameterStorageManagerItemEventLogLevel4
+    ** kEsfParameterStorageManagerItemDebugLogDestination4
+    ** kEsfParameterStorageManagerItemLogFilter4
+    ** kEsfParameterStorageManagerItemLogUseFlash4
+    ** kEsfParameterStorageManagerItemStorageName4
+    ** kEsfParameterStorageManagerItemStorageSubDirectoryPath4
+
+|v0.2.4
+a|SensorAI FW/Loader Addressをファクトリーリセット対象外とする対応
+
+* 以下のItemIDをファクトリーリセット対象外に変更
+    ** kEsfParameterStorageManagerItemSensorAIModelFlashAddress
+    ** kEsfParameterStorageManagerItemSensorLoaderFlashAddress
+    ** kEsfParameterStorageManagerItemSensorFWFlashAddress
+
+|v0.2.5
+a|オフセット利用可能対象外の制限変更対応
+
+* データ設定表に「オフセット利用可能」列を追加
+* デバイス毎の仕様・制限事項を削除し、オフセット利用可能関連の補足を記載
+* オフセット指定バイナリデータの説明文を修正
+* 参考文献からDevice Settingのドキュメントを削除
+
+|v0.2.6
+a|FwMgrBinaryInfoの8から12をファクトリーリセット対象外とする対応
+
+* 以下のItemIDをファクトリーリセット対象外に変更
+    ** kEsfParameterStorageManagerItemFwMgrBinaryInfo8
+    ** kEsfParameterStorageManagerItemFwMgrBinaryInfo9
+    ** kEsfParameterStorageManagerItemFwMgrBinaryInfo10
+    ** kEsfParameterStorageManagerItemFwMgrBinaryInfo11
+    ** kEsfParameterStorageManagerItemFwMgrBinaryInfo12
+
+|v0.2.7
+a|データID追加対応
+
+* データアクセス可能なItemID
+    ** kEsfParameterStorageManagerItemSystemError
+
+|v0.2.8
+a|EsfSensorConfigをファクトリーリセット対象外とする対応
+
+以下のItemIDをファクトリーリセット対象外に変更
+
+* kEsfParameterStorageManagerItemEsfSensorConfig
+
+|v0.2.9
+a|T3Pダウングレード対応
+
+|v0.3.0
+a|ファクトリーリセット中にWDTのKeepAliveを呼び出す対応
+
+コンフィグ一覧を更新
+
+* ``**EXTERNAL_PARAMETER_STORAGE_MANAGER_POWER_MANAGER_STUB**``を追加
+* ``**EXTERNAL_PARAMETER_STORAGE_MANAGER_UTILITY_LOG_STUB**``を追加
+* ``**EXTERNAL_PARAMETER_STORAGE_MANAGER_UTILITY_LOG_ENABLE**``を追加
+* DLOGのDEBUGレベルのデフォルト値をyに変更
+* ELOGのコンフィグを追加
+
+|v0.3.1
+a|v1のIMX500 loader/FWの更新日時にアクセスするためのItem IDの追加対応
+
+以下のItemIDを追加
+
+* ``**kEsfParameterStorageManagerItemMCUFWLastUpdate**``
+* ``**kEsfParameterStorageManagerItemSensorLoaderLastUpdate**``
+* ``**kEsfParameterStorageManagerItemSensorFWLastUpdate**``
+
+|v0.3.2
+a|記載内容見直し
+
+APIのエラーコードの記載を修正
+
+|v0.3.3
+a|ESF PowerManager Exception情報出力対応
+
+以下のItemIDを追加
+
+* ``**kEsfParameterStorageManagerItemExceptionFactor**``
+* ``**kEsfParameterStorageManagerItemExceptionInfo**``
+* ``**kEsfParameterStorageManagerItemEvpExceptionFactor**``
+
+|===

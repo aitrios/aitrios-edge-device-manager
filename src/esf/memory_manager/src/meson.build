@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2024-2025 Sony Semiconductor Solutions Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+esf_includes_internal += include_directories('.')
+
+esf_sources += files([
+	'memory_manager.c'
+])

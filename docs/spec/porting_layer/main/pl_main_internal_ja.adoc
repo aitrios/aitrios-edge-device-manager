@@ -1,0 +1,941 @@
+= PL Main 内部I/F 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書では AITRIOS PL の impl レイヤーの一つである、PL Main の仕様について記載します。 +
+PL Main の目的は、eMMC有無やFlashのパーティション、デバイス毎の対応・非対応機能の判別などの詳細を意識せずに共通の I/F で実行できること、異なるデバイスでも上位レイヤーは同じ実装のまま使用できることが目的です。
+
+== 用語
+
+[#_words]
+.用語一覧
+[cols="1,5a",options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting Layer. カメラ/ OS 差分を吸収する層
+
+|===
+
+== コンポーネントの説明
+
+PL Main レイヤーは、デバイス差分を意識せずに使える PL I/F に対する本体部分であり、初期化・終了、メインループ処理に関する機能のカメラ差分を吸収することが目的となります。
+
+=== コンポーネントの概要
+
+[#_FigureOverview]
+.概要図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    main[ESF Main]
+    style pl fill:#f9f
+    pl[PL Main]
+  end
+  flash[Flash]
+  eMMC[eMMC]
+
+os --> |起動/終了| main
+main --> |"デバイス依存の初期化/終了{mermaid_br}機能サポート判定"| pl
+pl --> |"mount(littlefs format)/umount/{mermaid_br}データ消去"| flash
+pl --> |mount/umount/{mermaid_br}FATファイルシステム化| eMMC
+pl --> |機能サポート判定結果| main
+....
+
+=== コンポーネントの詳細説明
+
+PL Main の使用シーケンス例を以下に示します。
+上位レイヤーは PL Main API を使用して各種機能を使うことができます。
+
+=== 状態遷移
+PL Main は状態遷移しません。
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> を以下に示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|eMMC制御
+|eMMCをフォーマット、マウント、アンマウントします。
+|<<#_Function1>>
+
+|Flash制御
+|Flashをフォーマット、マウント、アンマウントします。
+|<<#_Function2>>
+
+|機能サポート判定
+|指定された機能が使用可能か判定します。
+|<<#_Function3>>
+
+|===
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== eMMC制御
+機能概要::
+eMMCをフォーマット・マウント、アンマウントします。
+前提条件::
+なし
+機能詳細::
+詳細は <<#_PlMainInternalEmmcFormat, PlMainInternalEmmcFormat>>, <<#_PlMainInternalEmmcMount, PlMainInternalEmmcMount>>, <<#_PlMainInternalEmmcUnmount, PlMainInternalEmmcUnmount>> を参照してください。
+詳細挙動::
+eMMCをFAT32形式にフォーマットし、マウントします。 +
+eMMCがないデバイスの場合は何も処理しません。
+エラー時の挙動、復帰方法::
+エラー発生した場合、内部処理を中断します。 +
+リトライできません。
+検討事項::
+なし
+
+[#_Function2]
+==== Flash制御
+機能概要::
+Flashを初期化・マウント、アンマウントします。
+前提条件::
+なし
+機能詳細::
+詳細は <<#_PlMainInternalFlashFormat, PlMainInternalFlashFormat>>, <<#_PlMainInternalFlashMount, PlMainInternalFlashMount>>, <<#_PlMainInternalFlashUnmount, PlMainInternalFlashUnmount>> を参照してください。
+詳細挙動::
+対象パーティションのデータを消去し、LittleFS形式にフォーマットします。 +
+対象パーティションをマウント/アンマウントします。 +
+消去対象のパーティションと、マウント/アンマウント対象のパーティションは同一とは限りません。 +
+エラー時の挙動、復帰方法::
+エラー発生した場合、内部処理を中断します。 +
+リトライできません。
+検討事項::
+なし
+
+[#_Function3]
+==== 機能サポート判定
+機能概要::
+指定された機能が使用可能か判定します。
+前提条件::
+なし
+機能詳細::
+詳細は <<#_PlMainInternalIsFeatureSupported, PlMainInternalIsFeatureSupported>> を参照してください。
+詳細挙動::
+再起動、シャットダウン、ファクトリーリセット、ダウングレードの中から1つ指定し、サポートしているか判定します。 +
+エラー時の挙動、復帰方法::
+エラー発生した場合、入力パラメータを確認してリトライしてください。
+検討事項::
+なし
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> を以下に示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack 最大使用量
+|256 bytes
+|<<#_MaxUsedStack>>
+
+|ヒープ最大使用量
+|0 KB
+|<<#_MaxUsedHeap>>
+
+|static データ最大使用量
+|64 bytes
+|<<#_MaxUsedStaticHeap>>
+
+|パフォーマンス
+|1 ms以下
+|<<#_Performance>>
+|===
+
+=== コンポーネントの非機能要件説明
+外部のライブラリを含まない、PL Main内のみの値です。
+
+[#_MaxUsedStack]
+==== Stack 最大使用量
+256 bytes
+
+[#_MaxUsedHeap]
+==== ヒープ最大使用量
+0 KB
+
+[#_MaxUsedStaticHeap]
+==== static データ最大使用量
+64 bytes
+
+[#_Performance]
+==== パフォーマンス
+1 ms 以下
+
+== API 仕様
+
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> を以下に示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|enum PlMainDeviceType
+|記憶装置の種別を表す列挙型です。
+|<<#_PlMainDeviceType>>
+
+|enum PlMainFileSystemType
+|記憶装置のファイルシステムの種別を表す列挙型です。
+|<<#_PlMainFileSystemType>>
+
+|PlMainDeviceInformation
+|記憶装置の情報を定義する構造体です。
+|<<#_PlMainDeviceInformation>>
+
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> を以下に示します。
+
+[#_TablePublicAPI]
+.Public API 一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+
+|PlMainInternalEmmcFormat
+|eMMCをフォーマットします。
+|<<#_PlMainInternalEmmcFormat>>
+
+|PlMainInternalEmmcMount
+|eMMCをマウントします。
+|<<#_PlMainInternalEmmcMount>>
+
+|PlMainInternalEmmcUnmount
+|eMMCをアンマウントします。
+|<<#_PlMainInternalEmmcUnmount>>
+
+|PlMainInternalFlashFormat
+|Flashをフォーマットします。
+|<<#_PlMainInternalFlashFormat>>
+
+|PlMainInternalFlashMount
+|Flashをマウントします。
+|<<#_PlMainInternalFlashMount>>
+
+|PlMainInternalFlashUnmount
+|Flashをアンマウントします。
+|<<#_PlMainInternalFlashUnmount>>
+
+|PlMainInternalIsFeatureSupported
+|指定された機能が使用可能か判定します。
+|<<#_PlMainInternalIsFeatureSupported>>
+
+|===
+
+=== データ型定義
+[#_PlMainDeviceType]
+==== PlMainDeviceType
+記憶装置の種別を表す列挙型です。
+
+* *書式*
+[source, C]
+....
+typedef enum PlMainFeatureType {
+  kPlMainDeviceEmmc,
+  kPlMainDeviceFlash,
+  kPlMainDeviceMax,
+} PlMainFeatureType;
+....
+
+* *値*
+
+[#_PlMainFeatureTypeValue]
+.PlMainFeatureType の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlMainDeviceEmmc
+|eMMCです。``**PlMainEmmc**``から始まるAPIの操作対象になります。
+|kPlMainDeviceFlash
+|Flashです。``**PlMainFlash**``から始まるAPIの操作対象になります。
+|kPlMainDeviceMax
+|記憶装置の種別数です。
+|===
+
+
+[#_PlMainFileSystemType]
+==== enum PlMainFileSystemType
+記憶装置のファイルシステムの種別を表す列挙型です。
+
+* *書式*
+[source, C]
+....
+typedef enum PlMainFileSystemType {
+  kPlMainFileSystemFat32,
+  kPlMainFileSystemLittleFs,
+  kPlMainFileSystemOther,
+  kPlMainFileSystemMax,
+} PlMainFileSystemType;
+....
+
+* *値*
+
+[#_PlMainFileSystemTypeValue]
+.PlMainFileSystemType の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlMainFileSystemFat32
+|FAT32です。eMMCに対して使用可能です。
+|kPlMainFileSystemLittleFs
+|LittleFSです。Flashに対して使用可能です。
+|kPlMainFileSystemOther
+|フォーマットAPIでデータ消去のみ可能です。マウントできません。 +
+Flashに対して使用可能です。
+|kPlMainFileSystemMax
+|ファイルシステムの種別数です。
+|===
+
+[#_PlMainDeviceInformation]
+==== PlMainDeviceInformation
+記憶装置の情報を定義する構造体です。
+
+* *書式*
+[source, C]
+....
+typedef struct PlMainDeviceInformation {
+  PlMainDeviceType device_type;
+  PlMainFileSystemType fs_type;
+  const char* source;
+  const char* target;
+  bool format;
+} PlMainDeviceInformation;
+....
+
+* *値*
+
+[#_PlMainDeviceInformationValue]
+.PlMainDeviceInformation の値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|device_type
+|記憶装置の種別です。
+|fs_type
+|ファイルシステムの種別です。
+|source
+|デバイスパスです。NULLは指定できません。
+|target
+|マウントポイントです。NULLの場合、マウント/アンマウントAPIで処理されません。
+|format
+|trueの場合、フォーマットAPIでフォーマットを試行します。 +
+falseの場合、フォーマットAPIでフォーマットしません。
+|===
+
+
+=== 各 API の説明
+
+[#_PlMainInternalEmmcFormat]
+==== PlMainInternalEmmcFormat
+
+* *機能* +
+eMMCをフォーマットします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalEmmcFormat(const PlMainDeviceInformation* info,
+                                   size_t info_size, PlMainKeepAliveCallback cb,
+                                   void* user_data);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainDeviceInformation* info``**::
+デバイス情報の配列です。
++
+**``[IN] size_t info_size``**::
+デバイス情報の配列の要素数です。
++
+**``[IN] PlMainKeepAliveCallback cb``**::
+フォーマット時に呼び出すコールバック関数です。 +
+``**NULL**``を指定した場合、コールバック関数は呼び出されません。
++
+**``[IN] void* user_data``**::
+コールバック関数へ渡すユーザーデータです。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+eMMC に関する初期化処理を行います。 +
+
+** 複数の領域を処理する場合、途中でエラーが発生しても全ての対象の領域を処理します。 +
+  戻り値は最後にエラーが発生した時のエラーコードです。
+
+[#_PlMainInternalEmmcFormat_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalEmmcFormat_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrWrite
+|eMMC処理エラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlMainInternalEmmcMount]
+==== PlMainInternalEmmcMount
+
+* *機能* +
+eMMCをマウントします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalEmmcMount(const PlMainDeviceInformation* info,
+                                  size_t info_size);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainDeviceInformation* info``**::
+デバイス情報の配列です。
++
+**``[IN] size_t info_size``**::
+デバイス情報の配列の要素数です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+eMMC に関するマウント処理を行います。 +
+
+** 複数の領域を処理する場合、途中でエラーが発生しても全ての対象の領域を処理します。 +
+  戻り値は最後にエラーが発生した時のエラーコードです。
+
+[#_PlMainInternalEmmcMount_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalEmmcMount_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrWrite
+|eMMC処理エラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+
+[#_PlMainInternalEmmcUnmount]
+==== PlMainInternalEmmcUnmount
+
+* *機能* +
+eMMCをアンマウントします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalEmmcUnmount(const PlMainDeviceInformation* info,
+                                    size_t info_size);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainDeviceInformation* info``**::
+デバイス情報の配列です。
++
+**``[IN] size_t info_size``**::
+デバイス情報の配列の要素数です。
+
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+eMMC に関するアンマウント処理を行います。 +
+
+** 複数の領域を処理する場合、途中でエラーが発生しても全ての対象の領域を処理します。 +
+  戻り値は最後にエラーが発生した時のエラーコードです。
+
+[#_PlMainInternalEmmcUnmount_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalEmmcUnmount_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrWrite
+|eMMC処理エラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+
+[#_PlMainInternalFlashFormat]
+==== PlMainInternalFlashFormat
+
+* *機能* +
+Flashをフォーマットします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalFlashFormat(const PlMainDeviceInformation* info,
+                                    size_t info_size,
+                                    PlMainKeepAliveCallback cb,
+                                    void* user_data);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainDeviceInformation* info``**::
+デバイス情報の配列です。
++
+**``[IN] size_t info_size``**::
+デバイス情報の配列の要素数です。
++
+**``[IN] PlMainKeepAliveCallback cb``**::
+フォーマット時に呼び出すコールバック関数です。 +
+``**NULL**``を指定した場合、コールバック関数は呼び出されません。
++
+**``[IN] void* user_data``**::
+コールバック関数へ渡すユーザーデータです。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+Flash に関する初期化処理を行います。 +
+
+** 複数の領域を処理する場合、途中でエラーが発生しても全ての対象の領域を処理します。 +
+  戻り値は最後にエラーが発生した時のエラーコードです。
+
+[#_PlMainInternalFlashFormat_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalFlashFormat_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrWrite
+|Flash処理エラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlMainInternalFlashMount]
+==== PlMainInternalFlashMount
+
+* *機能* +
+Flashをマウントします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalFlashMount(const PlMainDeviceInformation* info,
+                                   size_t info_size);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainDeviceInformation* info``**::
+デバイス情報の配列です。
++
+**``[IN] size_t info_size``**::
+デバイス情報の配列の要素数です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+Flash に関するマウント処理を行います。 +
+
+** 複数の領域を処理する場合、途中でエラーが発生しても全ての対象の領域を処理します。 +
+  戻り値は最後にエラーが発生した時のエラーコードです。
+
+[#_PlMainInternalFlashMount_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalFlashMount_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrWrite
+|Flash処理エラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlMainInternalFlashUnmount]
+==== PlMainInternalFlashUnmount
+
+* *機能* +
+Flashをアンマウントします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalFlashUnmount(const PlMainDeviceInformation* info,
+                                     size_t info_size);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainDeviceInformation* info``**::
+デバイス情報の配列です。
++
+**``[IN] size_t info_size``**::
+デバイス情報の配列の要素数です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+Flash に関するアンマウント処理を行います。 +
+
+** 複数の領域を処理する場合、途中でエラーが発生しても全ての対象の領域を処理します。 +
+  戻り値は最後にエラーが発生した時のエラーコードです。
+
+[#_PlMainInternalFlashUnmount_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalFlashUnmount_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrWrite
+|Flash処理エラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlMainInternalIsFeatureSupported]
+==== PlMainInternalIsFeatureSupported
+
+* *機能* +
+指定された機能が使用可能か判定します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainInternalIsFeatureSupported(const PlMainFeatureType* support,
+                                           size_t support_size,
+                                           PlMainFeatureType type);
+....
+
+* *引数の説明* +
++
+**``[IN] const PlMainFeatureType* support``**::
+サポートする機能の配列です。
++
+**``[IN] size_t support_size``**::
+``**support**``の要素数です。 
++
+**``[IN] PlMainFeatureType type``**::
+判定対象の機能です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+指定された機能が使用可能か判定します。 +
+使用可能な場合、``**kPlErrCodeOk**``を返します。 +
+使用不可な場合、``**kPlErrNoSupported**``を返します。
+
+[#_PlMainInternalIsFeatureSupported_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainInternalIsFeatureSupported_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrInvalidParam
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported
+|未サポートエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+== API 使用時の呼び出し例
+
+``**PlMainDeviceInformation**``の配列を定義し、それを使用して``**PlMainInternal**``から始まるAPIを呼び出します。
+[source, C]
+....
+static const PlMainDeviceInformation kDeviceInformation[] = {
+    {
+        kPlMainDeviceEmmc,
+        kPlMainFileSystemFat32,
+        "/dev/mmcsd1",
+        "/emmc/",
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "evp_data",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "log",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "deploy_region",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "reserved",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "fa_data3",
+        "/fa_data3",
+        false,
+    },
+};
+static const size_t kDeviceInformationSize =
+    sizeof(kDeviceInformation) / sizeof(kDeviceInformation[0]);
+
+PlErrCode PlMainEmmcFormat(PlMainKeepAliveCallback cb, void* user_data) {
+  return PlMainInternalEmmcFormat(kDeviceInformation, kDeviceInformationSize,
+                                  cb, user_data);
+}
+....
+
+
+== 特記事項やコンポーネントごとの特有の説明事項
+なし
+
+== 使用している OSS の一覧
+なし
+
+== 参考文献
+なし
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+|===

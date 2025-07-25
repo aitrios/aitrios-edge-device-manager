@@ -1,0 +1,1526 @@
+= HAL I2C (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figurem
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document describes the specifications for the I2C implementation, which is one of the impl layers of AITRIOS HAL.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Terms List
+[options="header"]
+|===
+|Term |Description 
+
+|HAL
+|Hardware Abstract Layer. A layer that absorbs camera differences.
+
+|PL
+|Porting Layer. A layer that absorbs camera/OS differences.
+
+|public API
+|API that can be used directly from the upper layers.
+
+|private API
+|API used only within HAL.
+|===
+
+<<<
+
+== Component Description
+
+The HAL impl layer is the main part of the HAL I/F that can be used without considering camera differences. Its purpose is to absorb those differences. 
+Additionally, it can be added or modified according to the target camera.
+
+=== Component Overview
+
+The following is a software block diagram centered on this component.
+
+.Overview Diagram
+image::./images/i2c_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Detailed Component Description
+
+The following shows an example of the usage sequence of HAL I2C.
+After executing HalI2cInitialize, the upper layer can perform I2C communication using the HAL I2C API.
+
+[#_i2c_seq]
+.Sequence Overview
+image::./images/i2c_seq.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== State Transitions
+The states that HAL I2C can transition to are shown in <<#_TableStates>>.
+
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description 
+
+|HAL_I2C_READY
+|Initial state
+
+|HAL_I2C_RUNNING
+|Operational state
+|===
+
+In HAL I2C, the state transitions shown in <<#_FigureState>> occur. +
+Additionally, state transitions do not occur if an error occurs in any API. +
+
+[#_FigureState]
+.State Transition Diagram
+image::./images/i2c_state.png[scaledwidth="100%",align="center"]
+
+API acceptance and transition destinations for each state are shown in <<#_TableStateTransition>>. The state names in the table indicate the destination state after API execution, which means the API is callable. +
+An "×" indicates that the API is not accepted, in which case the API call returns an error and no state transition occurs. For error details, refer to <<#_HalErrCode, HalErrCode List>>. 
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|State 
+|HAL_I2C_READY |HAL_I2C_RUNNING 
+.14+|API Name
+
+|``**HalI2cInitialize**``            
+|HAL_I2C_RUNNING                   
+|×
+
+|``**HalI2cFinalize**``   
+|×                   
+|HAL_I2C_READY
+
+|``**HalI2cReadRegister8**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cReadRegister16**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cReadRegister32**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cReadRegister64**``   
+|×                   
+|HAL_I2C_RUNNING
+|``**HalI2cWriteRegister8**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cWriteRegister16**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cWriteRegister32**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cWriteRegister64**``   
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cGetDeviceInfo**``             
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cReset**``             
+|×                   
+|HAL_I2C_RUNNING
+
+|``**HalI2cLock**``
+|×
+|HAL_I2C_RUNNING
+
+|``**HalI2cUnlock**``
+|×
+|HAL_I2C_RUNNING
+|===
+
+<<<
+
+=== Function List for the Component
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview  |Section Number
+|I2C Read Register
+|Reads from the register of an I2C device.
+|<<#_Function1>>
+
+|I2C Write Register
+|Writes to the register of an I2C device.
+|<<#_Function2>>
+
+|I2C Bus Reset
+|Resets the I2C bus.
+|<<#_Function3>>
+
+|I2C API Lock/Unlock
+|Locks/Unlocks the HAL I2C API.
+|<<#_Function4>>
+
+|===
+
+<<<
+
+=== Function Descriptions for the Component
+[#_Function1]
+==== I2C Read Register
+Function Overview::
+Reads data from the specified register of an I2C device.
+Prerequisites::
+HalI2cInitialize must have been executed.
+Function Details::
+There are APIs for each register length such as HalI2cReadRegister8, 16... Refer to <<#_TableAPI, API List>> for details.
+Detailed Behavior::
+Reads data from the specified register of an I2C device.
+Behavior During Errors and Recovery Method::
+Returns an error code.
+Considerations::
+None.
+
+[#_Function2]
+==== I2C Write Register
+Function Overview::
+Writes data to the specified register of an I2C device.
+Prerequisites::
+HalI2cInitialize must have been executed.
+Function Details::
+There are APIs for each register length such as HalI2cWriteRegister8, 16... Refer to <<#_TableAPI, API List>> for details.
+Detailed Behavior::
+Writes data to the specified register of an I2C device.
+Behavior During Errors and Recovery Method::
+Returns an error code.
+Considerations::
+None.
+
+[#_Function3]
+==== I2C Bus Reset
+Function Overview::
+Resets the port of the I2C device.
+Prerequisites::
+HalI2cInitialize must have been executed.
+Function Details::
+-
+Detailed Behavior::
+Resets the port of the I2C device.
+Behavior During Errors and Recovery Method::
+Returns an error code. +
+Data retransmission is required.
+Considerations::
+None.
+
+[#_Function4]
+==== I2C API Lock/Unlock
+Function Overview::
+Locks/Unlocks the HAL I2C API.
+Prerequisites::
+HalI2cInitialize must have been executed.
+Function Details::
+The lock/unlock should be executed on the same thread. +
+The lock/unlock should be executed on a separate thread from other HAL I2C APIs. +
+Behavior when other HAL I2C APIs are executed on the same thread after locking is not guaranteed.
+Detailed Behavior::
+Locks/Unlocks the HAL I2C API.
+Behavior During Errors and Recovery Method::
+Returns an error code.
+Considerations::
+None.
+
+<<<
+=== Non-Functional Requirements List for the Component
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview  |Section Number
+|Maximum Stack Usage
+|Maximum stack usage in bytes
+|<<#_CompornentNonFunction, 3.7.>>
+
+|Maximum Heap Usage
+|Maximum heap usage in bytes
+|<<#_CompornentNonFunction, 3.7.>>
+
+|Maximum Static Data Usage
+|Static data usage in bytes
+|<<#_CompornentNonFunction, 3.7.>>
+
+|Performance
+|Processing time of each API
+|<<#_CompornentNonFunction, 3.7.>>
+|===
+
+=== Non-Functional Requirements Description for the Component
+
+[#_CompornentNonFunction]
+==== Maximum Stack Usage
+512 bytes
+
+==== Maximum Heap Usage
+512 bytes
+
+==== Maximum Static Data Usage
+64 bytes
+
+==== Performance
+Less than 1 millisecond
+
+<<<
+
+== API Specifications
+=== List of Definitions
+==== Data Types List
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Types List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview  |Section Number
+|enum HalErrCode
+|An enumeration that defines the execution result of the API.
+|See <<#_HalErrCode>>
+
+|enum HalI2cEndian
+|An enumeration that defines the endian of the device.
+|See <<#_HalI2cEndian>>
+
+|enum HalI2cMsgType
+|An enumeration that defines the read/write of data.
+|See <<#_HalI2cMsgType>>
+
+|struct HalI2cDeviceInfo
+|A structure to retrieve I2C device information.
+|See <<#_HalI2cDeviceInfo>>
+|===
+
+==== API List
+The list of APIs is shown in <<#_TablePublicAPI>> and <<#_TablePrivateAPI>>.
+
+[#_TablePublicAPI]
+.Public API List
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Overview |Section Number
+|HalI2cInitialize
+|Initializes the I2C bus.
+|<<#_HalI2cInitialize, 4.3.1.>>
+
+|HalI2cFinalize
+|Performs the termination process for the I2C bus.
+|<<#_HalI2cFinalize, 4.3.2.>>
+
+|HalI2cReadRegister8
+|Reads from an 8-bit register of an I2C device.
+|<<#_HalI2cReadRegister8, 4.3.3.>>
+
+|HalI2cReadRegister16
+|Reads from a 16-bit register of an I2C device.
+|<<#_HalI2cReadRegister16, 4.3.4.>>
+
+|HalI2cReadRegister32
+|Reads from a 32-bit register of an I2C device.
+|<<#_HalI2cReadRegister32, 4.3.5.>>
+
+|HalI2cReadRegister64
+|Reads from a 64-bit register of an I2C device.
+|<<#_HalI2cReadRegister64, 4.3.6.>>
+
+|HalI2cWriteRegister8
+|Writes to an 8-bit register of an I2C device.
+|<<#_HalI2cWriteRegister8, 4.3.7.>>
+
+|HalI2cWriteRegister16
+|Writes to a 16-bit register of an I2C device.
+|<<#_HalI2cWriteRegister16, 4.3.8.>>
+
+|HalI2cWriteRegister32
+|Writes to a 32-bit register of an I2C device.
+|<<#_HalI2cWriteRegister32, 4.3.9.>>
+
+|HalI2cWriteRegister64
+|Writes to a 64-bit register of an I2C device.
+|<<#_HalI2cWriteRegister64, 4.3.10.>>
+
+|HalI2cGetDeviceInfo
+|Retrieves I2C device information.
+|<<#_HalI2cGetDeviceInfo, 4.3.11.>>
+
+|HalI2cReset
+|Resets the port of an I2C device.
+|<<#_HalI2cReset, 4.3.12.>>
+
+|HalI2cLock
+|Locks the HAL I2C API.
+|<<#_HalI2cLock, 4.3.13.>>
+
+|HalI2cUnlock
+|Unlocks the HAL I2C API.
+|<<#_HalI2cUnlock, 4.3.14.>>
+
+|===
+
+[#_TablePrivateAPI]
+.Private API List
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Overview |Section Number
+|HalI2cTransfer
+|Performs I2C data transfer.
+|<<#_HalI2cTransfer, 4.3.15.>>
+|===
+
+<<<
+
+=== Data Type Definitions
+[#_HalErrCode]
+==== HalErrCode
+An enumeration that defines the execution result of the API.
+(T.B.D.)
+
+[#_HalI2cEndian]
+==== enum HalI2cEndian
+An enumeration that defines the endian of the device.
+
+* *Format* +
+[source, C]
+....
+typedef enum {
+  kHalI2cLittleEndian = 1,
+  kHalI2cBigEndian,
+  kHalI2cEndianMax
+} HalI2cEndian;
+....
+
+[#_HalI2cMsgType]
+==== enum HalI2cMsgType
+An enumeration that defines the read/write of data.
+
+* *Format* +
+[source, C]
+....
+typedef enum {
+  kHalI2cMsgTypeWrite = 0,
+  kHalI2cMsgTypeRead,
+  kHalI2cMsgTypeMax
+} HalI2cMsgType;
+....
+
+[#_HalI2cDeviceInfo]
+==== struct HalI2cDeviceInfo
+A structure to retrieve I2C device information.
+
+* *Format* +
+[source, C]
+....
+struct HalI2cDeviceInfo {
+  char	   name[32+1];
+  uint32_t device_id;
+  uint32_t port;
+  uint32_t addr;
+};
+....
+
+* *Values* +
+Explanation of HalI2cDeviceInfo Values
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Member Name  |Description
+|name
+|Device name
+|device_id
+|Device ID of the target device
+|port
+|Port number of the target device
+|addr
+|address of the target device
+|===
+
+
+=== API Descriptions
+[#_HalI2cInitialize]
+==== HalI2cInitialize
+* *Function* +
+Initializes the I2C bus.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cInitialize(void)
+....
+
+
+* *Explanation of Arguments* +
+- 
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Initializes the I2C bus.
+
+[#_HalI2cInitialize]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_HalI2cFinalize]
+==== HalI2cFinalize
+* *Function* +
+Performs the termination process for the I2C device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cFinalize(void)
+....
+
+* *Explanation of Arguments* +
+-
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Performs the termination process for the I2C device.
+
+[#_HalI2cFinalize]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_HalI2cReadRegister8]
+==== HalI2cReadRegister8
+* *Function* +
+Reads an 8-bit register from the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cReadRegister8(uint32_t device_id, uint8_t read_addr, uint8_t *read_buf)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint8_t read_addr**:: 
+Register address.
+
+**[IN/OUT] uint8_t *read_buf**:: 
+The buffer where the read data will be stored.
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Performs an I2C Read from the specified register address. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cReadRegister8_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cReadRegister8_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|The specified register address is invalid
+|-
+|The I2C of the specified device ID will be reset.
+|Please specify the correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|I/O timeout occurred for the specified device ID
+|-
+|The I/O for the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cReadRegister16]
+==== HalI2cReadRegister16
+* *Function* +
+Reads a 16-bit register from the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cReadRegister16(uint32_t device_id, uint16_t read_addr, uint16_t *read_buf, HalI2cEndian dev_endian)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint16_t read_addr**:: 
+Register address.
+
+**[IN/OUT] uint16_t *read_buf**:: 
+The buffer where the read data will be stored.
+
+**[IN] HalI2cEndian dev_endian**:: 
+Specify the endian for the register address of the target device. +
+** kHalI2cLittleEndian: Little-endian +
+** kHalI2cBigEndianfalse: Big-endian
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Performs an I2C Read from the specified register address. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cReadRegister16_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cReadRegister16_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|The specified register address is invalid
+|-
+|The I2C of the specified device ID will be reset.
+|Please specify the correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|I/O timeout occurred for the specified device ID
+|-
+|The I/O for the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cReadRegister32]
+==== HalI2cReadRegister32
+* *Function* +
+Reads a 32-bit register from the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cReadRegister32(uint32_t device_id, uint32_t read_addr, uint32_t *read_buf, HalI2cEndian dev_endian)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint32_t read_addr**:: 
+Register address.
+
+**[IN/OUT] uint32_t *read_buf**:: 
+The buffer where the read data will be stored.
+
+**[IN] HalI2cEndian dev_endian**:: 
+Specify the endian for the register address of the target device. +
+** kHalI2cLittleEndian: Little-endian +
+** kHalI2cBigEndianfalse: Big-endian
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Performs an I2C Read from the specified register address. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cReadRegister32_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cReadRegister32_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|The specified register address is invalid
+|-
+|The I2C of the specified device ID will be reset.
+|Please specify the correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|I/O timeout occurred for the specified device ID
+|-
+|The I/O for the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cWriteRegister8]
+==== HalI2cWriteRegister8
+* *Function* +
+Writes to an 8-bit register at the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cWriteRegister8(uint32_t device_id, uint8_t write_addr, const uint8_t *write_buf)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint8_t write_addr**:: 
+Register address.
+
+**[IN] const uint8_t *write_buf**:: 
+The data to be written should be stored here.
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Performs an I2C Write to the specified register address. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cWriteRegister8_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cWriteRegister8_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|The specified register address is invalid
+|-
+|The I2C of the specified device ID will be reset.
+|Please specify the correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|I/O timeout occurred for the specified device ID
+|-
+|The I/O for the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cWriteRegister16]
+==== HalI2cWriteRegister16
+* *Function* +
+Writes a 16-bit register to the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cWriteRegister16(uint32_t device_id, uint16_t write_addr, const uint16_t *write_buf, HalI2cEndian dev_endian)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint16_t write_addr**:: 
+Register address.
+
+**[IN] const uint16_t *write_buf**:: 
+Stores the data to be written.
+
+**[IN] HalI2cEndian dev_endian**:: 
+Specify the endian of the register address of the target device. +
+** kHalI2cLittleEndian: Little-endian +
+** kHalI2cBigEndianfalse: Big-endian
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Writes to the specified register address via I2C. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cWriteRegister16_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cWriteRegister16_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|Invalid register address specified
+|-
+|The I2C of the specified device ID will be reset.
+|Specify a correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|Timeout occurred during I/O for the specified device ID
+|-
+|I/O to the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cWriteRegister32]
+==== HalI2cWriteRegister32
+* *Function* +
+Writes a 32-bit register to the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cWriteRegister32(uint32_t device_id, uint32_t write_addr, const uint32_t *write_buf, HalI2cEndian dev_endian)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint32_t write_addr**:: 
+Register address.
+
+**[IN] const uint32_t *write_buf**:: 
+Stores the data to be written.
+
+**[IN] HalI2cEndian dev_endian**:: 
+Specify the endian of the register address of the target device. +
+** kHalI2cLittleEndian: Little-endian +
+** kHalI2cBigEndianfalse: Big-endian
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Writes to the specified register address via I2C. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cWriteRegister32_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cWriteRegister32_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|Invalid register address specified
+|-
+|The I2C of the specified device ID will be reset.
+|Specify a correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|Timeout occurred during I/O for the specified device ID
+|-
+|I/O to the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cWriteRegister64]
+==== HalI2cWriteRegister64
+* *Function* +
+Writes a 64-bit register to the I2C register address of the device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cWriteRegister64(uint32_t device_id, uint64_t write_addr, const uint64_t *write_buf, HalI2cEndian dev_endian)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN] uint64_t write_addr**:: 
+Register address.
+
+**[IN] const uint64_t *write_buf**:: 
+Stores the data to be written.
+
+**[IN] HalI2cEndian dev_endian**:: 
+Specify the endian of the register address of the target device. +
+** kHalI2cLittleEndian: Little-endian +
+** kHalI2cBigEndianfalse: Big-endian
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Writes to the specified register address via I2C. +
+Select the target device from the DEV_ID in the CONFIG_HAL_I2C configuration. +
+This API can be used after executing HalI2cInitialize.
+
+[#_HalI2cWriteRegister64_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks per I2C port number connected to the device with the specified device ID. +
+If HalI2cReadRegister8/16/32/64, HalI2cWriteRegister8/16/32/64 are already running in another context, this call will wait for them to complete before executing.
+|===
+
+[#_HalI2cWriteRegister64_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+
+|kHalErrTransfer (tentative)
+|Invalid register address specified
+|-
+|The I2C of the specified device ID will be reset.
+|Specify a correct register address that the device ID can use.
+
+|kHalErrTimedout (tentative)
+|Timeout occurred during I/O for the specified device ID
+|-
+|I/O to the specified device failed.
+|Check the status of the specified device.
+|===
+
+<<<
+
+[#_HalI2cGetDeviceInfo]
+==== HalI2cGetDeviceInfo
+* *Function* +
+Retrieves a list of I2C device information.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cGetDeviceInfo(struct HalI2cDeviceInfo *device_info, uint32_t *count)
+....
+
+* *Explanation of Arguments* +
+**[IN/OUT] struct HalI2cDeviceInfo *device_info**:: 
+Specify the address of the buffer where the list of I2C device information will be stored.
+
+**[IN/OUT] uint32_t *count**:: 
+Specify the address of the buffer where the number of device information entries will be stored.
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Retrieves all I2C device information. +
+The memory area for `device_info` is managed as shared memory within HAL I2C, so do not free it. Also, do not modify this memory area.
+
+[#_HalI2cGetDeviceInfo_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Does not block.
+|===
+
+[#_HalI2cGetDeviceInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_HalI2cReset]
+==== HalI2cReset
+* *Function* +
+Resets the I2C device.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cReset(uint32_t device_id)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+Resets the I2C bus in case of an access error.
+
+[#_HalI2cReset_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Blocks.
+|===
+
+[#_HalI2cReset_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+
+[#_HalI2cLock]
+==== HalI2cLock
+* *Function* +
+Locks the HAL I2C API.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cLock(void)
+....
+
+* *Explanation of Arguments* +
+-
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+** Locks the HAL I2C API.
+** After executing this API, other HAL I2C APIs will wait until HalI2cUnlock is executed.
+** HalI2cLock and HalI2cUnlock must be executed in the same thread, while other HAL I2C APIs should be executed in a different thread from the one that executed this API.
+** If other HAL I2C APIs are executed in the same thread before HalI2cUnlock is called, the behavior is not guaranteed.
+** This API can be used after HalI2cInitialize is executed.
+
+* *HalI2cLock/Unlock Example* +
+
+.HalI2cLock/Unlock Example
+image::./images/i2c_lock_unlock.png[scaledwidth="100%",align="center"]
+
+[#_HalI2cLock_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Yes, it blocks. 
+|===
+
+[#_HalI2cLock_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrLock (tentative)
+|Lock error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_HalI2cUnlock]
+==== HalI2cUnlock
+* *Function* +
+Unlocks the HAL I2C API.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cUnlock(void)
+....
+
+* *Explanation of Arguments* +
+-
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+** Unlocks the HAL I2C API.
+** This API can be used after HalI2cInitialize is executed.
+
+[#_HalI2cUnlock_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the calling context
+|Concurrent Calls
+|Allowed
+|Called from Multiple Threads
+|Allowed
+|Called from Multiple Tasks
+|Allowed
+|Does the API Block Internally?
+|Yes, it blocks.
+|===
+
+[#_HalI2cUnlock_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrLock (tentative)
+|Lock error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_HalI2cTransfer]
+==== HalI2cTransfer
+* *Function* +
+[HAL Internal API] Executes I2C data communication.
+
+* *Format* +
+[source, C]
+....
+HalErrCode HalI2cTransfer(uint32_t device_id, const uint8_t *transfer_data[], const uint8_t transfer_size[], const bool is_read[], uint32_t trans_num, HalI2cEndian dev_endian)
+....
+
+* *Explanation of Arguments* +
+**[IN] uint32_t device_id**:: 
+ID of the target device.
+
+**[IN/OUT] uint8_t *transfer_data[]**:: 
+Array of transfer data. The number of elements is trans_num. +
+If is_read is true, the read result is stored. +
+If is_read is false, the data to be written is stored.
+
+**[IN] uint8_t transfer_size[]**:: 
+Array of byte sizes for transfer data. The number of elements is trans_num.
+
+**[IN] bool is_read[]**:: 
+Array of flags indicating Read/Write transfer. The number of elements is trans_num. +
+Specify true for reading and false for writing.
+
+**[IN] uint32_t trans_num**:: 
+The total number of transfers.
+
+**[IN] HalI2cEndian dev_endian**:: 
+Specify the endian of the target device's register address. +
+** kHalI2cLittleEndian: Little-endian +
+** kHalI2cBigEndianfalse: Big-endian
+
+* *Return Value* +
+Returns one of the HalErrCode values based on the execution result.
+
+* *Explanation* +
+** This is an internal HAL API for executing I2C data communication.
+** For a single data transfer, set trans_num to 1 and prepare transfer_data and transfer_size for 1 byte, then use is_read to specify the transfer direction as Read (set to true) or Write (set to false).
+** For data communication involving multiple registers, specify the number of registers in trans_num and prepare arrays for transfer_data, transfer_size, and is_read corresponding to that number.
+** To transfer both Read and Write data to a single register simultaneously, set trans_num to 2, prepare transfer_data[2] and transfer_size[2], and set is_read[2] to true and false respectively.
+** HAL implementers should execute this API from HalI2cReadRegister***/HalI2cWriteRegister***.
+** This API blocks internally on the I2C port number connected to the device with the specified device ID, so blocking in the caller is not required.
+
+.Image of Argument Values and Data Transfer
+image::./images/i2c_transfer.png[scaledwidth="100%",align="center"]
+** trans_num 0 to 4 behavior
+*** 0 : Read 1 byte from r_addr into buff (read buffer address)
+*** 1 : Write 1 byte of data to w_addr
+*** 2 : Write 1 byte of data to w_addr
+*** 3 : Read 1 byte from r_addr into buff (read buffer address)
+*** 4 : Read 1 byte from r_addr into buff (read buffer address)
+
+.API Implementation Example +
+[source, C]
+....
+// Example implementation
+for (int i = 0; i < trans_num; i++) {
+  i2c_msg[i].frequency = frequency;
+  i2c_msg[i].addr      = addr;
+  i2c_msg[i].buffer    = transfer_data[i];
+  i2c_msg[i].length    = transfer_size[i];
+  if (is_read[i]) {
+    i2c_msg[i].flags = I2C_M_READ;
+  } else {
+    i2c_msg[i].flags = 0;
+  }
+}
+result = I2C_TRANSFER(port_handle, i2c_msg, trans_num);
+....
+
+[#_HalI2cTransfer]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+|kHalErrInvalidState (tentative)
+|HalI2cInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kHalErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+== Example of API Usage
+
+Refer to <<#_i2c_seq, Sequence Overview>>.
+
+<<<
+
+== Special Notes or Component-Specific Explanations
+None
+
+== List of OSS Used
+None
+
+<<<
+
+== References
+None
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|Initial version
+
+
+|0.0.2
+|- General: Added half-width spaces before and after English words (for better readability) +
+- Terminology: Removed OSAL description and added PL +
+- Changed HalInitialize/HalFinalize to HalI2cInitialize/HalI2cFinalize +
+- Changed READY/RUNNING to HAL_I2C_READY/HAL_I2C_RUNNING +
+- Changed description of hal_overview.adoc to HalErrCode List (T.B.D.) +
+- API Descriptions 4.3: Changed HalI2cInitialize/HalI2cFinalize to public functions, and reordered the API list +
+- Modified descriptions of HalI2cReadRegister8/16/32/64 API from Hal config devices devide_id to CONFIG_I2C config's DEV_ID, added error codes kHalErrTransfer, kHalErrTimeout +
+- Changed descriptions of HalI2cWriteRegister8/16/32/64 API from Hal config devices devide_id to CONFIG_I2C config's DEV_ID, added error codes kHalErrTransfer, kHalErrTimeout +
+- Changed diagram (*.png) to English labels
+|===
+

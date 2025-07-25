@@ -1,0 +1,949 @@
+= PL Main Internal I/F Functional Specifications (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document describes the specifications of PL Main, one of the implementation layers in AITRIOS PL. +
+The purpose of PL Main is to provide a unified interface that abstracts away details such as the presence of eMMC, flash partitions, and supported or unsupported features depending on the device. This allows the upper layer to operate uniformly without being aware of such differences, making it possible to use the same implementation across different devices.
+
+== Terminology
+
+[#_words]
+.Term List
+[cols="1,5a",options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. A layer that abstracts differences across cameras and OSs.
+|===
+
+== Component Description
+
+The PL Main layer constitutes the main body that provides the PL interface usable without concern for device-dependent differences. It is designed to abstract camera-specific behavior related to initialization, termination, and main loop processing.
+
+=== Component Overview
+
+[#_FigureOverview]
+.Overview Diagram
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    main[ESF Main]
+    style pl fill:#f9f
+    pl[PL Main]
+  end
+  flash[Flash]
+  eMMC[eMMC]
+
+os --> |Startup/Shutdown| main
+main --> |"Device-specific init/shutdown{mermaid_br}Feature support detection"| pl
+pl --> |"mount (littlefs format)/umount/{mermaid_br}data erase"| flash
+pl --> |mount/umount/{mermaid_br}FAT file system format| eMMC
+pl --> |Feature support status| main
+....
+
+=== Detailed Description of Component
+
+An example usage sequence for PL Main is shown below.  
+The upper layer can use various functions through the PL Main API.
+
+=== State Transitions
+
+PL Main does not perform any state transitions.
+
+=== List of Component Functions
+
+<<#_TableFunction>> shows the list of available functions.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function |Overview |Section
+
+|eMMC Control
+|Formats, mounts, and unmounts the eMMC.
+|<<#_Function1>>
+
+|Flash Control
+|Formats, mounts, and unmounts the flash.
+|<<#_Function2>>
+
+|Feature Support Detection
+|Determines whether the specified feature is supported.
+|<<#_Function3>>
+|===
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== eMMC Control
+
+Function Overview::  
+Formats, mounts, and unmounts the eMMC.
+
+Preconditions::  
+None
+
+Details::  
+See <<#_PlMainInternalEmmcFormat, PlMainInternalEmmcFormat>>, <<#_PlMainInternalEmmcMount, PlMainInternalEmmcMount>>, and <<#_PlMainInternalEmmcUnmount, PlMainInternalEmmcUnmount>> for details.
+
+Detailed Behavior::  
+Formats the eMMC in FAT32 format and mounts it. +  
+If the device does not have an eMMC, no operation is performed.
+
+Behavior on Error / Recovery::  
+If an error occurs, internal processing is aborted. +  
+Retry is not possible.
+
+Considerations::  
+None
+
+[#_Function2]
+==== Flash Control
+
+Function Overview::  
+Initializes, mounts, and unmounts the flash.
+
+Preconditions::  
+None
+
+Details::  
+See <<#_PlMainInternalFlashFormat, PlMainInternalFlashFormat>>, <<#_PlMainInternalFlashMount, PlMainInternalFlashMount>>, and <<#_PlMainInternalFlashUnmount, PlMainInternalFlashUnmount>> for details.
+
+Detailed Behavior::  
+Erases the target partition and formats it in LittleFS format. +  
+Mounts/unmounts the target partition. +  
+Note that the partition being erased may differ from the one being mounted/unmounted.
+
+Behavior on Error / Recovery::  
+If an error occurs, internal processing is aborted. +  
+Retry is not possible.
+
+Considerations::  
+None
+
+[#_Function3]
+==== Feature Support Detection
+
+Function Overview::  
+Determines whether the specified feature is supported.
+
+Preconditions::  
+None
+
+Details::  
+See <<#_PlMainInternalIsFeatureSupported, PlMainInternalIsFeatureSupported>> for details.
+
+Detailed Behavior::  
+Checks whether one of the following features is supported: reboot, shutdown, factory reset, or downgrade. +
+
+Behavior on Error / Recovery::  
+If an error occurs, verify the input parameters and retry.
+
+Considerations::  
+None
+
+=== List of Non-Functional Requirements
+
+The list is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Item |Overview |Section
+
+|Maximum Stack Usage
+|256 bytes
+|<<#_MaxUsedStack>>
+
+|Maximum Heap Usage
+|0 KB
+|<<#_MaxUsedHeap>>
+
+|Maximum Static Data Usage
+|64 bytes
+|<<#_MaxUsedStaticHeap>>
+
+|Performance
+|1 ms or less
+|<<#_Performance>>
+|===
+
+=== Description of Non-Functional Requirements
+
+These values apply only to PL Main and do not include any external libraries.
+
+[#_MaxUsedStack]
+==== Maximum Stack Usage
+
+256 bytes
+
+[#_MaxUsedHeap]
+==== Maximum Heap Usage
+
+0 KB
+
+[#_MaxUsedStaticHeap]
+==== Maximum Static Data Usage
+
+64 bytes
+
+[#_Performance]
+==== Performance
+
+1 ms or less
+
+
+== API Specification
+
+=== Definitions
+
+==== Data Type List
+
+<<#_TableDataType>> shows the list of data types.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type |Description |Section
+
+|enum PlMainDeviceType
+|Enumeration representing the type of storage device.
+|<<#_PlMainDeviceType>>
+
+|enum PlMainFileSystemType
+|Enumeration representing the type of file system on the storage device.
+|<<#_PlMainFileSystemType>>
+
+|PlMainDeviceInformation
+|Structure defining information about a storage device.
+|<<#_PlMainDeviceInformation>>
+|===
+
+==== API List
+
+<<#_TablePublicAPI>> shows the list of public APIs.
+
+[#_TablePublicAPI]
+.Public API List
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Overview |Section
+
+|PlMainInternalEmmcFormat
+|Formats the eMMC.
+|<<#_PlMainInternalEmmcFormat>>
+
+|PlMainInternalEmmcMount
+|Mounts the eMMC.
+|<<#_PlMainInternalEmmcMount>>
+
+|PlMainInternalEmmcUnmount
+|Unmounts the eMMC.
+|<<#_PlMainInternalEmmcUnmount>>
+
+|PlMainInternalFlashFormat
+|Formats the Flash.
+|<<#_PlMainInternalFlashFormat>>
+
+|PlMainInternalFlashMount
+|Mounts the Flash.
+|<<#_PlMainInternalFlashMount>>
+
+|PlMainInternalFlashUnmount
+|Unmounts the Flash.
+|<<#_PlMainInternalFlashUnmount>>
+
+|PlMainInternalIsFeatureSupported
+|Determines whether a specified feature is supported.
+|<<#_PlMainInternalIsFeatureSupported>>
+|===
+
+=== Data Type Definitions
+
+[#_PlMainDeviceType]
+==== PlMainDeviceType
+
+Enumeration representing the type of storage device.
+
+* *Definition*
+[source, C]
+....
+typedef enum PlMainFeatureType {
+  kPlMainDeviceEmmc,
+  kPlMainDeviceFlash,
+  kPlMainDeviceMax,
+} PlMainFeatureType;
+....
+
+* *Values*
+
+[#_PlMainFeatureTypeValue]
+.Description of PlMainFeatureType values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlMainDeviceEmmc
+|eMMC. Used as the target of APIs starting with `PlMainEmmc`.
+|kPlMainDeviceFlash
+|Flash. Used as the target of APIs starting with `PlMainFlash`.
+|kPlMainDeviceMax
+|Indicates the number of defined device types.
+|===
+
+[#_PlMainFileSystemType]
+==== enum PlMainFileSystemType
+
+Enumeration representing the type of file system on a storage device.
+
+* *Definition*
+[source, C]
+....
+typedef enum PlMainFileSystemType {
+  kPlMainFileSystemFat32,
+  kPlMainFileSystemLittleFs,
+  kPlMainFileSystemOther,
+  kPlMainFileSystemMax,
+} PlMainFileSystemType;
+....
+
+* *Values*
+
+[#_PlMainFileSystemTypeValue]
+.Description of PlMainFileSystemType values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlMainFileSystemFat32
+|FAT32. Can be used for eMMC.
+|kPlMainFileSystemLittleFs
+|LittleFS. Can be used for Flash.
+|kPlMainFileSystemOther
+|Only data erasure is supported via the format API. Mounting is not possible. +
+Can be used for Flash.
+|kPlMainFileSystemMax
+|Indicates the number of defined file system types.
+|===
+
+[#_PlMainDeviceInformation]
+==== PlMainDeviceInformation
+
+Structure defining information about a storage device.
+
+* *Definition*
+[source, C]
+....
+typedef struct PlMainDeviceInformation {
+  PlMainDeviceType device_type;
+  PlMainFileSystemType fs_type;
+  const char* source;
+  const char* target;
+  bool format;
+} PlMainDeviceInformation;
+....
+
+* *Values*
+
+[#_PlMainDeviceInformationValue]
+.Description of PlMainDeviceInformation members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|device_type
+|Type of storage device.
+|fs_type
+|Type of file system.
+|source
+|Device path. Cannot be NULL.
+|target
+|Mount point. If NULL, mount/unmount APIs will not process it.
+|format
+|If `true`, formatting will be attempted by the format API. +
+If `false`, formatting will not be performed by the format API.
+|===
+
+
+
+=== API Descriptions
+
+[#_PlMainInternalEmmcFormat]
+==== PlMainInternalEmmcFormat
+
+* *Function* +
+Formats the eMMC.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalEmmcFormat(const PlMainDeviceInformation* info,
+                                   size_t info_size, PlMainKeepAliveCallback cb,
+                                   void* user_data);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainDeviceInformation* info``**::  
+Array of device information.
+
+**``[IN] size_t info_size``**::  
+Number of elements in the device information array.
+
+**``[IN] PlMainKeepAliveCallback cb``**::  
+Callback function invoked during formatting. +  
+If `NULL` is specified, the callback is not invoked.
+
+**``[IN] void* user_data``**::  
+User data passed to the callback function.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Performs initialization processes related to eMMC. +  
+If multiple regions are specified, all regions will be processed even if an error occurs midway. +  
+The return value will reflect the last error encountered.
+
+[#_PlMainInternalEmmcFormat_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not allowed
+|Callable from multiple threads
+|Not allowed
+|Callable from multiple tasks
+|Not allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+[#_PlMainInternalEmmcFormat_error]
+.Error Codes
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrWrite
+|eMMC processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainInternalEmmcMount]
+==== PlMainInternalEmmcMount
+
+* *Function* +
+Mounts the eMMC.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalEmmcMount(const PlMainDeviceInformation* info,
+                                  size_t info_size);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainDeviceInformation* info``**::  
+Array of device information.
+
+**``[IN] size_t info_size``**::  
+Number of elements in the device information array.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Performs the mount process for the eMMC. +  
+If multiple regions are specified, all regions will be processed even if an error occurs midway. +  
+The return value will reflect the last error encountered.
+
+[#_PlMainInternalEmmcMount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not allowed
+|Callable from multiple threads
+|Not allowed
+|Callable from multiple tasks
+|Not allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+[#_PlMainInternalEmmcMount_error]
+.Error Codes
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrWrite
+|eMMC processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+
+
+[#_PlMainInternalEmmcUnmount]
+==== PlMainInternalEmmcUnmount
+
+* *Function* +
+Unmounts the eMMC.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalEmmcUnmount(const PlMainDeviceInformation* info,
+                                    size_t info_size);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainDeviceInformation* info``**::  
+Array of device information.
+
+**``[IN] size_t info_size``**::  
+Number of elements in the device information array.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Performs unmount operations related to eMMC. +  
+Even if errors occur while processing multiple regions, all specified regions will still be processed. +  
+The return value will be the error code from the last error encountered.
+
+[#_PlMainInternalEmmcUnmount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not allowed
+|Callable from multiple threads
+|Not allowed
+|Callable from multiple tasks
+|Not allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+[#_PlMainInternalEmmcUnmount_error]
+.Error Codes
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrWrite
+|eMMC processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainInternalFlashFormat]
+==== PlMainInternalFlashFormat
+
+* *Function* +
+Formats the Flash.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalFlashFormat(const PlMainDeviceInformation* info,
+                                    size_t info_size,
+                                    PlMainKeepAliveCallback cb,
+                                    void* user_data);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainDeviceInformation* info``**::  
+Array of device information.
+
+**``[IN] size_t info_size``**::  
+Number of elements in the device information array.
+
+**``[IN] PlMainKeepAliveCallback cb``**::  
+Callback function to be invoked during formatting. +  
+If `NULL` is specified, the callback will not be invoked.
+
+**``[IN] void* user_data``**::  
+User data to be passed to the callback function.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Performs initialization related to Flash. +  
+Even if errors occur while processing multiple regions, all specified regions will still be processed. +  
+The return value will be the error code from the last error encountered.
+
+[#_PlMainInternalFlashFormat_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not allowed
+|Callable from multiple threads
+|Not allowed
+|Callable from multiple tasks
+|Not allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+[#_PlMainInternalFlashFormat_error]
+.Error Codes
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrWrite
+|Flash processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainInternalFlashMount]
+==== PlMainInternalFlashMount
+
+* *Function* +
+Mounts the Flash.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalFlashMount(const PlMainDeviceInformation* info,
+                                   size_t info_size);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainDeviceInformation* info``**::  
+Array of device information.
+
+**``[IN] size_t info_size``**::  
+Number of elements in the device information array.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Performs the mounting process for Flash. +  
+Even if errors occur while processing multiple regions, all specified regions will still be processed. +  
+The return value will be the error code from the last error encountered.
+
+[#_PlMainInternalFlashMount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not allowed
+|Callable from multiple threads
+|Not allowed
+|Callable from multiple tasks
+|Not allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+
+[#_PlMainInternalFlashUnmount]
+==== PlMainInternalFlashUnmount
+
+* *Function* +
+Unmounts the Flash.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalFlashUnmount(const PlMainDeviceInformation* info,
+                                     size_t info_size);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainDeviceInformation* info``**::  
+Array of device information.
+
+**``[IN] size_t info_size``**::  
+Number of elements in the device information array.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Performs unmount operations related to Flash. +  
+Even if errors occur while processing multiple regions, all specified regions will still be processed. +  
+The return value will be the error code from the last error encountered.
+
+[#_PlMainInternalFlashUnmount_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not allowed
+|Callable from multiple threads
+|Not allowed
+|Callable from multiple tasks
+|Not allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+[#_PlMainInternalFlashUnmount_error]
+.Error Codes
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrWrite
+|Flash processing error
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+[#_PlMainInternalIsFeatureSupported]
+==== PlMainInternalIsFeatureSupported
+
+* *Function* +
+Checks whether the specified feature is supported.
+
+* *Declaration* +
+[source, C]
+....
+PlErrCode PlMainInternalIsFeatureSupported(const PlMainFeatureType* support,
+                                           size_t support_size,
+                                           PlMainFeatureType type);
+....
+
+* *Parameter Description* +
++
+**``[IN] const PlMainFeatureType* support``**::  
+Array of supported features.
+
+**``[IN] size_t support_size``**::  
+Number of elements in the `support` array.
+
+**``[IN] PlMainFeatureType type``**::  
+The feature to be checked for support.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+Checks whether the specified feature is supported. +  
+If supported, returns `kPlErrCodeOk`. +  
+If not supported, returns `kPlErrNoSupported`.
+
+[#_PlMainInternalIsFeatureSupported_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Allowed
+|Callable from multiple threads
+|Allowed
+|Callable from multiple tasks
+|Allowed
+|Blocking Behavior
+|Non-blocking
+|===
+
+[#_PlMainInternalIsFeatureSupported_error]
+.Error Codes
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidParam
+|Parameter error
+|-
+|No impact
+|None required
+
+|kPlErrNoSupported
+|Feature not supported
+|-
+|No impact
+|None required
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|None required
+|===
+
+== Example Usage of API Calls
+
+Define an array of `PlMainDeviceInformation`, and use it to call APIs starting with `PlMainInternal`.
+
+[source, C]
+....
+static const PlMainDeviceInformation kDeviceInformation[] = {
+    {
+        kPlMainDeviceEmmc,
+        kPlMainFileSystemFat32,
+        "/dev/mmcsd1",
+        "/emmc/",
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "evp_data",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "log",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "deploy_region",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "reserved",
+        NULL,
+        true,
+    },
+    {
+        kPlMainDeviceFlash,
+        kPlMainFileSystemLittleFs,
+        CONFIG_ESP32S3_PARTITION_MOUNTPT "fa_data3",
+        "/fa_data3",
+        false,
+    },
+};
+static const size_t kDeviceInformationSize =
+    sizeof(kDeviceInformation) / sizeof(kDeviceInformation[0]);
+
+PlErrCode PlMainEmmcFormat(PlMainKeepAliveCallback cb, void* user_data) {
+  return PlMainInternalEmmcFormat(kDeviceInformation, kDeviceInformationSize,
+                                  cb, user_data);
+}
+....
+
+== Special Notes and Component-Specific Remarks
+None
+
+== List of Used OSS
+None
+
+== References
+None
+
+== Revision History
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|Initial version
+|===
+

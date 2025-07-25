@@ -1,0 +1,2192 @@
+= Firmware Manager 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.6
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+
+== 目的と適用範囲
+
+本書はAITRIOSのデバイス更新を制御する機能を有するFirmware Manager の仕様を説明します。 +
+
+<<<
+
+
+== 用語
+
+=== 更新データ
+デバイスに書き込むデータのことです。 +
+
+=== 削除データ
+削除対象となるデバイス上のデータのことです。 +
+
+=== ダウンロードメモリ
+更新データを格納する領域のことです。 +
+アプリケーションがダウンロードメモリに更新データを格納する必要があります。 +
+Firmware Manager はダウンロードメモリを管理し、ダウンロードメモリ上の更新データをデバイスに書き込みます。 +
+
+=== アプリケーション
+本モジュールを使用するブロックです。(System App を想定しています。)
+
+<<<
+
+== 本モジュールの説明
+=== 本モジュールの概要
+Firmware Manager は、デバイス上のデータの更新/削除を実施する機能を提供します。 +
+アプリケーションは具体的なデバイス上のデータの更新/削除方法を意識することなく、Firmware Manager の API でデバイス上のデータを更新/削除できます。 +
+また、ESF main の有するファクトリーリセット機能を呼び出すためのインタフェースを提供します。
+
+NOTE: Porting Layer は Firmware Manager の一部ですが、デバイスが使用する Application Processor などによって実装が異なるので、この仕様書ではその仕様などは定義せず、外部モジュールとして扱います。
+
+[#_FigureOverview]
+.概要図
+image::./images/fw_mgr_block_diagram.png[]
+
+<<<
+
+=== 状態遷移
+Firmware Manager の取り得る状態を<<#_TableStates>>に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|UNINIT
+|初期状態です。 +
+``EsfFwMgrInit`` 以外の関数は呼び出せません。
+
+|IDLE
+|待機状態です。 +
+``EsfFwMgrOpen`` 関数でデバイスの更新を開始できます。
+また、``EsfFwMgrStartFactoryReset`` 関数で、ファクトリーリセットを開始できます。
+
+|WRITABLE
+|書き込み可能状態です。 +
+``EsfFwMgrCopyToInternalBuffer`` 関数、 ``EsfFwMgrWrite`` 関数、 ``EsfFwMgrPostProcess`` 関数が実行できます。
+
+|ERASABLE
+|削除可能状態です。 +
+``EsfFwMgrErase`` 関数で削除を実行できます。
+
+|DONE
+|更新/削除完了状態です。 +
+``EsfFwMgrClose`` 関数を呼び出してデバイスの更新を終了してください。
+
+|ERROR
+|更新/削除エラー状態です。 +
+``EsfFwMgrClose`` 関数を呼び出してデバイスの更新を終了してください。 +
+
+|===
+
+Firmware Manager では各 API を呼び出すことで<<#_FigureStateTransition>>に示す状態遷移を行います。 +
+また、各関数で ``kEsfFwMgrResultAborted`` (デバイス更新エラー) が発生した場合は ERROR 状態に遷移します。それ以外のエラーで失敗した場合は状態遷移は起こりません。 +
+
+[#_FigureStateTransition]
+.状態遷移図 (更新予定。記載内容は正しい)
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> UNINIT
+    UNINIT --> IDLE : EsfFwMgrInit
+    IDLE --> UNINIT : EsfFwMgrDeinit
+
+    IDLE --> WRITABLE : EsfFwMgrOpen{mermaid_br} (Writeオプション引数設定) 
+    IDLE --> ERASABLE : EsfFwMgrOpen{mermaid_br} (Writeオプション引数未設定) 
+    note left of IDLE
+        EsfFwMgrClose関数で
+        ERASABLE, WRITABLE, DONE, ERRORから
+        IDLE状態に遷移する
+    end note
+
+    WRITABLE --> DONE : EsfFwMgrPostProcess{mermaid_br}
+    WRITABLE --> ERROR : EsfFwMgrWrite{mermaid_br} (エラー発生) 
+    WRITABLE --> WRITABLE : EsfFwMgrWrite{mermaid_br}EsfFwMgrCopyToInternalBuffer
+
+    ERASABLE --> DONE : EsfFwMgrErase{mermaid_br} (削除・後処理完了) 
+    ERASABLE --> ERROR : EsfFwMgrErase{mermaid_br} (エラー発生) 
+----
+
+各状態での API 受け付け可否と状態遷移先を<<#_TableStateTransition>>に示します。 +
+表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでの API 呼び出しは ``kEsfFwMgrResultFailedPrecondition`` エラーを返し状態遷移は起きません。 +
+エラーの詳細は <<#_EsfFwMgrResult>>を参照してください。  +
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols=""]
+|===
+2.2+| 6+|状態 
+|UNINIT |IDLE |WRITABLE |ERASABLE |DONE |ERROR
+.100+|API名
+
+|``EsfFwMgrInit`` +
+|IDLE
+|×
+|×
+|×
+|×
+|×
+
+|``EsfFwMgrDeinit`` +
+|×
+|UNINIT
+|×
+|×
+|×
+|×
+
+|``EsfFwMgrOpen`` +
+|×
+|ERASABLE or +
+WRITABLE
+|×
+|×
+|×
+
+
+|×|``EsfFwMgrCopyToInternalBuffer`` +
+|×
+|×
+|WRITABLE or +
+ERROR
+|×
+|×
+|×
+
+|``EsfFwMgrWrite`` +
+|×
+|×
+|WRITABLE or +
+ERROR
+|×
+|×
+|×
+
+|``EsfFwMgrPostProcess`` +
+|×
+|×
+|DONE or +
+ERROR
+|×
+|×
+|×
+
+|``EsfFwMgrErase`` +
+|×
+|×
+|×
+|DONE or +
+ERROR
+|×
+|×
+
+|``EsfFwMgrClose`` +
+|×
+|×
+|IDLE
+|IDLE
+|IDLE
+|IDLE
+
+|``EsfFwMgrGetInfo`` +
+|×
+|IDLE
+|WRITABLE
+|ERASABLE
+|DONE
+|ERROR
+
+|``EsfFwMgrGetBinaryHeaderInfo`` +
+|×
+|×
+|WRITABLE(*)
+|×
+|DONE(*)
+|ERROR(*)
+
+|``EsfFwMgrStartFactoryReset`` +
+|×
+|IDLE
+|x
+|x
+|x
+|x
+
+|[DEPRECATED] ``EsfFwMgrSetFactoryResetFlag`` +
+|×
+|IDLE
+|WRITABLE
+|ERASABLE
+|DONE
+|ERROR
+
+|[DEPRECATED] ``EsfFwMgrGetFactoryResetFlag`` +
+|×
+|IDLE
+|WRITABLE
+|ERASABLE
+|DONE
+|ERROR
+
+|``EsfFwMgrSwitchProcessorFirmwareSlot`` +
+|UNINIT
+|IDLE
+|x
+|x
+|x
+|x
+|===
+
+(*) 呼び出しが可能なタイミングに条件があります。詳細は各 API の説明を参照してください。
+
+<<<
+
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+
+|モジュールの初期化と終了処理
+|Firmware Manager の初期化および終了処理をする機能です。
+|<<#_Function1>>
+
+|書き込み機能
+|更新データをデバイスに書き込む機能です。
+|<<#_Function2>>
+
+|削除機能
+|デバイス上のデータを削除する機能です。
+|<<#_Function3>>
+
+|データ取得機能
+|バージョン、最終更新時刻を取得する機能です。
+|<<#_Function4>>
+
+|ファクトリーリセット機能
+|ファクトリーリセット実行をする機能です。
+|<<#_Function5>>
+|===
+
+<<<
+
+=== 本モジュールの機能説明
+[#_Function1]
+==== モジュールの初期化と終了処理
+* 機能概要 +
+    Firmware Manager の初期化および終了処理をする機能です。
+
+* 前提条件 +
+    前提条件はありません。
+
+* 機能詳細
+    ** 詳細挙動 +
+        初期化：``EsfFwMgrInit`` 関数を呼ぶことで Firmware Manager の内部リソースが確保されます。 初期化後は Firmware Manager の API を呼び出すことができます。 +
+        終了処理：``EsfFwMgrDeinit`` 関数を呼ぶことでリソースが解放されます。 +
+    
+    ** 備考
+        *** この機能に属する API は、ESF Main によって使用されることが想定されています。
+
+[#_Function2]
+==== 書き込み機能
+* 機能概要 +
+    更新データをデバイスに書き込む機能です。 +
+    
+* 前提条件 +
+    Firmware Manager が初期化されていることです。
+
+* 機能詳細
+    ** 詳細挙動 +
+        . アプリケーションは ``EsfFwMgrGetInfo`` を使用して、現在のデバイス上のデータのバージョン情報を取得し、データの更新が必要か確認できます。
+        . 更新対象を指定して ``EsfFwMgrOpen`` 関数を呼ぶことで、更新を開始します。 +
+            このとき、 ``prepare_write`` 引数に ``NULL`` 以外のポインタを指定する必要があります。 +
+            書き込み準備を行い、更新データを一時的に格納するための内部バッファを確保します。 +
+            OUT 引数としてハンドルが渡されるので、以降の Firmware Manager の API の呼び出し時にそのハンドルを指定してください。
+        . アプリケーションは ``EsfFwMgrCopyToInternalBuffer`` 関数を呼び出すことで内部バッファに更新データをコピーした後、 ``EsfFwMgrWrite`` 関数を呼び出すことで、内部バッファ内のデータをデバイスに書き込みます。 +
+            書き込みは分割して行うことができます。
+            *** 戻り値が ``kEsfFwMgrResultOk`` 以外の場合 +
+                **** 戻り値が ``kEsfFwMgrResultAborted`` 以外の場合 +
+                    アプリケーションは引数やシステム状態を確認し、リトライしてください。(WRITABLE 状態のままです。) +
+                **** 戻り値が``kEsfFwMgrResultAborted``の場合 +
+                    リトライ不可のエラーが発生し、 ERROR 状態に遷移しました。アプリケーションは ``EsfFwMgrClose`` 関数を呼び出してデバイスの更新を終了してください。
+        . 更新データをすべて書き込んだ後で、``EsfFwMgrPostProcess`` 関数を呼び出して、後処理(ハッシュの検証など) を行ってください。
+        . 最後に ``EsfFwMgrClose`` を呼び出して、データの更新を終了してください。
+
+    ** 備考
+        *** 複数のデータを並行して更新することはできません。1つのデータの更新を完了 (Close) してから、次のデータの更新を開始 (Open) してください。また、データの削除、ファクトリーリセットとも並行して実施することはできません。
+        *** ``EsfFwMgrClose``関数を WRITABLE, ERROR 状態で呼び出した場合、更新の中断が行われます。書き込みAPI実行後の状態 (WRITABLE, ERROR) で中断した場合のデータの状態は不定です。
+        *** 更新データの詳細は<<#_Notice_EsfFwMgrTarget>>を参照してください。
+
+[#_Function3]
+==== 削除機能
+* 機能概要 +
+    デバイス上のデータを削除する機能です。 +
+
+* 前提条件 +
+    Firmware Manager が初期化されていることです。
+
+* 機能詳細
+    ** 詳細挙動 +
+        . アプリケーションは ``EsfFwMgrGetInfo`` を使用して、デバイス上のデータのバージョン情報を取得し、データの削除が必要か確認できます。 +
+        . 削除対象を指定して ``EsfFwMgrOpen`` 関数を呼ぶことで、デバイス上のデータの削除を開始します。 +
+            このとき、 ``prepare_write`` 引数に ``NULL`` を指定する必要があります。 +
+            OUT 引数としてハンドルが渡されるので、以降の ``EsfFwMgrErase``関数、``EsfFwMgrClose``関数の呼び出し時にそのハンドルを指定してください。
+        . ``EsfFwMgrErase``関数を呼び出すことでをデバイス上のデータを削除します。 +
+            *** 戻り値が ``kEsfFwMgrResultOk`` の場合 +
+                正常にデータの削除が完了し、DONE 状態に遷移しました。 +
+                アプリケーションは``EsfFwMgrClose``関数を呼び出してデバイスの更新を終了してください。 +
+            *** 戻り値が ``kEsfFwMgrResultOk`` 以外の場合 +
+                **** 戻り値が ``kEsfFwMgrResultAborted`` 以外の場合 +
+                    アプリケーションは引数やシステム状態を確認し、リトライしてください。 +
+                **** 戻り値が ``kEsfFwMgrResultAborted`` の場合 +
+                    リトライ不可のエラーが発生し、ERROR 状態に遷移しました。 +
+                    アプリケーションは ``EsfFwMgrClose`` 関数を呼び出してデバイスの更新を終了してください。 +
+
+    ** 備考
+        *** 複数のデータを並行して削除することはできません。1つのデータの削除を完了 (Close) してから、次のデータの削除を開始 (Open) してください。また、データの更新、ファクトリーリセットとも並行して実施することはできません。
+        *** ``EsfFwMgrClose``関数をERASABLE, ERROR状態で呼び出した場合、更新の中断が行われます。削除API実行後の状態 (ERROR) で中断した場合のデータの状態は不定です。
+        *** 更新データの詳細は<<#_Notice_EsfFwMgrTarget>>を参照してください。
+
+[#_Function4]
+==== データ取得機能
+* 機能概要 +
+    バージョン、最終更新時刻を取得する機能です。 +
+
+* 前提条件 +
+    Firmware Manager が初期化されていることです。
+
+* 機能詳細
+    ** 詳細挙動 +
+        . アプリケーションは``EsfFwMgrGetInfo``関数で取得するターゲットを指定します。 +
+            Firmware Managerは OUT 引数でバージョン、最終更新時刻を返します。データの種類によってはハッシュ値も返します。 +
+        *** エラーが発生した場合 +
+                アプリケーションは引数やシステム状態を確認し、リトライしてください。 +
+
+[#_Function5]
+==== ファクトリーリセット機能
+* 機能概要 +
+    ファクトリーリセット実行をする機能です。 +
+
+* 前提条件 +
+    Firmware Manager が初期化されていることです。
+
+* 機能詳細
+    ** 詳細挙動 +
+        *** アプリケーションは
+            ``EsfFwMgrStartFactoryReset``関数を呼ぶことでことでファクトリーリセットが実行されます。
+        *** エラーが発生した場合 +
+                アプリケーションは引数やシステム状態を確認し、リトライしてください。 +
+
+    ** 備考
+        *** データの更新中、削除中にファクトリーリセットを実行することはできません。
+<<<
+
+=== 本モジュールの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要 |節番号
+|最大処理時間
+|最大かかる処理時間です。
+|<<#_NonFunction1>>
+
+|Stackメモリ使用量
+|最大で使用するStackメモリサイズを示します。
+|<<#_NonFunction2>>
+
+|ヒープメモリ使用量
+|最大で使用するヒープメモリサイズを示します。
+|<<#_NonFunction3>>
+
+|ラージヒープメモリ使用量
+|最大で使用するラージヒープメモリサイズを示します。
+|<<#_NonFunction4>>
+
+|スレッド使用数
+|使用するスレッド数を示します。
+|<<#_NonFunction5>>
+
+|staticメモリ使用
+|最大で使用するstaticメモリサイズを示します。
+|<<#_NonFunction6>>
+
+|===
+
+<<<
+
+=== 本モジュールの非機能要件説明
+[#_NonFunction1]
+==== 最大処理時間
+排他制御とI/O待機時間を除き、1ms以下です。 +
+
+[#_NonFunction2]
+==== Stackメモリ使用量
+1024Byteです。 (予定)
+
+[#_NonFunction3]
+==== ヒープメモリ使用量
+2KBです。 (予定)
+
+[#_NonFunction4]
+==== ラージヒープメモリ最大使用量
+1024KBです。 (予定)
+
+[#_NonFunction5]
+==== スレッド使用数
+スレッドを使用しません。
+
+[#_NonFunction6]
+==== staticメモリ使用量
+1 KBです。(予定)
+
+
+<<<
+
+
+== API仕様
+=== 定義一覧
+==== Config一覧
+<<#_TableConfig>>にConfigの一覧を示します。
+
+[#_TableConfig]
+.Config一覧
+[width="100%", cols="30%,25%,45%",options="header"]
+|===
+|コンフィグ名 |デフォルト値  |概要
+
+|EXTERNAL_FIRMWARE_MANAGER_MAX_MEMORY_SIZE
+|1048576 (1MB)
+|更新データを一時的に保存しておくための内部バッファの最大サイズ[Byte]です。 +
+    範囲 : 1024-1048576
+
+|EXTERNAL_FIRMWARE_MANAGER_ENABLE_DEBUG_LOG
+|n
+|firmware manager のデバッグログを有効化します。(現状未対応)
+
+
+|EXTERNAL_FIRMWARE_MANAGER_AI_MODEL_SLOT_NUM
+|4
+|AIModelのスロット数です。
+
+|===
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|EsfFwMgrHandle
+|Firmware Managerの操作ハンドルです。
+|<<#_EsfFwMgrHandle>>
+
+|EsfFwMgrResult
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfFwMgrResult>>
+
+|EsfFwMgrTarget
+|更新対象を定義する列挙型です。
+|<<#_EsfFwMgrTarget>>
+
+|EsfFwMgrOpenRequest
+|``EsfFwMgrOpen``関数のリクエストデータを定義する構造体です。
+|<<#_EsfFwMgrOpenRequest>>
+
+|EsfFwMgrPrepareWriteRequest
+|``EsfFwMgrOpen``関数の書き込み準備リクエストデータを定義する構造体です。
+|<<#_EsfFwMgrPrepareWriteRequest>>
+
+|EsfFwMgrOpenResponse
+|``EsfFwMgrOpen``関数のレスポンスデータを定義する構造体です。
+|<<#_EsfFwMgrOpenResponse>>
+
+|EsfFwMgrPrepareWriteResponse
+|``EsfFwMgrOpen``関数の書き込み準備レスポンスデータを定義する構造体です。
+|<<#_EsfFwMgrPrepareWriteResponse>>
+
+|EsfFwMgrPrepareCopyToInternalBufferRequest
+|``EsfFwMgrCopyToInternalBuffer``関数のリクエストデータを定義する構造体です。
+|<<#_EsfFwMgrCopyToInternalBufferRequest>>
+
+|EsfFwMgrWriteRequest
+|``EsfFwMgrWrite``関数のリクエストデータを定義する構造体です。
+|<<#_EsfFwMgrWriteRequest>>
+
+|EsGetInfoData
+|``EsfFwMgrGetInfo``関数の引数データを定義する構造体です。
+|<<#_EsfFwMgrGetInfoData>>
+
+|EsfFwMgrGetInfoResponse
+|``EsfFwMgrGetInfo``関数の応答データを定義する構造体です。
+|<<#_EsfFwMgrGetInfoResponse>>
+
+|EsfFwMgrFactoryResetCause
+|ファクトリーリセット理由を定義する列挙型です。
+|<<#_EsfFwMgrFactoryResetCause>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+
+|EsfFwMgrInit
+|Firmware Managerを初期化します。
+|<<#_EsfFwMgrInit>>
+
+|EsfFwMgrDeinit
+|Firmware Managerを終了します。
+|<<#_EsfFwMgrDeinit>>
+
+|EsfFwMgrOpen
+|データの更新/削除を開始します。
+|<<#_EsfFwMgrOpen>>
+
+|EsfFwMgrCopyToInternalBuffer
+|更新データを内部バッファにコピーします。
+|<<#_EsfFwMgrCopyToInternalBuffer>>
+
+|EsfFwMgrWrite
+|デバイスに更新データを書き込みます。
+|<<#_EsfFwMgrWrite>>
+
+|EsfFwMgrPostProcess
+|更新データのハッシュの検証などの後処理を行います。
+|<<#_EsfFwMgrPostProcess>>
+
+|EsfFwMgrErase
+|デバイス上のデータを削除します。
+|<<#_EsfFwMgrErase>>
+
+|EsfFwMgrClose
+|データの更新/削除を終了します。
+|<<#_EsfFwMgrClose>>
+
+|EsfFwMgrGetBinaryHeaderInfo
+|バイナリのヘッダー情報を取得します。
+|<<#_EsfFwMgrGetBinaryHeaderInfo>>
+
+|EsfFwMgrGetInfo
+|指定された対象のバージョン、更新時刻、ハッシュを取得します。
+|<<_EsfFwMgrGetInfo>>
+
+|EsfFwMgrStartFactoryReset
+|FactoryResetを開始します。
+|<<#_EsfFwMgrStartFactoryReset>>
+
+|EsfFwMgrSetFactoryResetFlag
+|[DEPRECATED] ファクトリーリセット許可フラグを設定します。
+|<<#_EsfFwMgrSetFactoryResetFlag>>
+
+|EsfFwMgrGetFactoryResetFlag
+|[DEPRECATED] ファクトリーリセット許可フラグを取得します。
+|<<#_EsfFwMgrGetFactoryResetFlag>>
+
+|===
+
+<<<
+
+=== データ型定義
+
+[#_EsfFwMgrHandle]
+==== EsfFwMgrHandle
+Firmware Managerの操作ハンドルです。
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_FIRMWARE_MANAGER_HANDLE_INVALID (NULL)
+typedef struct EsfFwMgrContext* EsfFwMgrHandle;
+....
+
+[#_EsfFwMgrResult]
+==== EsfFwMgrResult
+APIの実行結果を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum EsfFwMgrResult {
+    kEsfFwMgrResultOk,
+    kEsfFwMgrResultInvalidArgument,
+    kEsfFwMgrResultFailedPrecondition,
+    kEsfFwMgrResultAborted,
+    kEsfFwMgrResultOutOfRange,
+    kEsfFwMgrResultResourceExhausted,
+    kEsfFwMgrResultUnavailable,
+    kEsfFwMgrResultUnimplemented,
+    kEsfFwMgrResultInternal,
+    kEsfFwMgrResultBusy
+} EsfFwMgrResult;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrResult]
+.EsfFwMgrResultの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfFwMgrResultOk
+|処理が成功しました。
+
+|kEsfFwMgrResultInvalidArgument
+|引数が正しくありません。
+
+|kEsfFwMgrResultFailedPrecondition
+|Firmware Managerの状態が正しくありません。
+
+|kEsfFwMgrResultAborted
+|更新データの書き込み、削除データの削除に失敗しました。
+
+|kEsfFwMgrResultOutOfRange
+|パラメータの指定範囲が正しくありません。
+
+|kEsfFwMgrResultResourceExhausted
+|リソースの確保に失敗しました。
+
+|kEsfFwMgrResultUnavailable
+|他のモジュールの処理でエラーが発生したため、APIを現在利用することができません。
+
+|kEsfFwMgrResultUnimplemented
+|APIは実装されていません。
+
+|kEsfFwMgrResultInternal
+|内部処理でエラーが発生しました。
+
+|kEsfFwMgrResultBusy
+|他のコンテキストで Firmware Manager が実行中です。
+|===
+
+
+[#_EsfFwMgrTarget]
+==== EsfFwMgrTarget
+更新/削除対象のデータの種類を表す列挙型です。
+この列挙型の enum の値は変更される可能性があります。
+
+* *書式*
+
+[source, C]
+....
+typedef enum EsfFwMgrTarget {
+    kEsfFwMgrTargetSensorLoader = 0,
+    kEsfFwMgrTargetSensorFirmware = 1,
+    kEsfFwMgrTargetProcessorLoader = 2,
+    kEsfFwMgrTargetProcessorFirmware = 3,
+    kEsfFwMgrTargetSensorCalibrationParam = 5,
+    kEsfFwMgrTargetAIModel = 9,
+} EsfFwMgrTarget;
+....
+
+
+* *値* 
+
+[#_TableEsfFwMgrTarget]
+.EsfFwMgrTargetの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfFwMgrTargetSensorLoader
+|SensorのLoader
+
+|kEsfFwMgrTargetSensorFirmware
+|SensorのFirmware
+
+|kEsfFwMgrTargetProcessorLoader
+|ProcessorのLoader
+
+|kEsfFwMgrTargetProcessorFirmware
+|ProcessorのFirmware
+
+|kEsfFwMgrTargetSensorCalibrationParam
+|SensorのCalibrationパラメータ ※現在非サポートのメンバです
+
+|kEsfFwMgrTargetAIModel
+|SensorのAIモデル
+
+|===
+
+[#_EsfFwMgrOpenRequest]
+==== EsfFwMgrOpenRequest
+``EsfFwMgrOpen``関数のリクエストデータを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_FIRMWARE_MANAGER_TARGET_NAME_SIZE (32 + 1)
+#define ESF_FIRMWARE_MANAGER_TARGET_VERSION_SIZE (44 + 1)
+#define ESF_FIRMWARE_MANAGER_TARGET_HASH_SIZE (32)
+
+typedef struct EsfFwMgrOpenRequest {
+    EsfFwMgrTarget target;
+    char name[ESF_FIRMWARE_MANAGER_TARGET_NAME_SIZE];
+    char version[ESF_FIRMWARE_MANAGER_TARGET_VERSION_SIZE];
+    uint8_t hash[ESF_FIRMWARE_MANAGER_TARGET_HASH_SIZE];
+} EsfFwMgrOpenRequest;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrOpenRequest]
+.EsfFwMgrOpenRequestのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|target
+|更新対象です。
+
+|name
+|更新データ・削除データの名称 (文字列) です。 +
+更新対象の識別に使用します。 +
+target が Processor Firmware, Processor Loader の場合には無視されます。
+
+|version
+|更新データ・削除データのバージョン (文字列) です。 +
+target が Processor Firmware, Processor Loader の場合には無視されます。 +
+それ以外の target の場合は、 +
+- 書き込みするための Open の場合は、更新データの付加情報として保存します。 +
+- 削除するための Open の場合は、削除データを特定するために使用されます。
+
+|hash
+|更新データ・削除データのハッシュ値 (SHA256) です。 +
+書き込みをするための Open の場合、更新データの完全性の判定に使用します。更新データの付加情報として保存します。 +
+削除するための Open の場合、削除データを特定するのに使用されます。
+|===
+
+
+[#_EsfFwMgrPrepareWriteRequest]
+==== EsfFwMgrPrepareWriteRequest
+``EsfFwMgrOpen`` 関数の書き込み準備リクエストデータを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfFwMgrPrepareWriteRequest {
+    int32_t total_size;
+    int32_t memory_size;
+} EsfFwMgrPrepareWriteRequest;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrPrepareWriteRequest]
+.EsfFwMgrPrepareWriteRequestのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|total_size
+|更新データのデータ長です。 +
+更新データが Application Processor の Firmware (``kEsfFwMgrTargetProcessorFirmware``) の時と、T3 における Sensor の bootloader (``kEsfFwMgrTargetSensorLoader``)、Firmware (``kEsfFwMgrTargetSensorFirmware``)、AIModel (``kEsfFwMgrTargetAIModel``) の時は必ず指定してください。 +
+それ以外の場合は無視されます。
+(本制約の背景は、<<_BackgroundOfArgumentOfOpen>> を参照してください。) +
+
+|memory_size
+|ダウンロードメモリの要求サイズ [byte] です。
+
+|===
+
+
+
+[#_EsfFwMgrOpenResponse]
+==== EsfFwMgrOpenResponse
+``EsfFwMgrOpen`` 関数のレスポンスデータを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfFwMgrOpenResponse {
+    EsfFwMgrHandle handle;
+    EsfFwMgrPrepareWriteResponse prepare_write;
+} EsfFwMgrOpenResponse;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrOpenResponse]
+.EsfFwMgrOpenResponseのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|handle
+|Firmware Managerの操作ハンドルです。
+
+|prepare_write
+|書き込み準備リクエストした場合のレスポンスデータです。 +
+メンバの詳細は<<#_EsfFwMgrPrepareWriteResponse, EsfFwMgrPrepareWriteResponse>>を参照してください。
+
+|===
+
+
+
+[#_EsfFwMgrPrepareWriteResponse]
+==== EsfFwMgrPrepareWriteResponse
+``EsfFwMgrOpen``関数の書き込み準備レスポンスデータを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfFwMgrPrepareWriteResponse {
+    int32_t memory_size;
+    int32_t writable_size;
+} EsfFwMgrPrepareWriteResponse;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrPrepareWriteResponse]
+.EsfFwMgrPrepareWriteResponseのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|memory_size
+|更新データを一時的に保存するための内部バッファのサイズ [byte] です。
+
+|writable_size
+|一度に書き込める最大サイズ [byte] です。
+
+|===
+
+[#_EsfFwMgrCopyToInternalBufferRequest]
+==== EsfFwMgrCopyToInternalBufferRequest
+``EsfFwMgrWrite``関数のリクエストデータを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfFwMgrCopyToInternalBufferRequest {
+  int32_t offset;
+  int32_t size;
+  const uint8_t* data;
+} EsfFwMgrCopyToInternalBufferRequest;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrCopyToInternalBufferRequest]
+.EsfFwMgrCopyToInternalBufferRequest のメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|offset
+|コピー先の内部バッファの先頭位置[byte]です。
+負の値または、内部バッファのサイズ以上の値を指定するとエラーを返します。
+
+|size
+|内部バッファにコピーするデータのサイズ[byte]です。 
+負の値を指定するとエラーを返します。また、``offset`` + ``size`` が内部バッファのサイズ以上の値になるとエラーを返します。
+
+|===
+
+
+[#_EsfFwMgrWriteRequest]
+==== EsfFwMgrWriteRequest
+``EsfFwMgrWrite``関数のリクエストデータを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfFwMgrWriteRequest {
+    int32_t offset;
+    int32_t size;
+} EsfFwMgrWriteRequest;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrWriteRequest]
+.EsfFwMgrWriteRequestのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|offset
+|書き込むデータの内部バッファにおける先頭位置[byte]です。
+負の値または、内部バッファのサイズ以上の値を指定するとエラーを返します。
+
+|size
+|書き込むデータのサイズ[byte]です。 +
+書き込むデータはダウンロードメモリ上に入れる必要があります。 +
+0以下もしくはダウンロードメモリの範囲外が含まれる場合はエラーとなります。
+|===
+
+[#_EsfFwMgrBinaryHeaderInfo]
+==== EsfFwMgrBinaryHeaderInfo
+バイナリのヘッダー情報の構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef enum EsfFwMgrSwArchVersion {
+  kEsfFwMgrSwArchVersion1,
+  kEsfFwMgrSwArchVersion2,
+  kEsfFwMgrSwArchVersionUnknown,
+} EsfFwMgrSwArchVersion;
+
+typedef struct EsfFwMgrBinaryHeaderInfo {
+  EsfFwMgrSwArchVersion sw_arch_version;
+} EsfFwMgrBinaryHeaderInfo;
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrWriteRequest]
+.EsfFwMgrWriteRequestのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|sw_arch_version
+|バイナリの SW アーキバージョンです。ヘッダーがない場合、及びヘッダー内の SW アーキバージョンが不正な値の場合は ``kEsfFwMgrSwArchVersionUnknown`` になります。
+|===
+
+
+[#_EsfFwMgrGetInfoData]
+==== EsfFwMgrGetInfoData
+``EsfFwMgrGetInfo``関数の引数データを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+typedef struct EsfFwMgrGetInfoData {
+    EsfFwMgrTarget target;
+    char name[ESF_FIRMWARE_MANAGER_TARGET_NAME_SIZE];
+    int32_t in_length;
+    EsfFwMgrGetInfoResponse* response;
+    int32_t out_length;
+} EsfFwMgrGetInfoData;
+....
+
+* *値* 
++
+[#_TableEsfFwMgrGetInfoData]
+.EsfFwMgrGetInfoDataのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|target
+|更新対象です。
+
+|name
+|バイナリが deploy されている device の名称 (文字列) です。
+
+|in_length
+|``response`` の要素数です。
+
+|response
+|データ取得リクエストの構造体です。NULLを指定できません。
+
+|out_length
+|結果を格納した要素数です。
+
+|===
+
+
+[#_EsfFwMgrGetInfoResponse]
+==== EsfFwMgrGetInfoResponse
+``EsfFwMgrGetInfo`` 関数の応答データを定義する構造体です。
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_FIRMWARE_MANAGER_AI_MODEL_SLOT_NUM CONFIG_EXTERNAL_FIRMWARE_MANAGER_AI_MODEL_SLOT_NUM
+#define ESF_FIRMWARE_MANAGER_LAST_UPDATE_SIZE (32 + 1)
+typedef struct EsfFwMgrGetInfoResponse {
+    char version[ESF_FIRMWARE_MANAGER_TARGET_VERSION_SIZE];
+    char last_update[ESF_FIRMWARE_MANAGER_LAST_UPDATE_SIZE];
+    char hash[ESF_FIRMWARE_MANAGER_TARGET_HASH_SIZE]
+} EsfFwMgrGetInfoResponse;
+
+....
+
+
+* *値* 
++
+[#_TableEsfFwMgrGetInfoResponse]
+.EsfFwMgrGetInfoResponseのメンバの説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|version
+|バージョン情報の文字列です。
+
+|last_update
+|最終更新時刻情報の文字列です。
+
+|hash
+|更新データのハッシュ値 (SHA256) です。
+
+|===
+
+[#_EsfFwMgrFactoryResetCause]
+==== EsfFwMgrFactoryResetCause
+ファクトリーリセット理由を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kEsfFwMgrResetCauseButton,
+    kEsfFwMgrResetCauseCommand,
+} EsfFwMgrFactoryResetCause;
+....
+
+* *値* 
+
+[#_Table_EsfFwMgrFactoryResetCause]
+.EsfFwMgrFactoryResetCauseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfFwMgrResetCauseButton
+|ボタン押下によるファクトリーリセットです。
+
+|kEsfFwMgrResetCauseCommand
+|コマンドによるファクトリーリセットです。
+|===
+
+
+
+<<<
+
+=== 複数スレッドからの呼び出し可否
+以下のリストにおいて、A 群の API は同時に実行できません。B群の API は同時に実行可能です (ただし、ブロッキングします)。A 群の API 1つと B 群の API (複数可) も同時に実行できます。
+A 群の API の実行中に、 別のコンテキストで A 群の API が呼ばれた場合は、すぐにエラー (``kEsfFwMgrResultBusy``) で返ります。
+C 群の API 複数スレッドから呼び出されてもエラーを返しません。複数スレッドから呼び出された場合の挙動は各 API の説明を参照してください。
+
+* A 群
+** EsfFwMgrInit
+** EsfFwMgrDeinit
+** EsfFwMgrOpen
+** EsfFwMgrCopyToInternalBuffer
+** EsfFwMgrWrite
+** EsfFwMgrPostProcess
+** EsfFwMgrErase
+** EsfFwMgrClose
+** EsfFwMgrGetBinaryHeaderInfo
+** EsfFwMgrStartFactoryReset
+
+* B 群
+** EsfFwMgrGetInfo
+** [DEPRECATED] EsfFwMgrSetFactoryResetFlag
+** [DEPRECATED] EsfFwMgrGetFactoryResetFlag
+
+* C 群
+** EsfFwMgrSwitchProcessorFirmwareSlot
+
+=== API定義
+
+[#_EsfFwMgrInit]
+==== EsfFwMgrInit
+* *機能*  +
+    Firmware Manager を初期化します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrInit(void)``  
+
+* *引数の説明* +
+    ``[IN] なし``:: 
+
+    ``[OUT] なし``:: 
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    Firmware Managerの内部リソースを確保し、IDLE状態に遷移します。 +
+    Firmware Managerの他のAPIを呼び出す前に本APIを呼び出さなければなりません。 +
+    処理が成功した場合、本APIは``kEsfFwMgrResultOk``を返します。
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が INIT 以外で本APIを呼び出した場合、``kEsfFwMgrResultFailedPrecondition``を返します。 +
+            Firmware Manager の状態が INIT であることを確認してください。
+        *** 内部リソースの確保に失敗した場合、``kEsfFwMgrResultResourceExhausted``を返します。 +
+            システムのリソースに余裕があることを確認してください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+
+[#_EsfFwMgrDeinit]
+==== EsfFwMgrDeinit
+* *機能*  +
+    Firmware Managerを終了します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrDeinit(void)``  
+
+* *引数の説明* +
+    ``[IN] なし``:: 
+
+    ``[OUT] なし``:: 
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    Firmware Managerの内部リソースを解放し、INIT 状態に遷移します。 +
+    他コンテキストで Firmware Manager の API が実行中に本 API を呼び出すとエラーを返します。 +
+    処理が成功した場合、本APIは``kEsfFwMgrResultOk``を返します。 
+
+    ** エラー時の挙動 +
+        *** Firmware Managerの状態が IDLE 以外で本APIを呼び出した場合、``kEsfFwMgrResultFailedPrecondition``を返します。 +
+            Firmware Managerの状態が IDLE であることを確認してください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+        *** 他のコンテキストで B 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+
+
+
+[#_EsfFwMgrOpen]
+==== EsfFwMgrOpen
+* *機能*  +
+    デバイスの更新を開始します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrOpen(const EsfFwMgrOpenRequest* request, const EsfFwMgrPrepareWriteRequest* prepare_write, EsfFwMgrOpenResponse* response)``  
+
+* *引数の説明* +
+    ``[IN] const EsfFwMgrOpenRequest* request``::
+    入力パラメータです。``NULL``を指定できません。 +
+    構造体の詳細は<<#_EsfFwMgrOpenRequest>>を参照してください。
+
+    ``[IN] const EsfFwMgrPrepareWriteRequest* prepare_write``::
+    オプション入力パラメータです。 +
+    書き込み機能を使用する場合に設定してください。 +
+    削除機能を使用する場合は``NULL``を設定してください。 +
+    構造体の詳細は<<#_EsfFwMgrPrepareWriteRequest>>を参照してください。
+
+    ``[OUT] EsfFwMgrOpenResponse* response``:: 
+    出力パラメータです。``NULL``を指定できません。 +
+    構造体の詳細は<<#_EsfFwMgrOpenResponse>>を参照してください。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    引数で与えられたターゲット、名称、バージョン、ハッシュをもとに、更新対象、削除対象を決定します。AI model の 削除のための Open の場合、書き込み時の Open で指定したバージョンとハッシュの組み合わせを指定してください。 (組み合わせを間違えると修復不可能な状態になる可能性があります。) +
+    処理が成功した場合、本 API は ``kEsfFwMgrResultOk`` を返します。 +
+    ** IN 引数 ``prepare_write`` が ``NULL`` ではない場合、 Firmware Manager はデバイスの書き込み準備を行います。 +
+        更新データを一時的に保存しておくための内部バッファの確保や更新対象に応じた外部モジュールの開始処理を行います。 +
+        メモリ確保には Memory Manager を使用します。 +
+        処理が成功した場合、Firmware Manager の状態は WRITABLE に遷移します。 +
+        OUT 引数 ``response`` の ``prepare_write`` メンバに内部バッファのサイズと書き込み可能サイズを設定して返します。
+    ** IN 引数 ``prepare_write`` が ``NULL`` の場合、 Firmware Manager の状態は ERASABLE に遷移します。 +
+        OUT 引数 ``response`` の ``prepare_write`` メンバは変更しません。 +
+    ** ターゲットが AIModel の場合、状態遷移判定に追加で、AIModel の slot 判定を行います。 +
+    *** 書き込み処理を使用する際は、AIModel の slot に空きがある場合に WRITABLE へ移行します。
+    *** 削除処理を使用する際は、 AIModel の slot 内に一致するバージョンが存在する場合、 ERASABLE へ移行できます。 +
+    AIModelのslotの管理については<<#_Slot_Management,こちら>>を確認してください。
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が IDLE 以外で本 API を呼び出した場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+            Firmware Manager の状態が IDLE であることを確認してください。
+        *** Sensor モジュールが Streaming 状態の場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+            Sensor モジュールが Streaming 状態でないことを確認してください。
+            **** その他の外部モジュールAPIがエラーを返した場合も、``kEsfFwMgrResultUnavailable``を返します。 +
+                他モジュールの状態を確認してください。
+        *** 引数 ``request`` または ``response`` が ``NULL`` である場合、``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            引数が ``NULL`` でないことを確認してからリトライしてください。
+        *** IN 引数のメンバが期待している状態ではない場合、``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            IN引数のパラメータ内容を確認してからリトライしてください。
+        *** 未実装の更新対象が指定された場合、``kEsfFwMgrResultUnimplemented`` を返します。 +
+            IN引数のパラメータ内容を確認してからリトライしてください。
+        *** メモリの確保に失敗した場合、 ``kEsfFwMgrResultResourceExhausted`` を返します。 +
+            システムのリソースに余裕があることを確認してください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+
+[#_EsfFwMgrCopyToInternalBuffer]
+==== EsfFwMgrCopyToInternalBuffer
+* *機能*  +
+    デバイスの更新データを書き込みます。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrCopyToInternalBuffer(EsfFwMgrHandle handle, const EsfFwMgrCopyToInternalBufferRequest* request)``
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrHandle handle``::
+    Firmware Managerの操作ハンドルです。
+
+    ``[IN] const EsfFwMgrCopyToInternalBufferRequest* request``::
+    リクエストの構造体です。``NULL``を指定できません。 +
+    構造体の詳細は<<#_EsfFwMgrCopyToInternalBufferRequest>>を参照してください。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    更新データを、指定された内部バッファの範囲にコピーします。 +
+    ``request->data`` から ``request->data + request->size - 1`` までのデータを内部バッファの位置 ``request->offset`` から ``request->offset + request->size - 1`` にコピーします。 +
+    本APIは呼び出し元のコンテキストで処理を行い、処理が完了するまでブロッキングします。 +
+    処理が成功した場合、本APIは ``kEsfFwMgrResultOk`` を返します。 +
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が WRITABLE 以外で本APIを呼び出した場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。
+        *** IN引数が``NULL``である場合や期待外のパラメータである場合は、 ``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            ``<<#_EsfFwMgrCopyToInternalBuffer, EsfFwMgrCopyToInternalBuffer>>``を確認し、正しい引数を設定してください。
+        *** 本 API 内部でリトライ不可のエラーが発生した場合は、 ``kEsfFwMgrResultAborted`` を返します。 ``EsfFwMgrClose`` を呼び出して、データの更新を終了してください。
+
+[#_EsfFwMgrWrite]
+==== EsfFwMgrWrite
+* *機能*  +
+    デバイスの更新データを書き込みます。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrWrite(EsfFwMgrHandle handle, const EsfFwMgrWriteRequest* request)``  
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrHandle handle``::
+    Firmware Managerの操作ハンドルです。
+
+    ``[IN] const EsfFwMgrWriteRequest* request``::
+    データ書き込みリクエストの構造体です。``NULL``を指定できません。 +
+    構造体の詳細は<<#_EsfFwMgrWriteRequest>>を参照してください。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    指定された内部バッファの範囲にあるデータをデバイスに書き込みます。 +
+    内部バッファの ``request->offset`` から ``request->offset + request->size - 1`` までの範囲のデータがデバイスに書き込まれます。 +
+    データは事前に ``EsfFwMgrCopyToInternalBuffer`` 関数を用いて内部バッファにコピーされている必要があります。 +
+    本APIは呼び出し元のコンテキストで処理を行い、処理が完了するまでブロッキングします。 +
+    処理が成功した場合、本APIは ``kEsfFwMgrResultOk`` を返します。 +
+    ** ``EsfFwMgrOpen`` 時に ``request->target`` として ``kEsfFwMgrTargetProcessorFirmware`` を指定した場合 +
+        *** 最初の本 API の呼び出し時にヘッダーの有無を確認し、ヘッダーがついている場合はヘッダーの検証を行います。 +
+        *** ヘッダーがついていた場合、ヘッダーはデバイスに書き込まれません。 +
+        *** 最初の本 API の呼び出し時は ``request->size`` に 8 以上を指定してください。 +
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が WRITABLE 以外で本APIを呼び出した場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+            Firmware Manager の状態が WRITABLE であることを確認してください。 +
+        *** IN引数が``NULL``である場合や期待外のパラメータである場合は、 ``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            ``<<#_EsfFwMgrWriteRequest, EsfFwMgrWriteRequest>>``を確認し、正しい引数を設定してください。
+        *** データ書き込みに失敗かつリトライできない場合、もしくは後処理に失敗した場合は ``kEsfFwMgrResultAborted`` を返します。 +
+            Firmware Managerは ERROR 状態に遷移します。書き込みデータの整合性は保証しません。 +
+            ``EsfFwMgrClose`` 関数を呼び出してデータの更新を終了してください。 +
+        *** 他モジュールのAPIがエラーを返した場合、 ``kEsfFwMgrResultUnavailable`` を返します。 +
+            他モジュールの状態を確認してからリトライしてください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+
+[#_EsfFwMgrPostProcess]
+==== EsfFwMgrPostProcess
+* *機能*  +
+    更新データのハッシュの検証などの後処理を行います。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrPostProcess(EsfFwMgrHandle handle)``  
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrHandle handle``::
+    Firmware Managerの操作ハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    ``EsfFwMgrWrite`` を使用してすべての更新データを書き込んだ後に、本 API を読んでください。
+    書き込んだデータのハッシュ値 (SHA256) と ``EsfFwMgrOpen`` 時に指定したハッシュ値が一致することを確認します。 +
+    データの種類によっては、追加の検証が行われる場合もあります。 +
+    検証が成功した場合、Parameter Storage Manager を使用して、データのバージョン、最終更新時刻 (データによっては、ハッシュ) を保存します。 +
+    全ての処理が成功した場合、本APIは``kEsfFwMgrResultOk``を返します。 +
+    Firmware Managerの状態は DONE に遷移します。 +
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が WRITABLE 以外で本APIを呼び出した場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+            Firmware Manager の状態が WRITABLE であることを確認してください。 +
+        *** IN引数が``NULL``である場合や期待外のパラメータである場合は、 ``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            引数を確認し、正しい引数を設定してください。
+        *** ハッシュの検証の失敗など、リトライできないエラーが発生した場合は、 ``kEsfFwMgrResultAborted`` を返します。 +
+            Firmware Managerは ERROR 状態に遷移します。 +
+            ``EsfFwMgrClose`` 関数を呼び出してデバイスの更新を終了してください。 +
+        *** 他モジュールのAPIがエラーを返した場合、 ``kEsfFwMgrResultUnavailable`` を返します。 +
+            他モジュールの状態を確認してからリトライしてください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+
+
+[#_EsfFwMgrErase]
+==== EsfFwMgrErase
+* *機能*  +
+    デバイス上のデータを削除します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrErase(EsfFwMgrHandle handle)``  
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrHandle handle``::
+    Firmware Managerの操作ハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    更新対象に応じた外部モジュールの削除処理を使用して、デバイス上のデータを削除します。 +
+    デバイス上のデータの削除に成功した場合、後処理を行います。 +
+    全ての処理が成功した場合、本APIは``kEsfFwMgrResultOk``を返します。 +
+    Firmware Managerの状態は DONE に遷移します。 +
+
+    ** 後処理内容 +
+        削除したデータに関する情報 (バージョンとハッシュ) を Parameter Storage Manager を使用して削除します。そのうえで、そのデータの最終更新時刻を更新します。 +
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が ERASABLE 以外で本 API を呼び出した場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+            Firmware Manager の状態が ERASABLE であることを確認してください。
+        *** 引数が ``NULL`` である場合、 ``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            引数が ``NULL`` でないことを確認してからリトライしてください。
+        *** データ削除に失敗かつリトライできない場合、もしくは後処理に失敗した場合は ``kEsfFwMgrResultAborted`` を返します。 +
+            Firmware Manager は ERROR 状態に遷移します。データの整合性は保証しません。 +
+            アプリケーションは ``EsfFwMgrClose`` 関数を呼び出してデバイスの更新を終了してください。 +
+        *** 他モジュールのAPIがエラーを返した場合、 ``kEsfFwMgrResultUnavailable`` を返します。 +
+            他モジュールの状態を確認してください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+[#_EsfFwMgrClose]
+==== EsfFwMgrClose
+* *機能*  +
+    データの書き込み/削除を終了します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrClose(EsfFwMgrHandle handle)``  
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrHandle handle``::
+    Firmware Managerの操作ハンドルです。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    データの書き込み/削除を終了します。更新対象に応じた外部モジュールの更新終了処理を行います。 +
+    処理が成功した場合、本APIは ``kEsfFwMgrResultOk`` を返します。 +
+    Firmware Manager の状態は IDLE に遷移します。 +
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が ERASABLE, WRITABLE, DONE, ERROR 以外で本APIを呼び出した場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+            Firmware Manager の状態が ERASABLE, WRITABLE, DONE, ERROR であることを確認してください。
+        *** 他モジュールのAPIがエラーを返した場合、``kEsfFwMgrResultUnavailable``を返します。 +
+            他モジュールの状態を確認してください。
+        *** 引数が ``NULL`` である場合、 ``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            引数が ``NULL`` でないことを確認してからリトライしてください。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+
+[#_EsfFwMgrGetBinaryHeaderInfo]
+==== EsfFwMgrGetBinaryHeaderInfo
+* *機能*  +
+    書き込んだバイナリのヘッダー情報を取得します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrGetBinaryHeaderInfo(EsfFwMgrHandle handle, EsfFwMgrBinaryHeaderInfo* info)``
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrHandle handle``::
+    Firmware Managerの操作ハンドルです。
+    ``[OUT] EsfFwMgrBinaryHeaderInfo* info``::
+    バイナリのヘッダー情報です。詳細は、<<#_EsfFwMgrBinaryHeaderInfo>> を参照してください。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。 +
+    
+* *説明* +
+    指定された ``handle`` でデータを書き込み中のバイナリのヘッダー情報を取得します。 +
+    本 API を呼び出せるタイミングは、バイナリの種類によって異なります。 +
+    ``kEsfFwMgrTargetProcessorFirmware`` の場合、``EsfFwMgrWrite`` で、ヘッダーサイズ (128 bytes) 以上を書き込みを実行した後で実行可能です。 (実際にはヘッダー部分はデバイスに書き込まれませんが、 ``EsfFwMgrWrite`` で指定した ``request->size`` の合計がヘッダーサイズ以上になった後であれば、本 API を実行可能です) +
+    Firmware Manager の状態は遷移しません。 +
+    本 API は現在、 ``kEsfFwMgrTargetProcessorFirmware`` でのみ実装されています。 (それ以外のバイナリの場合はエラーを返します。)
+
+    ** エラー時の挙動 +
+        *** ヘッダー情報が取得できていない状態で、本 API が呼び出された場合、 ``kEsfFwMgrResultFailedPrecondition`` を返します。 +
+        *** 引数が不正の場合は、 ``kEsfFwMgrResultInvalidArgument`` を返します。
+        *** 他のコンテキストで A 群の Firmware Manager の API が実行中の場合、 ``kEsfFwMgrResultBusy`` を返します。 +
+
+
+[#_EsfFwMgrGetInfo]
+==== EsfFwMgrGetInfo
+* *機能*  +
+    指定された対象のバージョン、ハッシュ、更新時刻を取得します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrGetInfo(EsfFwMgrGetInfoData* data)
+``
+``
+
+* *引数の説明* +
+    ``[IN/OUT] EsfFwMgrGetInfoData* data``::
+    情報取得に必要な情報が入った構造体です。 +
+    詳細は<<#_EsfFwMgrGetInfoData>>を参照して下さい。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。 +
+    
+* *説明* +
+    ``target`` と ``name`` によって指定された対象のバージョンとハッシュと更新時刻を取得します。``name`` は ``EsfFwMgrOpen`` 時に指定した ``name`` の値です。 +
+    ``target`` が Processor Firmware, Processor Loader の場合、 ``name`` は無視されます。 +
+    使用者は、必要な要素数分の ``EsfFwMgrGetInfoResponse`` を用意し、 ``data`` 内の ``response`` に格納後、 ``in_length`` に要素数を入れて使用してください。 +
+    ``target`` がAIモデルの場合、 ``ESF_FIRMWARE_MANAGER_AI_MODEL_SLOT_NUM`` 分の要素数、それ以外の場合は1要素数分が必要です。 +
+    ``target`` が Processor Firmware の場合、``version`` からは、そのバイナリのビルド時に埋め込まれた version が取得できます。それ以外の場合は、``EsfFwMgrOpen`` の引数で指定した ``version`` が取得できます。 +
+    ``hash`` からは、``EsfFwMgrOpen`` の引数で指定した ``hash`` が取得できます。 +
+    ``target`` がAIモデルの場合、デバイス上にある AI model の数が、 ``ESF_FIRMWARE_MANAGER_AI_MODEL_SLOT_NUM`` に満たない場合、空いているスロットの情報としては ``version = ""``、``hash = 0`` が格納されます。``last_update`` にはそのスロットが使われたことがあれば、最後の削除日時、使われたことがなければ "" が格納されます。
+    処理が成功した場合、本 API は kEsfFwMgrResultOk を返します。 +
+    Firmware Manager の状態は遷移しません。
+
+    ** エラー時の挙動 +
+        *** Firmware Manager の状態が UNINIT で本APIを呼び出した場合、``kEsfFwMgrResultFailedPrecondition``を返します。 +
+            Firmware Manager の状態が UNINIT でないことを確認してください。
+        *** 他モジュールの API がエラーを返した場合、 ``kEsfFwMgrResultUnavailable`` を返します。 +
+            他モジュールの状態を確認してください。
+        *** 引数が ``NULL`` もしくは ``in_length`` の値が不正である場合、 ``kEsfFwMgrResultInvalidArgument`` を返します。 +
+            引数が正しいことを確認してからリトライしてください。
+
+    ** 備考 +
+        *** 複数スレッド、複数タスクからの呼び出しが可能です。(ブロッキングします。)
+
+[#_EsfFwMgrStartFactoryReset]
+==== EsfFwMgrStartFactoryReset
+* *機能*  +
+    FactoryResetを開始します。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrStartFactoryReset(EsfFwMgrFactoryResetCause cause)``  
+
+* *引数の説明* +
+    ``[IN] EsfFwMgrFactoryResetCause cause``::
+    ファクトリーリセット理由を定義する列挙型です。
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    Led Manager を使用して、 LED を Factory Reset に設定し、ESF Main へイベントを通知して Factory Reset を開始します。 +
+    処理が成功した場合、本APIは ``kEsfFwMgrResultOk`` を返します。 +
+    Firmware Manager の状態は変更されません。 +
+    ``cause`` が ``kEsfFwMgrResetCauseButton``, ``kEsfFwMgrResetCauseCommand`` の場合、 ``EsfMainNotifyMsg(kEsfMainMsgTypeFactoryReset)`` を実行します。 +
+    ``cause`` が ``kEsfFwMgrResetCauseDowngrade`` の場合、 ``EsfMainNotifyMsg(kEsfMainMsgTypeFactoryResetForDowngrade)`` を実行します。 +
+    ** エラー時の挙動 +
+        *** Firmware Managerの状態が IDLE 以外で本APIを呼び出した場合、``kEsfFwMgrResultFailedPrecondition``を返します。 +
+            Firmware Managerの状態が IDLE であることを確認してください。
+        *** 他モジュールのAPIがエラーを返した場合、``kEsfFwMgrResultUnavailable`` を返します。 +
+            他モジュールの状態を確認してください。
+    
+
+[#_EsfFwMgrSetFactoryResetFlag]
+==== [DEPRECATED] EsfFwMgrSetFactoryResetFlag
+* *機能*  +
+    この関数を使用しないでください。(他ブロックのビルドエラー防止のためだけに残されています。)
+
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrSetFactoryResetFlag(bool factory_reset_flag)``  
+
+* *引数の説明* +
+    ``[IN] bool factory_reset_flag``::
+    この引数は無視されます
+
+* *戻り値* +
+    常に ``kEsfFwMgrResultOk`` を返します。
+
+* *説明* +
+    この関数は、何も処理を行いません。
+
+[#_EsfFwMgrGetFactoryResetFlag]
+==== [DEPRECATED] EsfFwMgrGetFactoryResetFlag
+* *機能*  +
+    この関数を使用しないでください。(他ブロックのビルドエラー防止のためだけに残されています。)
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrGetFactoryResetFlag(bool* factory_reset_flag)``  
+
+* *引数の説明* +
+    ``[OUT] bool* factory_reset_flag``::
+    取得するファクトリーリセット許可フラグです。 +
+
+* *戻り値* +
+    常に ``kEsfFwMgrResultOk`` を返します。
+
+* *説明* +
+    ``factory_reset_flag`` が ``NULL`` でないときは、``*factory_reset_flag`` に ``true`` を設定します。
+    ``factory_reset_flag`` が ``NULL`` のときは何も処理を行いません。
+
+[#_EsfFwMgrSwitchProcessorFirmwareSlot]
+==== EsfFwMgrSwitchProcessorFirmwareSlot
+* *機能*  +
+    次回の起動時に使われれる Processor Firmware の Slot を切り替えます。
+
+* *書式* +
+    ``EsfFwMgrResult EsfFwMgrSwitchProcessorFirmwareSlot(void)``  
+
+* *引数の説明* +
+    ``[IN] なし``:: 
+
+    ``[OUT] なし``:: 
+
+* *戻り値* +
+    実行結果に応じて<<#_TableEsfFwMgrResult, EsfFwMgrResult>>のいずれかの値が返ります。
+
+* *説明* +
+    Firmware manager Porting Layer の FwMgrPlSwitchFirmwarePartition を呼び出すことで、次回の起動時に使われる Processor Firmware の Slot を切り替えます。 +
+    成功時には、 ``kEsfFwMgrResultOk`` を返します。失敗時にはそれ以外のエラーコードを返します。 +
+    詳細は、FwMgrPlSwitchFirmwarePartition の仕様書を参照してください。 +
+    本 API は Firmware manager の状態が UNINIT または IDEL の状態で呼び出してください。*それ以外の状態で本 API を呼び出した場合、[.underline]#エラーは返しませんが#、動作は未定義です*。(本 API は UNINIT 状態でも呼び出される可能性があるため、できるだけ単純な実装にしており、状態の確認などを省略しています。)
+    本 API は同時呼び出しに対応していません。複数のスレッドなどから同時に呼び出された場合の動作は未定義です。 +
+    本 API はほか Firmware Manager を含むすべての ESF の module が停止 (Finalize, Deinit など) した状態でも正常に動作します。
+
+<<<
+
+== API使用時の呼び出し例
+
+各APIを使用する場合の呼び出し例を以下に示します。
+
+=== 書き込み機能
+[{mermaid_block}]
+----
+sequenceDiagram
+  participant upper_layer as Upper Layer
+  participant fw_mgr_core as FW Manager
+  participant fw_mgr_pl as Sensor AI Lib / FW Manager Porting Layer
+  participant mem_mgr as Memory Manager
+  participant ps_mgr as Parameter Storage Manager
+
+  upper_layer ->> +fw_mgr_core: EsfFwMgrInit()
+  fw_mgr_core -->> -upper_layer: {mermaid_br}
+
+  upper_layer ->> fw_mgr_core: EsfFwMgrOpen(prepare_write != NULL)
+    activate fw_mgr_core
+  fw_mgr_core ->> mem_mgr: Allocate memory
+    deactivate fw_mgr_core
+    activate mem_mgr
+  mem_mgr -->> fw_mgr_core: {mermaid_br}
+    deactivate mem_mgr
+    activate fw_mgr_core
+  fw_mgr_core -->> upper_layer: {mermaid_br}
+    deactivate fw_mgr_core
+
+  loop
+    loop
+      upper_layer ->> +fw_mgr_core: EsfFwMgrCopyToInternalBuffer()
+      fw_mgr_core -->> -upper_layer: {mermaid_br}
+    end
+
+    upper_layer ->> fw_mgr_core: EsfFwMgrWrite()
+      activate fw_mgr_core
+    fw_mgr_core ->> fw_mgr_pl: Write data
+      deactivate fw_mgr_core
+      activate fw_mgr_pl
+    fw_mgr_pl -->> fw_mgr_core: {mermaid_br}
+      deactivate fw_mgr_pl
+      activate fw_mgr_core
+    fw_mgr_core -->> upper_layer: {mermaid_br}
+      deactivate fw_mgr_core
+  end
+
+  upper_layer ->> fw_mgr_core: EsfFwMgrPostProcess()
+    activate fw_mgr_core
+  fw_mgr_core ->> ps_mgr: Save version, update date, and hash
+    deactivate fw_mgr_core
+    activate ps_mgr
+  ps_mgr -->> fw_mgr_core: {mermaid_br}
+    deactivate ps_mgr
+    activate fw_mgr_core
+  fw_mgr_core -->> upper_layer: {mermaid_br}
+    deactivate fw_mgr_core
+
+  upper_layer ->> fw_mgr_core: EsfFwMgrClose()
+    activate fw_mgr_core
+  fw_mgr_core ->> mem_mgr: Deallocate memory
+    deactivate fw_mgr_core
+    activate mem_mgr
+  mem_mgr -->> fw_mgr_core: {mermaid_br}
+    deactivate mem_mgr
+    activate fw_mgr_core
+  fw_mgr_core -->> upper_layer: {mermaid_br}
+    deactivate fw_mgr_core
+
+  upper_layer ->> +fw_mgr_core: EsfFwMgrDeinit()
+  fw_mgr_core -->> -upper_layer: {mermaid_br}
+----
+
+=== 削除機能
+
+[{mermaid_block}]
+----
+sequenceDiagram
+  participant upper_layer as Upper Layer
+  participant fw_mgr_core as FW Manager
+  participant fw_mgr_pl as Sensor AI Lib / FW Manager Porting Layer
+  participant ps_mgr as Parameter Storage Manager
+
+  upper_layer ->> +fw_mgr_core: EsfFwMgrInit()
+  fw_mgr_core -->> -upper_layer: {mermaid_br}
+
+  upper_layer ->> +fw_mgr_core: EsfFwMgrOpen(prepare_write = NULL)
+  fw_mgr_core -->> -upper_layer: {mermaid_br}
+
+
+  upper_layer ->> fw_mgr_core: EsfFwMgrErase()
+    activate fw_mgr_core
+  fw_mgr_core ->> fw_mgr_pl: Erase data
+    deactivate fw_mgr_core
+    activate fw_mgr_pl
+  fw_mgr_pl -->> fw_mgr_core: {mermaid_br}
+    deactivate fw_mgr_pl
+    activate fw_mgr_core
+
+  fw_mgr_core ->> ps_mgr: Delete version, update date, and hash
+    deactivate fw_mgr_core
+    activate ps_mgr
+  ps_mgr -->> fw_mgr_core: {mermaid_br}
+    deactivate ps_mgr
+    activate fw_mgr_core
+  fw_mgr_core -->> upper_layer: {mermaid_br}
+    deactivate fw_mgr_core
+
+  upper_layer ->> +fw_mgr_core: EsfFwMgrClose()
+  fw_mgr_core -->> -upper_layer: {mermaid_br}
+
+  upper_layer ->> +fw_mgr_core: EsfFwMgrDeinit()
+  fw_mgr_core -->> -upper_layer: {mermaid_br}
+----
+
+=== データ取得機能
+
+[{mermaid_block}]
+----
+sequenceDiagram
+  participant upper_layer as Upper Layer
+  participant fw_mgr_core as FW Manager
+  participant ps_mgr as Parameter Storage Manager
+
+  upper_layer ->> fw_mgr_core: EsfFwMgrGetInfo()
+    activate fw_mgr_core
+  fw_mgr_core ->> ps_mgr: Get version, update date, and hash
+    deactivate fw_mgr_core
+    activate ps_mgr
+  ps_mgr -->> fw_mgr_core: {mermaid_br}
+    deactivate ps_mgr
+    activate fw_mgr_core
+  fw_mgr_core -->> upper_layer: {mermaid_br}
+    deactivate fw_mgr_core
+----
+
+
+=== ファクトリーリセット機能
+[{mermaid_block}]
+----
+
+sequenceDiagram
+  participant upper_layer as Upper Layer
+  participant fw_mgr_core as Firmware Manager
+  participant led_mgr as led manager
+  participant main
+
+upper_layer ->> fw_mgr_core : EsfFwMgrStartFactoryReset()
+  activate fw_mgr_core
+fw_mgr_core ->> led_mgr : EsfLedManagerSetStatus()
+  deactivate fw_mgr_core
+  activate led_mgr
+led_mgr -->> fw_mgr_core : {mermaid_br}
+  deactivate led_mgr
+  activate fw_mgr_core
+fw_mgr_core ->> main : SsfMainNotifyMsg(kSsfMainMsgTypeFactoryReset)
+  deactivate fw_mgr_core
+  activate main
+main -->> fw_mgr_core : {mermaid_br}
+  deactivate main
+  activate fw_mgr_core
+fw_mgr_core -->> upper_layer : {mermaid_br}
+  deactivate fw_mgr_core
+----
+
+
+<<<
+
+== 特記事項や本モジュールごとの特有の説明事項
+
+[#_Notice_Limitation]
+=== 制限事項
+* WASMからFirmware ManagerのAPIを呼び出すことはできません。
+* Firmware Managerのハンドル数の上限は1つです。
+
+
+[#_Notice_NonstandardExtensions]
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|拡張名 |説明 |用途
+|``##\\__VA_ARGS__``
+|``\\__VA_ARGS__``のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|===
+
+[#_Notice_FeatureRequest]
+=== 他モジュールへの機能要求
+
+Firmware Managerが他モジュールへ要求する機能です。
+
+.機能要求表
+[width="100%", options="header"]
+|===
+|モジュール |要求機能 |説明
+
+1.3+|Firmware Manager Porting Layer
+    1.1+|Write
+    1.1+|CameraFWの書き込み機能
+
+    1.1+|Erase
+    1.1+|CameraFWの削除機能
+
+    1.1+|OTAパーティション管理
+    1.1+|パーティションはHAL OTAが吸収する。
+
+1.11+|SensCord
+    1.1+|モジュールの状態取得
+    1.1+|Streaming状態の判定に使用する。
+
+    1.1+|センサ用OTAサイズの取得
+    1.1+|一度に書き込み可能なサイズ
+
+    1.1+|SensorFWの書き込み
+    1.1+|
+
+    1.1+|SensorLoaderの書き込み
+    1.1+|
+
+    1.1+|ColorMatrixの保存
+    1.1+|画質調整値のColorMatrixを保存する
+
+    1.1+|Gammaの保存
+    1.1+|画質調整値のGammaを保存する
+
+    1.1+|LSCの保存
+    1.1+|画質調整値のLSCを保存する
+
+    1.1+|PreWBの保存
+    1.1+|画質調整値のPreWBを保存する
+
+    1.1+|Dewarpの保存
+    1.1+|画質調整値のDewarpを保存する
+
+    1.1+|AI Modelの書き込み
+    1.1+|対象のスロットはSensCordが判断する。
+
+    1.1+|AI Parameterの保存
+    1.1+|AI Parameter (network_info.txt)  +
+    対象のスロットはSensCordが判断する。 +
+    Parameter Storage Managerを使用して保存する。
+
+
+
+1.23+|Parameter Storage Manager
+    1.1+|CameraFW LastUpdateの保存/取得
+    1.1+|
+
+    1.1+|CameraFW Versionの保存/取得
+    1.1+|
+
+    1.1+|SensorFW LastUpdateの保存/取得
+    1.1+|
+
+    1.1+|SensorFW Versionの保存/取得
+    1.1+|
+
+    1.1+|SensorLoader LastUpdateの保存/取得
+    1.1+|
+
+    1.1+|SensorLoader Versionの保存/取得
+    1.1+|
+
+    1.1+|ColorMatrixのVersion保存/取得
+    1.1+|
+
+    1.1+|ColorMatrixのLastUpdate保存/取得
+    1.1+|
+
+    1.1+|ColorMatrixのHash値保存/取得
+    1.1+|
+
+    1.1+|GammaのVersion保存/取得
+    1.1+|
+
+    1.1+|GammaのLastUpdate保存/取得
+    1.1+|
+
+    1.1+|GammaのHash値保存/取得
+    1.1+|
+
+    1.1+|LSCのVersion保存/取得
+    1.1+|
+
+    1.1+|LSCのLastUpdate保存/取得
+    1.1+|
+
+    1.1+|LSCのHash値保存/取得
+    1.1+|
+
+    1.1+|PreWBのVersion保存/取得
+    1.1+|
+
+    1.1+|PreWBのLastUpdate保存/取得
+    1.1+|
+
+    1.1+|PreWBのHash値保存/取得
+    1.1+|
+
+    1.1+|DewarpのVersion保存/取得
+    1.1+|
+
+    1.1+|DewarpのLastUpdate保存/取得
+    1.1+|
+
+    1.1+|DewarpのHash値保存/取得
+    1.1+|
+    
+    1.1+|AI Versionの保存/取得
+    1.1+|NetworkID、Converterバージョン、Modelバージョン等 +
+
+    1.1+|AI Model LastUpdateの保存/取得
+    1.1+|
+
+1.1+|Security
+    1.1+|SHA256
+    1.1+|ハッシュ値の分割計算
+
+1.1+|ESF(Main)
+    1.1+|ファクトリーリセットイベントを処理する機能
+    1.1+|ファクトリーリセット要求動作時にESF(Main)に対応イベントを送信する機能。 +
+    該当イベントを受信し、ファクトリーリセット処理を行う機能。
+
+1.1+|ESF(Led Manager)
+    1.1+|状態表示機能
+    1.1+|ファクトリーリセットに対応した状態表示を行う機能。
+
+|===
+
+
+[#_Notice_EsfFwMgrTarget]
+=== データ更新対象一覧
+
+Firmware Managerの更新対象を以下に一覧化します。
+
+.データ更新対象一覧表
+[width="100%", cols="40%,20%,40%", options="header"]
+|===
+|EsfFwMgrTarget |Write/Erase |更新対象
+
+1.5+|SensorLoader
+    1.3+|Write
+        1.1+|Sensor Loader
+        1.1+|Sensor Loader LastUpdate
+        1.1+|Sensor Loader Version
+    1.2+|Erase
+        1.1+|Sensor Loader Version
+        1.1+|Sensor Loader LastUpdate +
+            ※削除ではなく更新
+
+1.5+|SensorFirmware
+    1.3+|Write
+        1.1+|SensorFw
+
+        1.1+|SensorFw LastUpdate
+
+        1.1+|SensorFw Version
+
+    1.2+|Erase
+        1.1+|SensorFw Version
+        1.1+|SensorFw LastUpdate +
+            ※削除ではなく更新
+
+1.5+|ProcessorLoader
+    1.3+|Write
+        1.1+|Boot Loader
+
+        1.1+|Boot Loader LastUpdate
+
+        1.1+|Boot Loader Version
+
+    1.2+|Erase
+        1.1+|Boot Loader LastUpdate +
+            ※削除ではなく更新
+        1.1+|Boot Loader Version
+
+1.5+|ProcessorFirmware
+    1.3+|Write
+        1.1+|CameraFW
+
+        1.1+|CameraFW LastUpdate
+
+        1.1+|CameraFW Version
+
+    1.2+|Erase
+        1.1+|CameraFW LastUpdate +
+            ※削除ではなく更新
+        1.1+|CameraFW Version
+
+1.40+|SensorCalibrationParam
+    1.20+|Write
+        1.1+|ColorMatrix
+        1.1+|ColorMatrix Hash
+        1.1+|ColorMatrix Version
+        1.1+|ColorMatrix LastUpdate
+        1.1+|Gamma
+        1.1+|Gamma Hash
+        1.1+|Gamma Version
+        1.1+|Gamma LastUpdate
+        1.1+|Lsc
+        1.1+|Lsc Hash
+        1.1+|Lsc Version
+        1.1+|Lsc LastUpdate
+        1.1+|PreWB
+        1.1+|PreWB Hash
+        1.1+|PreWB Version
+        1.1+|PreWB LastUpdate
+        1.1+|Dewarp
+        1.1+|Dewarp Hash
+        1.1+|Dewarp Version
+        1.1+|Dewarp LastUpdate
+    1.20+|Erase
+        1.1+|ColorMatrix
+        1.1+|ColorMatrix Hash
+        1.1+|ColorMatrix Version
+        1.1+|ColorMatrix LastUpdate +
+            ※削除ではなく更新
+        1.1+|Gamma
+        1.1+|Gamma Hash
+        1.1+|Gamma Version
+        1.1+|Gamma LastUpdate +
+            ※削除ではなく更新
+        1.1+|Lsc
+        1.1+|Lsc Hash
+        1.1+|Lsc Version
+        1.1+|Lsc LastUpdate +
+            ※削除ではなく更新
+        1.1+|PreWB
+        1.1+|PreWB Hash
+        1.1+|PreWB Version
+        1.1+|PreWB LastUpdate +
+            ※削除ではなく更新
+        1.1+|Dewarp
+        1.1+|Dewarp Hash
+        1.1+|Dewarp Version
+        1.1+|Dewarp LastUpdate +
+            ※削除ではなく更新
+
+1.8+|AIModel
+    1.5+|Write
+        1.1+|AI Model
+        1.1+|AI Parameter
+        1.1+|AI Version
+        1.1+|AI Model LastUpdate
+        1.1+|AI Model Hash
+    1.3+|Erase
+        1.1+|AI Version
+        1.1+|AI Model LastUpdate +
+            ※削除ではなく更新
+        1.1+|AI Model Hash
+|===
+
+
+[#_Notice_UpdateDataStructure]
+=== 更新データの構造
+更新データはOTAバイナリとそのバイナリ全体のハッシュ値がCloudから送信されます。 +
+バイナリ全体のハッシュ値は事前に計算されたものが、送信されるデータに含まれており、本モジュール内でダウンロードしたバイナリ全体のハッシュ値の計算を実施したのちに、それと比較を行います。 +
+
+
+[#_Notice_UpdateInterrupted]
+=== 更新中断時の振る舞い
+Firmware Managerは、WRITABLE, ERASABLE, ERROR状態で``SsfFirmwareUpdateClose``が呼び出されると、更新を中断します。
+
+更新中断時のデータの状態は外部モジュールに依存しているため、更新対象のデータの状態が更新開始前の状態へ戻るかは不定です。
+
+詳細は以下の表を参照してください。 +
+
+[#_TableUpdateInterrupted]
+.更新中断時のデータの状態
+[width="100%", cols="30%a,20%a,50%a",options="header"]
+|===
+|カメラ |更新対象 |データの状態
+.6+|T5
+    |SensorLoader
+    |
+[cols="1,1,1,1"]
+!===
+        ! 更新対象 ! 最終更新時刻 ! ハッシュ値 ! バージョン
+
+        ! 戻る
+        ! 戻る
+        ! なし
+        ! 戻る
+!===
+
+    |SensorFirmware
+    |
+[cols="1,1,1,1"]
+!===
+        ! 更新対象 ! 最終更新時刻 ! ハッシュ値 ! バージョン
+
+        ! 戻る
+        ! 戻る
+        ! なし
+        ! 戻る
+!===
+
+    |ProcessorLoader
+    |
+[cols="1,1,1,1"]
+!===
+        ! 更新対象 ! 最終更新時刻 ! ハッシュ値 ! バージョン
+
+        ! T.B.D.
+        ! 戻る
+        ! なし
+        ! 戻る
+!===
+
+    |ProcessorFirmware
+    |
+[cols="1,1,1,1"]
+!===
+        ! 更新対象 ! 最終更新時刻 ! ハッシュ値 ! バージョン
+
+        ! T.B.D.
+        ! 戻る
+        ! なし
+        ! 戻る
+!===
+
+    |SensorCalibrationParam
+    |
+[cols="1,1,1,1"]
+!===
+        ! 更新対象 ! 最終更新時刻 ! ハッシュ値 ! バージョン
+
+        ! 戻る
+        ! 戻る
+        ! 戻る
+        ! 戻る
+!===
+
+    |AIModel
+    |
+[cols="1,1,1,1"]
+!===
+        ! 更新対象 ! 最終更新時刻 ! ハッシュ値 ! バージョン
+
+        ! 戻る
+        ! 戻る
+        ! 戻る
+        ! 戻る
+!===
+
+|===
+
+[#_Slot_Management]
+=== AIModelのSlot管理について
+AIModelで使用するSlotについては、Firmware Managerにて管理を行います。 +
+内部でAIModelのSlot情報の管理をし、指定されたバージョン情報をもとに更新/書き込み/削除を行います。 
+
+* 書き込み処理の場合 +
+指定されたバージョンが既に存在する場合はエラーを返します。 +
+存在しない場合は空いているAIModelのSlotに書き込みます。 +
+
+* 削除処理の場合 +
+指定されたバージョンが存在する場合、削除行います。
+
+
+更新対処判定処理は<<#_EsfFwMgrOpen>>関数内で行われます。詳細はそちらを確認してください。
+
+[#_BackgroundOfArgumentOfOpen]
+=== EsfFwMgrOpen の引数 ``total_size`` に関する制約の背景
+現状の System App は、OTA 開始時にバイナリのサイズが取得できません。(EVP にサイズ取得の API がないため) +
+そのため、OTA 開始時にサイズの指定をするには、1度バイナリをすべてダウンロードすることになります。(ダウンロードされたデータは捨てられる。) +
+そして、その後、書き込みのために再度同じデータをダウンロードすることになります。 +
+ +
+T5 における AI model は、サイズが数百 MB とかなり大きいため、2回のダウンロードは避けたいという要求がありました。 +
+そのため、現実装の FW Manager では、OTA 開始時にサイズを指定しなくてもよいようにしています。 +
+
+しかし、T3 における、SensorLoader、SensorFirmware、AI model は、IMX500の転送プロトコル上、EsfFwMgrOpen時点でデータサイズがわかっている必要があるため、開始時に指定する必要があります。
+ +
+また、AP FW は、前半に ota_0 用に暗号化された FW、後半に ota_1 用に暗号化された FW が入っており (ESP32 Flash memory の仕様上、アドレスによって暗号化結果が異なる)、サイズを OTA 開始時に指定する必要があります。(そのため、AP FW の OTA 時には System App は2回ダウンロードすることになります。) +
+ +
+この点に関しては、修正が予定されていますがが、修正後の仕様については未決定です。
+
+<<<
+
+== 使用しているOSSの一覧
+
+使用しているOSSはありません。
+
+<<<
+
+== 参考文献
+* Cloud-Edge-IF Config State +
+
+    ** Deploy Edge Firmware (Private) +
+        link:../../../Cloud-Edge-IF/config_state/system_app.md#deploy-edge-firmware-private[doc/design/Cloud-Edge-IF/config_state/system_app.md#deploy-edge-firmware-private]
+
+    ** DeployTarget +
+        link:../../../Cloud-Edge-IF/config_state/system_app_object.md#deploytarget[doc/design/Cloud-Edge-IF/config_state/system_app_object.md#deploytarget]
+
+<<<

@@ -1,0 +1,2768 @@
+= AITRIOS Edge Device Power Manager 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.11
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本仕様書はデバイスの電源動作および間欠駆動動作を制御する機能を有するPower Managerモジュールについて記載します。 +
+
+<<<
+
+== 用語 
+共通のものができ次第差し替え予定です。 +
+
+=== ESF
+ESF(AITRIOS Edge Software Framework) +
+
+* 各種アプリから実行可能なAITRIOS基準のAPIを持つレイヤです。
+* 基本的にはOS、チップ等の変更影響を受けません。
+* アプリの機能の根幹となるため、SSSが管理します。
+* ブロック単位で分離することで、センサ等を変更する際の影響を極力小さくします。
+
+=== 間欠駆動
+
+* 指定時間毎に電源ONとなり、処理を行う動作です。
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+
+<<#_FigureOverview>>通りの構成になっており、電源関連処理（リブート・シャットダウン等）、間欠駆動関連処理（動作モード取得・間欠駆動シャットダウン等）、Hours Meterおよび、デバイス死活監視（WDT）、USB電流制限処理を提供するコンポーネントです。 +
+バージョンXXでは間欠駆動関連処理は未対応です。
+
+[#_FigureOverview]
+.構成図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    power_manager[Power Manager]
+    style power_manager fill:#f9f
+    main[ESF main]
+    param[Parameter Storage Manager]
+    hal[HAL]
+	end
+  subgraph App
+    vns[VnSApp]
+    system[SystemApp]
+  end
+  os[OS]
+
+system -->|電源操作| power_manager
+power_manager --> |イベント通知| main
+main --> |再起動/\nシャットダウン実行| power_manager
+power_manager --> |電源操作| hal
+
+system -->|間欠駆動操作| power_manager
+power_manager -->|RTC操作| hal
+
+system -->|HoursMeter取得| power_manager
+
+vns -->|間欠駆動操作| power_manager
+
+power_manager -->|WDT操作| hal
+os -->|WDT割り込み| power_manager
+
+power_manager -->|HoursMeter\n取得/保存| param
+hal -->|HoursMeter更新| power_manager
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+==== 電源関連処理
+Appからの要求に応じて再起動/シャットダウンの契機を周辺機能に通知します。 +  
+また、HALを使用して実際の再起動/シャットダウンを行います。 +
+電源関連処理の詳細図を<<#_FigureDetailPower>>に示します。
+[#_FigureDetailPower]
+.電源関連処理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph power_manager[Power Manager]
+      power[電源管理]
+      info[情報取得]
+    end
+    style power_manager fill:#f9f
+    subgraph main
+      event[イベント]
+    end
+    subgraph hal
+      systemcontrol[System Control]
+      volt[電源電圧]
+    end
+	end
+  subgraph App
+    system[SystemApp]
+  end
+
+system -->|再起動/シャットダウン要求| power
+power --> |イベント通知| event
+event --> |再起動/\nシャットダウン実行| power
+power --> |再起動/\nシャットダウン実行| systemcontrol
+
+system -->|電圧取得| info
+info  --> |電圧取得| volt
+info -->|電圧取得結果| system
+....
+
+==== 間欠駆動関連処理
+Appからの要求に応じてシャットダウンの契機を周辺機能に通知します。 +  
+また、HALを使用して次回起動設定・実際のシャットダウンを行います。 +
+間欠駆動関連処理の詳細図を<<#_FigureDetailPeriodic>>および<<#_FigureDetailPeriodicEnd>>に示します。
+
+[#_FigureDetailPeriodic]
+.間欠駆動動作処理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph main
+      boot[起動]
+    end
+    subgraph hal
+      rtc[RTC]
+    end
+    subgraph power_manager[Power Manager]
+      periodic[間欠駆動]
+    end
+    style power_manager fill:#f9f
+    subgraph parameter_storage_manager[Parameter Storage Manager]
+      flash[設定管理]
+    end
+	end
+  subgraph App
+    vns[VnSApp]
+    system[SystemApp]
+  end
+
+boot --> |間欠駆動動作モード取得| periodic
+periodic  --> |間欠駆動情報取得| flash
+periodic  --> |間欠駆動動作モード応答| boot
+boot --> |起動要因取得| periodic
+periodic  --> |起動要因取得| flash
+periodic  --> |RTC状態取得| rtc
+periodic  --> |起動要因応答| boot
+system --> |間欠駆動動作状態取得| periodic
+system --> |間欠アップロード終了待ち| periodic
+periodic --> |間欠アップロード終了待ち応答| system
+vns --> |VnSApp処理完了通知| periodic
+....
+
+[#_FigureDetailPeriodicEnd]
+.間欠駆動動作終了処理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph hal
+      rtc[RTC]
+      systemcontrol[System Control]
+    end
+    subgraph power_manager[Power Manager]
+      power[電源管理]
+      periodic[間欠駆動]
+    end
+    style power_manager fill:#f9f
+    subgraph main
+      event[イベント]
+    end
+	end
+  subgraph App
+    system[SystemApp]
+  end
+
+system -->|間欠シャットダウン要求| periodic
+periodic  --> |次回起動時刻設定| rtc
+periodic  --> |イベント通知| event
+event --> |シャットダウン実行| power
+power --> |シャットダウン実行| systemcontrol
+....
+
+==== Hours Meter 処理
+周期的に Hours Meter をカウントアップしデバイス出荷からの経過時間を記録します。 +
+周期トリガーは Utility Timerを使用します。
+Parameter Storage Managerを使用しカウントアップのタイミングで不揮発のデータ領域に値を保存します。 +
+Appからの要求に応じて Hours Meter の現在値を取得する機能を提供します。 +
+HoursMeter処理の詳細図を<<#_FigureDetailHoursMeter>>に示します。
+[#_FigureDetailHoursMeter]
+.HoursMeter処理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph parameter_storage_manager[Parameter Storage Manager]
+      data[データ保存領域]
+    end
+    subgraph hal
+      timer
+    end
+    subgraph power_manager[Power Manager]
+      periodic[HoursMeter]
+    end
+    style power_manager fill:#f9f
+	end
+  subgraph App
+    system[SystemApp]
+  end
+
+system -->|取得要求| periodic
+periodic  --> |取得更新| data
+timer  --> |タイムアウト| periodic
+....
+
+==== デバイス死活監視処理
+デバイスの死活監視機能を提供します。 +
+PL WDTを使用して死活監視失敗時の割り込みをハンドルし電源管理に再起動要求を行います。 +
+再起動要求以降の動作は電源関連処理の再起動処理と同様です。 +
+デバイス死活監視処理の詳細図を<<#_FigureDetailWDT>>に示します。
+[#_FigureDetailWDT]
+.デバイス死活監視処理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph hal
+      hal_wdt[WDT]
+    end
+    subgraph power_manager[Power Manager]
+      wdt[WDT]
+      power[電源管理]
+    end
+    style power_manager fill:#f9f
+	end
+  os[OS]
+
+wdt --> |WDTハンドル登録| hal_wdt
+
+os -->|WDT割り込み| wdt
+wdt -->|再起動要求| power
+
+....
+
+==== USB電流制限処理
+デバイスのUSB電流制限処理機能を提供します。 +
+HAL I2Cを使用してデバイスのUSB規格対応情報を取得しUSB電流制限判定を行います。 +
+判定結果から規格に適合してる場合、HAL I2Cを使用してデバイスのUSB_SWを操作します。 +
+USB電流制限処理の詳細図を<<#_FigureDetailUSBPower>>に示します。
+[#_FigureDetailUSBPower]
+.USB電流制限処理詳細図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    subgraph power_manager[Power Manager]
+      start[起動管理]
+    end
+    style power_manager fill:#f9f
+    subgraph main
+      event[起動管理]
+    end
+    subgraph hal
+      i2c[I2C]
+    end
+	end
+  subgraph Hardware
+    usb[USB規格情報]
+    usbsw[USB_SW]
+  end
+  style Hardware fill:#d4e8c5
+
+event --> |起動|start
+
+start --> |情報取得|i2c
+start --> |SW操作|i2c
+
+i2c --> |情報取得|usb
+i2c --> |SW操作|usbsw
+....
+
+<<<
+
+=== 状態遷移
+Power Managerの取り得る状態を<<#_TableStates>>に示します。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+ 
+==== 開始状態
+Power Managerの開始状態を管理します。 +
+開始状態一覧を<<#_TableStates>>に示します。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_TableStates]
+.開始状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|STOP
+|停止中の状態です。``**EsfPwrMgrStart**``、``**EsfPwrMgrExecuteRebootEx**``、``**EsfPwrMgrExecuteShutdown**``、``**EsfPwrMgrWdtKeepAlive**``、``**EsfPwrMgrGetResetCause**``以外のAPIは呼び出さないでください。
+
+|WAIT_REBOOT
+|WDTによる再起動待ちの状態です。``**EsfPwrMgrExecuteRebootEx**``、``**EsfPwrMgrExecuteShutdown**``、``**EsfPwrMgrWdtKeepAlive**``、``**EsfPwrMgrGetResetCause**``以外のAPIは呼び出さないでください。
+
+|READY
+|準備完了状態です。全てのAPIを利用可能です。
+
+|===
+
+
+[#_FigureStateTransition]
+.状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> STOP
+    STOP --> STOP : EsfPwrMgrExecuteRebootEx<br>EsfPwrMgrExecuteShutdown<br>EsfPwrMgrWdtKeepAlive<br>EsfPwrMgrGetResetCause
+    STOP --> READY : EsfPwrMgrStart
+    READY --> STOP : EsfPwrMgrStop
+    READY --> READY : EsfPwrMgrStart<br>その他API
+    READY --> WAIT_REBOOT : EsfPwrMgrStopForReboot
+    WAIT_REBOOT --> WAIT_REBOOT : EsfPwrMgrExecuteRebootEx<br>EsfPwrMgrExecuteShutdown<br>EsfPwrMgrWdtKeepAlive<br>EsfPwrMgrGetResetCause
+----
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition, 状態遷移表>>に示します。 +
+表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+×はAPI受け付け不可を示し、ここでのAPI呼び出しは``**kEsfPwrMgrErrorInternal**``エラーを返し状態遷移は起きません。 +
+エラーの詳細は <<#_DataType_EsfPwrMgrError>>を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.2+| 3+|状態 
+|STOP |WAIT_REBOOT |READY
+.8+|API名
+
+|``**EsfPwrMgrStart**``
+|READY
+|×
+|READY
+
+|``**EsfPwrMgrStop**``
+|×
+|×
+|STOP
+
+|``**EsfPwrMgrStopForReboot**``
+|×
+|×
+|WAIT_REBOOT
+
+|``**EsfPwrMgrExecuteRebootEx**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|``**EsfPwrMgrExecuteShutdown**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|``**EsfPwrMgrWdtKeepAlive**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|``**EsfPwrMgrGetResetCause**``
+|STOP
+|WAIT_REBOOT
+|READY
+
+|その他API
+|×
+|×
+|READY
+
+|===
+
+==== 電源操作実行状態
+Power Managerの電源操作処理「再起動」「シャットダウン」処理の実行状態を管理します。 +
+電源操作実行状態一覧を<<#_PowerTableStates>>に示します。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_PowerTableStates]
+.電源操作実行状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|READY
+|実行可能状態です。 +
+再起動、シャットダウンを実行することが出来ます。
+
+|RUNNING
+|実行中状態です。 +
+再起動、シャットダウンを実行することが出来ません。
+
+|===
+
+
+[#_FigurePowerStateTransition]
+.電源操作実行状態遷移図
+[{mermaid_block}]
+----
+stateDiagram-v2
+    [*] --> READY
+    READY --> RUNNING : EsfPwrMgrPrepareReboot<br>EsfPwrMgrPrepareShutdown
+    RUNNING --> RUNNING : その他API
+----
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TablePowerStateTransition, 状態遷移表>>に示します。 +
+表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。 +
+×はAPI受け付け不可を示し、ここでのAPI呼び出しは``**kEsfPwrMgrErrorInternal**``エラーを返し状態遷移は起きません。 +
+エラーの詳細は <<#_DataType_EsfPwrMgrError>>を参照してください。 
+
+[#_TablePowerStateTransition]
+.電源操作実行状態遷移表
+[width="100%", cols="10%,30%,20%,20%"]
+|===
+2.2+| 2+|状態 
+|READY |RUNNING
+.5+|API名
+
+|``**EsfPwrMgrPrepareReboot**``
+``**EsfPwrMgrPrepareShutdown**``
+|RUNNING
+|×
+
+|``**EsfPwrMgrExecuteRebootEx**``
+``**EsfPwrMgrExecuteShutdown**``
+|READY
+|－<<#_NoteExecuteShutdown,（※）>>
+
+|その他API
+|READY
+|RUNNING
+
+|===
+[#_NoteExecuteShutdown]
+（※）EsfPwrMgrExecuteRebootEx, EsfPwrMgrExecuteShutdown実行後はデバイス再起動もしくはシャットダウン動作となるため状態遷移は起こりません。
+
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|開始終了機能
+|Power Managerの開始終了機能を提供します。
+|<<#_Function1>>
+
+|再起動機能
+|デバイスの再起動機能を提供します。
+|<<#_Function2>>
+
+|シャットダウン機能
+|デバイスのシャットダウン機能を提供します。
+|<<#_Function3>>
+
+|USB電流制限機能
+|デバイスのUSB電流制限機能を提供します。
+|<<#_Function4>>
+
+|情報取得機能
+|デバイスの電源情報取得機能を提供します。
+|<<#_Function5>>
+
+|HoursMeter機能
+|デバイスのHoursMeter機能を提供します。
+|<<#_Function7>>
+
+|デバイス死活監視機能
+|デバイスの死活監視機能を提供します。
+|<<#_Function8>>
+
+|間欠駆動機能
+|デバイスの間欠駆動機能を提供します。(未対応)
+|<<#_Function6>>
+
+|エクセプション情報機能
+|エクセプション情報の取得・変換・削除機能を提供します。
+|<<#_Function9>>
+
+|リセット要因取得機能
+|リセット要因取得機能を提供します。
+|<<#_Function10>>
+
+|===
+
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== 開始停止機能
+* 機能概要 +
+    Power Managerの開始停止を行います。 +
+    ``**EsfPwrMgrExecuteRebootEx**``、``**EsfPwrMgrExecuteShutdown**``以外のAPIを呼び出す前に開始を行ってください。
+
+* 前提条件 +
+    前提条件はありません。
+
+* 機能詳細
+    ** ``**EsfPwrMgrStart**``を呼び出すことで内部状態を初期化し、必要なリソースを確保します。 +
+    外部モジュールのハンドル取得、Utility Timerスレッドの生成を行います。 +
+    デバイス死活監視としてPL WDT初期化、PL WDTハンドル登録、死活監視開始します。 +
+    デバイス死活監視はPowerManager開始処理の最初に行います。 +
+    T5デバイスではUSB電流制限判定を行います。<<#_Function4, USB電流制限処理>> を参照。 +
+    開始後はPower Managerの全てのAPIを呼び出すことができます。 +
+    ``**EsfPwrMgrExecuteRebootEx**``、``**EsfPwrMgrExecuteShutdown**``については、停止状態でも実行可能です。 +
+    
+    ** ``**EsfPwrMgrStop**``を呼び出すことで、リソースを解放し、内部状態が停止の状態に戻ります。 +
+    外部モジュールのハンドル解放、Timerスレッドの破棄を行います。 +
+    デバイス死活監視として死活監視停止、PL WDTハンドル解放、PL WDT終了処理を行います。 +
+
+    ** ``**EsfPwrMgrStopForReboot**``を呼び出すことで、リソースを解放し、内部状態が停止の状態に戻ります。 +
+    デバイス死活監視のためのKeepAliveの送信の停止、外部モジュールのハンドル解放、Timerスレッドの破棄を行います。 +
+    本API実行後、``**EsfPwrMgrExecuteRebootEx**``、``**EsfPwrMgrExecuteShutdown**``、``**EsfPwrMgrWdtKeepAlive**``を除くPower Managerの全てのAPIを呼び出すことは出来ません。 +
+
+    ** これらのAPIを同時に呼び出さないでください。
+
+* エラー時の挙動、復帰方法に関しては<<#initapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function2]
+==== 再起動機能
+* 機能概要 +
+デバイスの再起動機能を提供します。 +
+
+* 前提条件 +
+    Power Managerが開始されていること。 +
+    ただし、再起動機能のAPIのうち``**EsfPwrMgrExecuteRebootEx**``は前提条件はありません。
+* 機能詳細
+    ** ``**EsfPwrMgrPrepareReboot**``を呼び出すことで、再起動イベントをESF(main)に通知し、必要処理実行契機の通知を行います。
+    ** ``**EsfPwrMgrExecuteRebootEx**``を呼び出すことで、PLを使用してデバイスの再起動を行います。
+    ** 再起動・シャットダウン実行中の実行はできません。
+
+* エラー時の挙動、復帰方法に関しては<<#rebootapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function3]
+==== シャットダウン機能
+* 機能概要 +
+デバイスのシャットダウン機能を提供します。 +
+
+* 前提条件 +
+    Power Managerが開始されていること。 +
+    ただし、再起動機能のAPIのうち``**EsfPwrMgrExecuteShutdown**``は前提条件はありません。
+* 機能詳細
+    ** ``**EsfPwrMgrPrepareShutdown**``を呼び出すことで、シャットダウンイベントをESF(main)に通知し、必要処理実行契機の通知を行います。
+    ** ``**EsfPwrMgrExecuteShutdown**``を呼び出すことで、PLを使用してデバイスのシャットダウンを行います。
+    ** 再起動・シャットダウン実行中の実行はできません。
+
+* エラー時の挙動、復帰方法に関しては<<#shutdownapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function4]
+==== USB電流制限機能 
+* 機能概要 +
+デバイスのUSB電流制限機能を提供します。
+
+* 前提条件 +
+    前提条件はありません。
+* 機能詳細
+  ** Power Manager起動時にUSB電流制限判定を行います。 +
+      USB電流制限判定はHAL I2Cを使いデバイスがUSB規格に適合しているか確認し行います。 +
+      T5 デバイスでは次の情報を取得します。HAL I2Cを使った情報の取得先は <<#_TableT5I2C, リンク先>> を参照。
+    *** USB給電状況
+    *** CC1.5A対応
+    *** BC1.2対応
+
+  ** USB電流制限機能を無効化する場合はコンフィグ ``**EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE**`` を無効として設定してください。
+
+  ** USBデータ通信機能を無効化する場合はコンフィグ ``**EXTERNAL_POWER_MANAGER_USB_DEVICE_ENABLE**`` を無効として設定してください。 +
+     有効の場合、HAL I2Cを使いUSB_SWを設定します。 +
+     HAL I2Cを使ったUSB_SWの設定先は <<#_TableT5I2C, リンク先>> を参照。
+
+  ** USB電流制限判定をフローチャートで示します。
+
+[#_FlowchartJudgeUSBCurrent]
+.USB電流判定フローチャート
+[{mermaid_block}]
+....
+flowchart TD
+    START(開始)
+    USB{USB給電か？}
+    CC1_5{CC1.5A対応か？}
+    BC1_2{BC1.2対応か？}
+    USBCOM{USBデータ通信機能有効か？}
+    USBSWOFF[USB_SW OFF]
+    USBSWON[USB_SW ON]
+    END(通常起動)
+    ERR(エラー表示で停止)
+
+    START --> USB
+    USB -->|"No(PoE)"| USBCOM
+    USB -->|"Yes(USB)"| CC1_5
+
+    CC1_5 -->|Yes| USBCOM
+    USBCOM -->|Yes| USBSWON
+    USBCOM -->|No| USBSWOFF
+
+    USBSWOFF --> END
+    USBSWON --> END
+    
+    CC1_5 -->|No| BC1_2
+    BC1_2 -->|Yes| USBCOM
+    BC1_2  -->|No=レガシーUSB| ERR
+....
+
+[#_Function5]
+==== 情報取得機能
+* 機能概要 +
+電源関連情報を取得する機能を提供します。
+* 前提条件 +
+    Power Managerが開始されていること。
+* 機能詳細
+    ** 下記APIを有する機能部になります。 +
+    *** 動作電圧情報を取得する +
+        ``**EsfPwrMgrGetVoltage**``を呼び出すことで、HAL(不明)から動作電圧情報を取得し、応答します。
+    *** 電源供給種別を取得する +
+        ``**EsfPwrMgrGetSupplyType**``を呼び出すことで、PL(power_manager)から電源供給種別を取得し、応答します。
+    
+** エラー時の挙動、復帰方法に関しては<<#infoapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+NOTE: 動作電圧情報取得に使用するHAL不明
+
+[#_Function7]
+==== HoursMeter機能 
+* 機能概要 +
+HoursMeterのカウントアップ、カウントアップした値を不揮発データ領域へ保存、アプリからHoursMeterの現在値を取得する機能を提供します。
+
+* 前提条件 +
+    Power Managerが開始されていること。
+* 機能詳細
+    ** Power Manager開始時にデータ保存領域からHoursMeterの現在値を取得します。 +
+       その後Utility Timerをトリガーとし周期的にカウントアップします。 +
+       カウントアップした値を ParameterStorageManagerを使用し不揮発データ領域へ保存します。 +
+       HoursMeterは ``int32_t``型 で保持し最大値に達した場合は 0 にループします。
+
+    ** カウントアップ周期は ``ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL`` に定義します。
+    
+    ** ``**EsfPwrMgrHoursMeterGetValue**`` を呼び出すことで、HoursMeter現在値を取得します。
+
+    ** エラー時の挙動、復帰方法に関しては<<#hoursmeterapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function8]
+==== デバイス死活監視機能 
+* 機能概要 +
+デバイスの死活監視機能を提供します。
+
+* 前提条件 +
+    Power Managerが開始されていること。
+* 機能詳細
+    ** Power Manager開始時にPL WDTを使用し死活監視を開始します。死活監視開始はPower Manager開始処理の最初に行います。
+    ** PL WDTに割り込みハンドラ ``**WdtCallBack**`` を登録し +
+       WDT発火時にデバイスの再起動を行います。
+
+    ** エラー時の挙動、復帰方法に関しては<<#wdtapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function6]
+==== 間欠駆動機能(未対応) 
+T.B.D.
+
+[#_Function9]
+==== エクセプション情報機能 
+* 機能概要 +
+エクセプション情報の取得、エクセプション情報をテキスト形式に変換する機能を提供します。
+
+* 前提条件 +
+    Power Managerが開始されていること。
+* 機能詳細
+    ** RTCメモリに保存されたエクセプション情報を取得します。
+    ** エクセプション情報をテキスト形式に変換します。
+    ** RTCメモリのエクセプション情報を削除します。
+    ** エラー時の挙動、復帰方法に関しては<<#exceptioninfoapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+
+[#_Function10]
+==== リセット要因取得機能 
+* 機能概要 +
+リセット要因を取得する機能を提供します。
+
+* 前提条件 +
+    前提条件はありません。
+* 機能詳細
+    ** リセット要因を取得します。
+    ** エラー時の挙動、復帰方法に関しては<<#resetcauseapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+目標とするパフォーマンス、メモリ使用量について目安を記載します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="20%,10%,50%,10%",options="header"]
+|===
+|機能名 |数値 |概要 |節番号
+|連続実行処理時間
+|10ms
+|最大かかる処理時間です。
+|<<#_NonFunction1>>
+
+|Stackメモリ使用量
+|2048byte
+|最大で使用するStackメモリサイズを示します。
+|<<#_NonFunction2>>
+
+|ヒープメモリ使用量
+|128byte
+|最大で使用するヒープメモリサイズを示します。
+|<<#_NonFunction3>>
+
+|スレッド使用数
+|未使用
+|使用するスレッド数を示します。
+|<<#_NonFunction4>>
+
+|staticメモリ使用
+|128byte
+|最大で使用するstaticメモリサイズを示します。
+|<<#_NonFunction5>>
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_NonFunction1]
+==== 連続実行処理時間
+通常 10ms です。排他制御によりデフォルトでは 最大1000ms 待機となります。 +
+外部モジュールでの処理時間、排他待ち時間は含んでいません。
+[#_NonFunction2]
+==== Stackメモリ使用量
+2048byte
+[#_NonFunction3]
+==== ヒープメモリ使用量
+128kyte
+[#_NonFunction4]
+==== スレッド使用数
+スレッドは未使用になります。
+[#_NonFunction5]
+==== staticメモリ使用量
+128byte
+
+<<<
+
+== API仕様
+=== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+
+|EsfPwrMgrError
+|APIの実行結果を定義する列挙型です。
+|<<#_DataType_EsfPwrMgrError>>
+
+|ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL
+|HoursMeterの定期加算周期（単位：時）です。
+|<<#_DataType_ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL>>
+
+|ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE
+|エクセプション情報のテキスト形式の最大サイズです。
+|<<#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE>>
+
+|struct EsfPwrMgrExceptionInfo
+|エクセプション情報の構造体です。
+|<<#_DataType_EsfPwrMgrExceptionInfo>>
+
+|EsfPwrMgrResetCause
+|リセット要因を定義する列挙型です。
+|<<#_DataType_EsfPwrMgrResetCause>>
+
+|EsfPwrMgrRebootType
+|再起動手法を定義する列挙型です。
+|<<#_DataType_EsfPwrMgrRebootType>>
+
+|===
+
+
+=== 定義一覧
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要 |節番号
+//開始停止機能
+3+|<<#initapi, 開始停止機能>>
+
+|EsfPwrMgrStart
+|Power Managerを開始します。
+|<<#EsfPwrMgrStart>>
+
+|EsfPwrMgrStop
+|Power Managerを終了します。
+|<<#EsfPwrMgrStop>>
+
+|EsfPwrMgrStopForReboot
+|Power Managerを終了させ、再起動を待ちます。
+|<<#EsfPwrMgrStopForReboot>>
+
+//再起動機能
+3+|<<#rebootapi, 再起動機能>>
+
+|EsfPwrMgrPrepareReboot
+|システム再起動を開始します。
+|<<EsfPwrMgrPrepareReboot>>
+
+|EsfPwrMgrExecuteRebootEx
+|システムの再起動を行います。 +
+停止状態でも実行可能です。
+|<<#EsfPwrMgrExecuteRebootEx>>
+
+//シャットダウン機能
+3+|<<#shutdownapi, シャットダウン機能>>
+
+|EsfPwrMgrPrepareShutdown
+|システムシャットダウンを開始します。
+|<<EsfPwrMgrPrepareShutdown>>
+
+|EsfPwrMgrExecuteShutdown
+|システムのシャットダウンを行います。 +
+停止状態でも実行可能です。
+|<<#EsfPwrMgrExecuteShutdown>>
+
+//情報取得機能
+3+|<<#infoapi, 情報取得機能>>
+
+|EsfPwrMgrGetVoltage
+|動作電圧情報を取得します。
+|<<EsfPwrMgrGetVoltage>>
+
+|EsfPwrMgrGetSupplyType
+|電源供給種別を取得します。
+|<<EsfPwrMgrGetSupplyType>>
+
+// HoursMetere
+3+|<<#hoursmeterapi, HoursMeter機能>>
+
+|EsfPwrMgrHoursMeterGetValue
+|HoursMeterの現在値を取得します。
+|<<EsfPwrMgrHoursMeterGetValue>>
+
+// デバイス死活監視機能
+3+|<<#wdtapi, デバイス死活監視機能>>
+
+|WdtCallBack
+|デバイス死活監視失敗検出時の処理を実行します。
+|<<WdtCallBack>>
+
+|EsfPwrMgrWdtTerminate
+|デバイスの死活監視のためのKeepAliveの送信を停止します。
+|<<EsfPwrMgrWdtTerminate>>
+
+|EsfPwrMgrWdtKeepAlive
+|デバイスの死活監視のためのKeepAliveを送信します。
+|<<EsfPwrMgrWdtKeepAlive>>
+
+// エクセプション情報機能
+3+|<<#wdtapi, エクセプション情報機能>>
+
+|EsfPwrMgrGetExceptionInfo
+|エクセプション情報を取得します。
+|<<EsfPwrMgrGetExceptionInfo>>
+
+|EsfPwrMgrConvExceptionInfo
+|エクセプション情報をテキスト形式に変換します。
+|<<EsfPwrMgrConvExceptionInfo>>
+
+|EsfPwrMgrClearExceptionInfo
+|エクセプション情報を削除します。
+|<<EsfPwrMgrClearExceptionInfo>>
+
+// リセット要因取得機能
+3+|<<#wdtapi, リセット要因取得機能>>
+
+|EsfPwrMgrGetResetCause
+|リセット要因を取得します。
+|<<EsfPwrMgrGetResetCause>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_DataType_EsfPwrMgrError]
+==== EsfPwrMgrError
+APIの実行結果を定義する列挙型です。
+
+* *書式* +
++
+[source, C]
+....
+typedef enum {
+    kEsfPwrMgrOk,
+    kEsfPwrMgrErrorInvalidArgument,
+    kEsfPwrMgrErrorResourceExhausted,
+    kEsfPwrMgrErrorInternal,
+    kEsfPwrMgrErrorAlreadyRunning,
+    kEsfPwrMgrErrorStatus,
+    kEsfPwrMgrErrorExternal,
+    kEsfPwrMgrErrorTimeout,
+    kEsfPwrMgrErrorUnsupportedApi,
+    kEsfPwrMgrErrorWaitReboot
+} EsfPwrMgrError;
+....
+
+* *値* +
++
+[#_Table_EsfPwrMgrError]
+.EsfPwrMgrErrorの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfPwrMgrOk
+|成功です。
+
+|kEsfPwrMgrErrorInvalidArgument
+|引数が正しくありません。
+
+|kEsfPwrMgrErrorResourceExhausted
+|メモリが不足しています。
+
+|kEsfPwrMgrErrorInternal
+|内部処理に失敗しました。
+
+|kEsfPwrMgrErrorAlreadyRunning
+|処理実行中です。
+
+|kEsfPwrMgrErrorStatus
+|状態異常です。
+
+|kEsfPwrMgrErrorExternal
+|外部API実行エラーです。
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトが発生しました。
+
+|kEsfPwrMgrErrorUnsupportedApi
+|未サポートのAPIです。
+
+|kEsfPwrMgrErrorWaitReboot
+|WDTによる再起動待ちです。
+
+|===
+
+[#_DataType_EsfPwrMgrSupplyType]
+==== EsfPwrMgrSupplyType
+電源供給種別を定義する列挙型です。
+
+* *書式* +
++
+[source, C]
+....
+typedef enum {
+  kEsfPwrMgrSupplyTypeUnknown = -1,
+  kEsfPwrMgrSupplyTypePoE,
+  kEsfPwrMgrSupplyTypeUsb,
+  kEsfPwrMgrSupplyTypeDcPlug,
+  kEsfPwrMgrSupplyTypePrimaryBattery,
+  kEsfPwrMgrSupplyTypeSecondaryBattery,
+  kEsfPwrMgrSupplyTypeMax
+} EsfPwrMgrSupplyType;
+....
+
+* *値* +
++
+[#_Table_EsfPwrMgrSupplyType]
+.EsfPwrMgrSupplyTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfPwrMgrSupplyTypeUnknown
+|非サポートです。
+
+|kEsfPwrMgrSupplyTypePoE
+|PoE給電です。
+
+|kEsfPwrMgrSupplyTypeUsb
+|Usb給電です。
+
+|kEsfPwrMgrSupplyTypeDcPlug
+|DCプラグ給電です。
+
+|kEsfPwrMgrSupplyTypePrimaryBattery
+|プライマリバッテリー給電です。
+
+|kEsfPwrMgrSupplyTypeSecondaryBattery
+|セカンダリバッテリー給電です。
+
+|kEsfPwrMgrSupplyTypeMax
+|要素数の最大値です。
+
+|===
+
+[#_DataType_ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL]
+==== ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL
+
+HoursMeterの定期加算周期(単位：時)です。
+
+* *書式* +
++
+[source, C]
+....
+#define ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL (1)
+....
+
+[#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE]
+==== ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE
+
+エクセプション情報のテキスト形式の最大サイズです。
+
+* *書式* +
++
+[source, C]
+....
+#ifdef CONFIG_STACK_COLORATION
+#define ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE   (18158)
+#else
+#define ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE   (18141)
+#endif
+....
+
+[#_DataType_EsfPwrMgrExceptionInfo]
+==== struct EsfPwrMgrExceptionInfo
+
+エクセプション情報の構造体です。
+
+* *書式* +
++
+[source, C]
+....
+struct EsfPwrMgrExceptionInfo;
+....
+
+* *値* +
+[#_Table_EsfPwrMgrExceptionInfo]
+メンバ変数は非公開です。 +
+そのため、呼び出し元での struct EsfPwrMgrExceptionInfo 型の変数、sizeof での使用はできません。 +
+struct EsfPwrMgrExceptionInfo 型のポインタ変数としての使用は可能です。 +
++
+使用不可の例： +
+  ``**struct EsfPwrMgrExceptionInfo info;``** +
+  ``**sizeof(struct EsfPwrMgrExceptionInfo);``** +
+使用可の例： +
+  ``**struct EsfPwrMgrExceptionInfo *info;``** +
+
+[#_DataType_EsfPwrMgrResetCause]
+==== EsfPwrMgrResetCause
+
+リセット要因を定義する列挙型です。
+
+* *書式* +
++
+[source, C]
+....
+typedef enum EsfPwrMgrResetCause {
+  kEsfPwrMgrResetCauseUnknown = -1,
+  kEsfPwrMgrResetCauseSysChipPowerOnReset = 0,
+  kEsfPwrMgrResetCauseSysBrownOut,
+  kEsfPwrMgrResetCauseCoreSoft,
+  kEsfPwrMgrResetCauseCoreDeepSleep,
+  kEsfPwrMgrResetCauseWDT,
+  kEsfPwrMgrResetCauseMax
+} EsfPwrMgrResetCause;
+....
+
+* *値* +
++
+[#_Table_EsfPwrMgrResetCause]
+.EsfPwrMgrResetCauseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|kEsfPwrMgrResetCauseUnknown|未サポートのリセット要因です。
+|kEsfPwrMgrResetCauseSysChipPowerOnReset|chip power on system reset
+|kEsfPwrMgrResetCauseSysBrownOut|brown-out system reset
+|kEsfPwrMgrResetCauseCoreSoft|software core reset
+|kEsfPwrMgrResetCauseCoreDeepSleep|deep-sleep core reset
+|kEsfPwrMgrResetCauseWDT|Watchdog reset
+|kEsfPwrMgrResetCauseMax|要素数の最大値です。
+
+|===
+
+[#_DataType_EsfPwrMgrRebootType]
+==== EsfPwrMgrRebootType
+再起動手法を定義する列挙型です。
+
+* *書式* +
++
+[source, C]
+....
+typedef enum EsfPwrMgrRebootType {
+  EsfPwrMgrRebootTypeSW,
+  EsfPwrMgrRebootTypeHW
+} EsfPwrMgrRebootType;
+....
+
+* *値* +
++
+[#_Table__EsfPwrMgrRebootType]
+.EsfPwrMgrSupplyTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+
+|EsfPwrMgrRebootTypeSW
+|ソフトウェアリブートです。
+
+|EsfPwrMgrRebootTypeHW
+|ハードウェアリブートです。
+
+|===
+
+<<<
+
+=== API定義
+[#initapi]
+{blank}
+
+[#EsfPwrMgrStart]
+==== EsfPwrMgrStart
+* *機能* 
++
+Power Managerを開始します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrStart(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
++
+** 内部状態を初期化し、必要なリソースを確保します。 +
+
+** PL WDT 初期化、PL WDT ハンドルの登録とデバイス死活監視の開始を行います。 +
+   デバイス死活監視はPowerManager開始処理の最初に行います。 +
+** ParameterStorageManager のハンドルを取得します。 +
+ParameterStorageManager を使い HoursMeterの現在値を取得します。 +
+タイマー周期に `ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL` を設定、タイマーの繰り返し実行を設定、HoursMeterインクリメント処理をタイマー満了時コールバックに登録し Utility Timer を起動します。 +
+
+** HAL I2C を使いデバイスのUSB規格対応情報を取得しUSB電流制限判定を行います。 +
+判定した結果に応じデバイスのUSB_SW操作し処理を続行、もしくは処理を停止します。 +
+
+** 開始状態で再度本APIを呼び出した場合、何もせずに``**kEsfPwrMgrOk**``を応答します。
+
+** 実行情報
+*** 本APIを同時に呼び出すことは出来ません。
+*** 本APIを複数のスレッドから呼び出すことは出来ません。
+*** 本APIを複数のタスクから呼び出すことは出来ません。
+*** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
++
+[#_TableEsfPwrMgrStartError]
+.EsfPwrMgrStartエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|開始成功
+|なし
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|ParameterStorageManager操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|HAL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorWaitReboot
+|再起動待ち
+|EsfPwrMgrStopForReboot実行済み
+|WDTによる再起動を待つ
+
+|===
++
+本API内のUSB電流制限判定でエラーが発生した場合、以下動作を行います。
+
+** 無限sleepを行いデバイスの再起動を促す通知を出力し、関数応答を行いません。
+
+[#EsfPwrMgrStop]
+==== EsfPwrMgrStop
+* *機能* 
++
+Power Managerを終了します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrStop(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+リソースを解放し、内部状態が停止状態に戻ります。  +
+Utility Timer、ParameterStorageManager のハンドルを解放します。 +
+デバイス死活監視の停止とPL WDT ハンドル解放、PL WDT終了処理を行います。 +
+
+** 本APIを同時に呼び出すことは出来ません。
+** 本APIを複数のスレッドから呼び出すことは出来ません。
+** 本APIを複数のタスクから呼び出すことは出来ません。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報* +
+
+[#_TableEsfPwrMgrStopError]
+.EsfPwrMgrStopエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|実行不要
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|ParameterStorageManager操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|HAL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+
+[#EsfPwrMgrStopForReboot]
+==== EsfPwrMgrStopForReboot
+* *機能* 
++
+Power Managerを終了し、WDTによる再起動を待ちます。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrStopForReboot(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+PL WDT以外のリソースを解放し、内部状態が停止状態に戻ります。  +
+Utility Timer、ParameterStorageManager のハンドルを解放します。 +
+デバイスの死活監視のためのKeepAliveの送信を停止します。  +
+``**EsfPwrMgrWdtTerminate**``で既に送信が停止している場合は、KeepAlive停止状態を継続します。  +
+本API実行後、最大60秒後に WdtCallBack が実行されます。
+
+** 本APIを同時に呼び出すことは出来ません。
+** 本APIを複数のスレッドから呼び出すことは出来ません。
+** 本APIを複数のタスクから呼び出すことは出来ません。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+** 本API実行後、``**EsfPwrMgrExecuteShutdown**``、``**EsfPwrMgrExecuteRebootEx**``、``**EsfPwrMgrWdtKeepAlive**``を除くPower ManagerのAPIを呼び出すことは出来ません。
+
+* *エラー情報* +
+
+[#_TableEsfPwrMgrStopForReboot]
+.EsfPwrMgrStopForRebootエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|実行不要
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|ParameterStorageManager操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|HAL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+[#rebootapi]
+{blank}
+
+[#EsfPwrMgrPrepareReboot]
+==== EsfPwrMgrPrepareReboot
+* *機能* 
++
+システム再起動を開始します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrPrepareReboot(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+再起動イベントをESF(main)に通知し、必要処理実行契機の通知を行います。 +
+再起動・シャットダウン実行中に本APIを使用した場合、``**kEsfPwrMgrErrorAlreadyRunning**``を応答します。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報* 
+
+[#_TableEsfPwrMgrPrepareRebootError]
+.EsfPwrMgrPrepareRebootエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorAlreadyRunning
+|実行済エラー
+|再起動・シャットダウン実行中
+|実行中の再起動・シャットダウンが完了するのを待つ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|ESF(main)操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
+
+[#EsfPwrMgrExecuteRebootEx]
+==== EsfPwrMgrExecuteRebootEx
+* *機能* 
++
+システム再起動を実行します。
+
+* *書式* +
++
+``** void EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootType reboot_type)**``  
+
+* *引数の説明* +
++
+**``[IN] EsfPwrMgrRebootType reboot_type``**::
+再起動手法です。 +
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+ありません。
+
+* *説明* +
+PL(SystemControl)を使用してシステムの再起動を実行します。 +
+EsfPwrMgrRebootTypeSW が指定された場合ソフトウェアリブートを実行します。 +
+EsfPwrMgrRebootTypeHW が指定された場合ハードウェアリブートを実行します。 +
+本APIはPower Manager停止状態でも実行可能です。 +
+本APIが成功した場合、デバイスが再起動されるため応答しません。 +
+** 本APIを同時に呼び出すことは出来ません。
+** 本APIを複数のスレッドから呼び出すことは出来ません。
+** 本APIを複数のタスクから呼び出すことは出来ません。
+
+* *エラー情報* +
+本API内でエラーが発生した場合、以下動作を行います。 +
+** 無限sleepを行いデバイスの再起動を促す通知を出力し、関数応答を行いません。
+
+[#shutdownapi]
+{blank}
+
+[#EsfPwrMgrPrepareShutdown]
+==== EsfPwrMgrPrepareShutdown
+* *機能* 
++
+システムシャットダウンを開始します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrPrepareShutdown(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+シャットダウンイベントをESF(main)に通知し、必要処理実行契機の通知を行います。 +
+再起動・シャットダウン実行中に本APIを使用した場合、``**kEsfPwrMgrErrorAlreadyRunning**``を応答します。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrPrepareShutdownError]
+.EsfPwrMgrPrepareShutdownエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorAlreadyRunning
+|実行済エラー
+|再起動・シャットダウン実行中
+|実行中の再起動・シャットダウンが完了するのを待つ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|ESF(main)操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
+
+[#EsfPwrMgrExecuteShutdown]
+==== EsfPwrMgrExecuteShutdown
+* *機能* 
++
+システムシャットダウンを実行します。
+
+* *書式* +
++
+``** void EsfPwrMgrExecuteShutdown(void)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+ありません。
+
+* *説明* +
+PL(SystemControl)を使用してシステムのシャットダウンを実行します。 +
+本APIはPower Manager停止状態でも実行可能です。 +
+本APIが成功した場合、デバイスがシャットダウンされるため、応答しません。 +
+** 本APIを同時に呼び出すことは出来ません。
+** 本APIを複数のスレッドから呼び出すことは出来ません。
+** 本APIを複数のタスクから呼び出すことは出来ません。
+
+* *エラー情報* +
+本API内でエラーが発生した場合、以下動作を行います。 +
+** 無限sleepを行いデバイスの再起動を促す通知を出力し、関数応答を行いません。
+
+[#infoapi]
+{blank}
+
+[#EsfPwrMgrGetVoltage]
+==== EsfPwrMgrGetVoltage
+* *機能* 
++
+動作電圧情報を取得します。(T.B.D.)
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetVoltage(int32_t *voltage)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] int32_t *voltage``**:: 
+動作電圧情報です。 +
+
+NOTE: voltageは現状ADCの生の値として取得されます。
+
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+HAL(不明 T.B.D.)から動作電圧情報を取得し、応答します。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrGetVoltageError]
+.EsfPwrMgrGetVoltageエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorInvalidArgument
+|引数不正
+|**``voltage``**にNULLが指定された
+|正しい引数を指定してリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|外部APIでエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorUnsupportedApi
+|API未サポートエラー
+|なし
+|現在未サポートのAPIです。使用しないでください。
+
+|===
+
+
+[#EsfPwrMgrGetSupplyType]
+==== EsfPwrMgrGetSupplyType
+* *機能* 
++
+電源供給種別を取得します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetSupplyType(EsfPwrMgrSupplyType *supply_type)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] EsfPwrMgrSupplyType *supply_type``**:: 
+電源供給種別情報です +
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+PL(power_manager)から電源供給種別情報を取得し、<<#_Table_EsfPwrMgrSupplyType, EsfPwrMgrSupplyType>> を返します。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrGetSupplyTypeError]
+.EsfPwrMgrGetSupplyTypeエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorInvalidArgument
+|引数不正
+|**``supply_type``**にNULLが指定された
+|正しい引数を指定してリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+[#hoursmeterapi]
+{blank}
+
+[#EsfPwrMgrHoursMeterGetValue]
+==== EsfPwrMgrHoursMeterGetValue
+* *機能* 
++
+HoursMeterの現在値を取得します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrHoursMeterGetValue(int32_t *hours)**``  
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] int32_t *hours``**:: 
+HoursMeter現在値です。 +
+
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+HoursMeterの現在値を取得します。 +
+
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrHoursMeterGetValueError]
+.EsfPwrMgrHoursMeterGetValueエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kSsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+|===
+
+[#wdtapi]
+{blank}
+
+[#WdtCallBack]
+==== WdtCallBack
+* *機能* 
++
+デバイス死活監視失敗検出時の処理を実行します。
+
+* *書式* +
++
+``** static void WdtCallBack(void *private_data)**``
+
+* *引数の説明* +
++
+**``[IN,OUT] void *private_data``**:: 
+callback関数の入出力引数です。使用しません。
+
+* *戻り値* +
++
+ありません。
+
+* *説明* +
+PL WDTに登録するcallback関数です。外部からは呼び出せません。 +
+RTCメモリに最後に動作していたタスクのエクセプション情報を保存します。 +
+WDT Reboot が実行されます。 +
+本APIが成功した場合、デバイスが再起動されるため応答しません。 +
+EXTERNAL_POWER_MANAGER_WDT_DUMP_ENABLE が有効時、全Stack情報が出力されます。
+** 本APIを同時に呼び出すことは出来ません。
+** 本APIを複数のスレッドから呼び出すことは出来ません。
+** 本APIを複数のタスクから呼び出すことは出来ません。
+
+* *エラー情報* +
++
+内部でエラーが発生した場合、ログ出力を行い処理は継続します。
+
+
+[#EsfPwrMgrWdtTerminate]
+==== EsfPwrMgrWdtTerminate
+* *機能* 
++
+デバイスの死活監視のためのKeepAliveの送信を停止します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrWdtTerminate(void)**``
+
+* *引数の説明* +
++
+**``[IN] なし``**::
+
+**``[OUT] なし``**::
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+デバイスの死活監視のためのKeepAliveの送信を停止します。 +
+本API実行後、最大60秒後に WdtCallBack が実行されます。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrWdtTerminate]
+.EsfPwrMgrWdtTerminateエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL 操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
+
+[#EsfPwrMgrWdtKeepAlive]
+==== EsfPwrMgrWdtKeepAlive
+* *機能* 
++
+デバイスの死活監視のためのKeepAliveを送信します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrWdtKeepAlive(void)**``
+
+* *引数の説明* +
++
+**``[IN] なし``**::
+
+**``[OUT] なし``**::
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+デバイスの死活監視のためのKeepAliveを送信します。 +
+本API実行後、WDTのタイムアウト時間がリセットされます。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+TIP: ``**EsfPwrMgrWdtTerminate**``または``**EsfPwrMgrWdtStopForReboot**``実行後の場合、WDTのタイムアウト時間は以下になります。  +
+コンフィグで設定したタイムアウト時間が60秒以下：設定したタイムアウト時間[秒]  +
+コンフィグで設定したタイムアウト時間が60秒以上：60秒
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrWdtKeepAlive]
+.EsfPwrMgrWdtKeepAliveエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL 操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
+[#exceptioninfoapi]
+{blank}
+
+[#EsfPwrMgrGetExceptionInfo]
+==== EsfPwrMgrGetExceptionInfo
+* *機能* 
++
+エクセプション情報を取得します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetExceptionInfo(struct EsfPwrMgrExceptionInfo {asterisk}{asterisk}info, uint32_t *info_size)**``
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] <<#_DataType_EsfPwrMgrExceptionInfo, struct EsfPwrMgrExceptionInfo>> {asterisk}{asterisk}info``**:: 
+エクセプション情報です +
+
+**``[OUT] uint32_t *info_size``**:: 
+エクセプション情報のサイズです +
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+RTCメモリからエクセプション情報を取得し、エクセプション情報へのポインタとエクセプション情報のサイズを返します。 +
+エクセプション情報のポインタは Power Manager 内部で管理されていますので、呼び出し元でメモリ解放処理は行わないでください。 <<#EsfPwrMgrStop, EsfPwrMgrStop>> または <<#EsfPwrMgrClearExceptionInfo, EsfPwrMgrClearExceptionInfo>> 実行時に解放されます。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrGetExceptionInfoError]
+.EsfPwrMgrGetExceptionInfoエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorInvalidArgument
+|引数不正
+|以下のいずれかの条件が発生した +
+**``info``**にNULLが指定された +
+**``info_size``**にNULLが指定された +
+|正しい引数を指定してリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+[#EsfPwrMgrConvExceptionInfo]
+==== EsfPwrMgrConvExceptionInfo
+* *機能* 
++
+エクセプション情報をテキスト形式に変換します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrConvExceptionInfo(
+  struct EsfPwrMgrExceptionInfo *info, char *dst, uint32_t dst_size)**``
+
+* *引数の説明* +
++
+**``[IN] <<#_DataType_EsfPwrMgrExceptionInfo, struct EsfPwrMgrExceptionInfo>> *info``**:: 
+エクセプション情報です +
+
+**``[OUT] char *dst``**:: 
+エクセプション情報(テキスト形式)のバッファです +
+
+**``[IN] uint32_t dst_size``**:: 
+エクセプション情報(テキスト形式)のバッファのサイズです +
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+指定されたエクセプション情報をテキスト形式に変換し、バッファに格納します。 +
+dst_size が 1 以上 <<#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE, ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE>> 未満の場合、全ての情報を取得できない場合があります。このとき戻り値は kEsfPwrMgrOk を返します。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrConvExceptionInfoError]
+.EsfPwrMgrConvExceptionInfoエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorInvalidArgument
+|引数不正
+|以下のいずれかの条件が発生した +
+**``info``**にNULLが指定された +
+**``dst``**にNULLが指定された +
+**``dst_size``**に0が指定された +
+|正しい引数を指定してリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+[#EsfPwrMgrClearExceptionInfo]
+==== EsfPwrMgrClearExceptionInfo
+* *機能* 
++
+エクセプション情報を削除します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrClearExceptionInfo(void)**``
+
+* *引数の説明* +
++
+**``[IN] なし``**::
+
+**``[OUT] なし``**::
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+RTCメモリのエクセプション情報を削除します。 +
+Power Manager 内部で管理されているエクセプション情報のメモリ解放処理を行います。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrClearExceptionInfoError]
+.EsfPwrMgrClearExceptionInfoエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+[#resetcauseapi]
+{blank}
+
+[#EsfPwrMgrGetResetCause]
+==== EsfPwrMgrGetResetCause
+* *機能* 
++
+リセット要因を取得します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrGetResetCause(EsfPwrMgrResetCause *reset_cause)**``
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] <<#_DataType_EsfPwrMgrResetCause, EsfPwrMgrResetCause>> *reset_cause``**:: 
+リセット要因です +
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+リセット要因を返します。 +
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+
+* *エラー情報*
+
+[#_TableEsfPwrMgrGetResetCause]
+.EsfPwrMgrGetResetCauseエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorInvalidArgument
+|引数不正
+|**``reset_cause``**にNULLが指定された
+|正しい引数を指定してリトライ
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|===
+
+<<<
+
+== API使用時の呼び出し例
+各APIを使用する場合の呼び出し例を以下に示します。
+
+=== 電源管理API呼び出しシーケンスの例（再起動）
+[#_電源管理API呼び出しシーケンスの例（再起動）]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant HAL
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: 開始処理実施
+  esf_powermanager -->> -App : _
+
+  App ->> +esf_powermanager : EsfPwrMgrGetVoltage
+  esf_powermanager ->> +HAL : 電圧情報取得
+  HAL -->> -esf_powermanager : 電圧情報
+  esf_powermanager -->> -App : 電圧情報
+
+  App ->> +esf_powermanager : EsfPwrMgrPrepareReboot
+  alt 再起動実行中の場合
+    esf_powermanager -->> App : 実行中応答
+  else else
+    esf_powermanager -->> App : 再起動イベント通知
+    esf_powermanager -->> -App : _
+  end
+  
+  Note over App: 再起動イベント受信で動作開始
+  Note over App: 再起動処理実施
+  Activate esf_powermanager
+  App ->> esf_powermanager : EsfPwrMgrExecuteRebootEx
+  esf_powermanager ->> +HAL : システム再起動実行
+  alt 再起動成功
+    Note over App, HAL: 処理成功するとシステム再起動が発生する
+  else 再起動失敗
+    HAL -->> -esf_powermanager : 失敗
+    Note over esf_powermanager: 無限sleep
+  end
+  Deactivate esf_powermanager
+....
+
+=== USB電流制限判定シーケンスの例
+[#_USB電流制限判定シーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant HAL
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: 開始処理実施
+  esf_powermanager ->> +esf_powermanager : USB電流制限判定処理
+  esf_powermanager ->> +HAL : USB規格対応情報取得(I2C)
+  HAL -->> -esf_powermanager : _
+  Note over esf_powermanager: 電源種別判定
+  Deactivate esf_powermanager
+  
+  alt 判定結果==OK
+    esf_powermanager ->> +HAL : USB_SW操作(I2C)
+    HAL -->> -esf_powermanager : _
+    esf_powermanager -->> App : _
+  else
+    Note over esf_powermanager: 無限sleep
+  end
+
+  Deactivate esf_powermanager
+....
+
+=== HoursMeter機能API呼び出しシーケンスの例
+[#_HoursMeter機能API呼び出しシーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant esf_ds as ParameterStorageManager
+    participant HAL
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+
+  esf_powermanager ->> +esf_ds : ハンドル取得
+  esf_ds -->> -esf_powermanager : _
+  esf_powermanager ->> +esf_ds : HoursMeter値 取得
+  esf_ds ->> +HAL : HoursMeter値 取得
+  HAL -->> -esf_ds : HoursMeter値
+  esf_ds -->> -esf_powermanager : HoursMeter値
+  Note over esf_powermanager: HoursMeter値 保持
+
+  esf_powermanager ->> +HAL : create timer thread
+  HAL -->> -esf_powermanager : _
+  esf_powermanager ->> +HAL : timer start
+  HAL -->> -esf_powermanager : _
+
+  esf_powermanager -->> -App : _
+
+
+  loop timer thread timer 満了
+    HAL ->> +esf_powermanager : timer thread calls callback func
+    Note over esf_powermanager: HoursMeter値 インクリメント
+    esf_powermanager ->> +esf_ds : HoursMeter値 保存
+    esf_ds ->> +HAL : HoursMeter値 保存
+    HAL -->> -esf_ds : _
+    esf_ds -->> -esf_powermanager : _
+    esf_powermanager -->> -HAL : _
+  end
+  
+  App ->> +esf_powermanager : EsfPwrMgrHoursMeterGetValue
+  Note over esf_powermanager: PowerManager内で保持している<br/>HoursMeter値を返却
+  esf_powermanager -->> -App : HoursMeter値
+
+  App ->> +esf_powermanager : EsfPwrMgrFinish
+  esf_powermanager ->> +esf_ds : ハンドル解放
+  esf_ds -->> -esf_powermanager : _
+
+  esf_powermanager ->> HAL : timer stop
+  HAL -->> esf_powermanager : _
+  esf_powermanager ->> HAL : destroy timer thread
+  HAL -->> esf_powermanager : _
+
+  esf_powermanager -->> -App : _
+....
+
+=== デバイス死活監視機能API呼び出しシーケンスの例
+[#_デバイス死活監視機能API呼び出しシーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant PL
+    participant Util_MSG as UtilityMsg
+    participant OS
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: 開始処理実施
+  esf_powermanager ->> +Util_MSG : UtilityMsgInitialize
+  Util_MSG -->> -esf_powermanager : _
+  esf_powermanager ->> +PL : PlWdtInitialize
+  PL -->> -esf_powermanager : _
+  esf_powermanager ->> +PL : PlWdtRegisterIrqHandler
+  PL -->> -esf_powermanager : _
+  esf_powermanager ->> +PL : PlWdtStart
+  PL -->> -esf_powermanager : _
+  esf_powermanager -->> -App : _
+
+  Note over OS: 死活監視NG(WDT発火)で動作開始
+  Activate esf_powermanager
+  OS ->> esf_powermanager : WDT発火割り込み
+  Note over esf_powermanager: 再起動処理実施
+  esf_powermanager ->> esf_powermanager : EsfPwrMgrExecuteRebootEx
+  esf_powermanager ->> +PL : システム再起動実行
+  alt 再起動成功
+    Note over App, OS: 処理成功するとシステム再起動が発生する
+  else 再起動失敗
+    PL -->> -esf_powermanager : 失敗
+    Note over esf_powermanager: 無限sleep
+  end
+  Deactivate esf_powermanager
+....
+
+<<<
+
+=== エクセプション情報機能API呼び出しシーケンスの例
+[#_エクセプション情報API呼び出しシーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant PL
+
+  Note over App, PL: WDTリブート
+  
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: 開始処理実施
+  esf_powermanager -->> -App : _
+
+  App ->> +esf_powermanager : EsfPwrMgrGetExceptionInfo
+  opt エクセプション情報領域未確保
+    esf_powermanager ->> esf_powermanager : エクセプション情報領域確保
+  end
+  esf_powermanager ->> +PL : PlSystemCtlGetExceptionInfo
+  PL -->> -esf_powermanager : エクセプション情報
+  esf_powermanager -->> -App : エクセプション情報
+
+  App ->> App : エクセプション情報を Flash へ保存
+
+  App ->> +esf_powermanager : EsfPwrMgrStop
+  Note over esf_powermanager: 終了処理実施
+  opt エクセプション情報領域確保済み
+    esf_powermanager ->> esf_powermanager : エクセプション情報領域解放
+  end
+  esf_powermanager -->> -App : _
+
+  App ->> +esf_powermanager : EsfPwrMgrExecuteRebootEx
+  Activate esf_powermanager
+  esf_powermanager ->> +PL : PlSystemCtlExecOperation
+  Deactivate esf_powermanager
+
+  Note over App, PL: リブート
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  Note over esf_powermanager: 開始処理実施
+  esf_powermanager -->> -App : _
+
+  App ->> App : エクセプション情報サイズを Flash から読込
+  App ->> App : エクセプション情報領域の確保
+  App ->> App : エクセプション情報を Flash から読込
+  App ->> App : エクセプション情報(テキスト形式)領域の確保
+
+  App ->> +esf_powermanager : EsfPwrMgrConvExceptionInfo
+  esf_powermanager ->> +PL : PlSystemCtlConvExceptionInfo
+  PL -->> -esf_powermanager : エクセプション情報(テキスト形式)
+  esf_powermanager -->> -App : エクセプション情報(テキスト形式)
+
+  App ->> App : エクセプション情報(テキスト形式)のアップロード
+  App ->> App : エクセプション情報(テキスト形式)領域の解放
+  App ->> App : エクセプション情報領域の解放
+
+  App ->> +esf_powermanager : EsfPwrMgrClearExceptionInfo
+  opt エクセプション情報領域確保済み
+    esf_powermanager ->> +PL : PlSystemCtlClearExceptionInfo
+    PL -->> -esf_powermanager : _
+    esf_powermanager ->> esf_powermanager : エクセプション情報領域解放
+  end
+  esf_powermanager -->> -App : _
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+* 間欠駆動機能は未対応です。
+* USB電流制限機能のEtherリセット解除は未対応です。
+
+=== HALおよび他モジュールに要求する機能の一覧
+.HALおよび他モジュールに要求する機能の一覧
+[width="100%",cols="20%,30%,50%",options="header"]
+|===
+|モジュール名 |要求機能 |説明
+|PL
+|シャットダウン/再起動実行機能
+|システムのシャットダウン・再起動を行う機能。
+
+|HAL
+|動作電圧情報取得機能
+|動作電圧情報を取得する機能。
+
+|HAL I2C
+|I2C制御機能
+|デバイスのI2C I/Fを制御する機能。
+
+|Utility Timer
+|タイマー機能
+|タイマー満了契機に登録したハンドル関数を実行する機能。
+
+|PL WDT
+|WDT制御機能
+|WDT発火時に登録したハンドル関数を実行する機能。
+
+|ESF(Main)
+|再起動・シャットダウンイベントを処理する機能
+|再起動・シャットダウン要求動作時にESF(Main)に対応イベントを送信する機能。 +
+該当イベントを受信し、再起動・シャットダウン処理を行う機能。
+
+|ESF(Parameter Storage Manager)
+|データ保存機能
+|不揮発性のデータ保存領域にデータ構造体の保存、取得、削除を提供する機能。
+
+|===
+
+=== 要検討項目
+* 間欠駆動機能は要検討です。 + 
+間欠駆動機能対応時に再検討を行います。
+
+=== 非標準拡張
+本モジュールでは以下の非標準拡張を使用します。 +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|拡張名 |説明 |用途
+
+|**``##\\__VA_ARGS__``**
+|**``\\__VA_ARGS__``**のgcc非標準拡張です。 +
+可変引数を扱うマクロで、引数なしを扱う事ができるように拡張されています。
+|ログ出力先切替マクロに使用します。
+
+|===
+
+=== T5におけるUSB規格情報取得、設定のためのI2C通信接続情報
+
+[#_TableT5I2C]
+|===
+
+|項目|ブロック名|型番|address|dst pin|src pin|registar|bit|値
+
+|USB電源判定
+|IoExp0
+|PCAL6416AEV
+|21h
+|POE_USB_SEL_ST
+|P1_0
+|01h
+|0
+|H: PoE +
+ L: USB
+
+.2+^|CC1.5A対応
+.2+^|CC Ctrl
+.2+^|FUSB303B
+|31h
+|BC_LVL
+|-
+|11h
+|2:1
+|00: Sinkまたは未接続 +
+ 01: デフォルト電流対応 +
+ 10: 1.5A対応 +
+ 11: 3A対応
+
+
+|31h
+|ENABLE
+|-
+|05h
+|3
+|1: I2C mode +
+ 0: GPIO mode
+|BC1.2対応
+|IoExp0
+|PCAL6416AEV
+|21h
+|CHG_DET
+|P1_1
+|01h
+|1
+|H: BC1.2対応 +
+ L: 非対応
+
+|===
+
+<<<
+
+== 使用しているOSSの一覧
+OSSを使用していません。
+
+
+<<<
+
+== 参考文献
+
+* Parameter Storage Manager
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/esf/parameter_storage_manager/ParameterStorageManager_ja.adoc
+
+* Utility Timer
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/utility/timer/utility_timer_ja.adoc
+
+* PL WDT
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/porting_layer/power_manager/wdt/pl_wdt_ja.adoc
+
+* HAL I2C
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/i2c/hal_i2c_ja.adoc
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|0.1.0
+|初版リリース
+
+|0.1.1
+|詳細設計のフィードバック
+
+* データ型一覧、データ型定義
+    ** 型名を変更 +
+       EsfPwrMgrFactryResetCause → EsfPwrMgrFactoryResetCause
+
+* API定義 EsfPwrMgrStartFactoryReset
+    ** 引数の型を変更 +
+       EsfPwrMgrFactryResetCause → EsfPwrMgrFactoryResetCause
+
+|0.1.2
+|レビュー指摘対応
+
+* 全体
+** 間欠駆動機能に関する記載を削除
+
+* API使用時の呼び出し例
+** 再起動シーケンスの追加
+
+詳細設計のフィードバック 
+
+* API使用時の呼び出し例
+** Parameter Storage Manager APIの呼び出しを削除
+** NotifyEventとLED Manager実行順序変更を反映
+
+|0.1.3
+|ESF再構成対応
+
+* HoursMeter機能 追加
+* デバイス死活監視機能 追加
+* ファクトリーリセット機能 削除
+* 開始停止機能
+  ** EsfPwrMgrStart API へUSB電流制限判定を追加
+* 名称変更
+  ** SSFをESFへ変更
+* HAL API(Timer, WDT, I2C, SystemControl) の初期化・終了処理を追加
+
+|0.1.4
+|実装時のフィードバック
+
+* 全体
+** HAL WDTからPL WDTの名称変更に追従
+
+* コンポーネントの機能説明
+** 機能停止開始
+*** OSALの初期化、終了を追加
+
+** USB電流制限機能
+*** コンフィグ ``EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE`` で機能の有効無効設定の記載を追記
+*** マクロ定義 ``ESF_POWER_MANAGER_DEVICE_FOR_NE2`` をコンフィグ ``EXTERNAL_POWER_MANAGER_NE2_DEVICE_ENABLE`` に修正
+
+** HoursMeter機能
+*** カウントアップ周期のマクロ定義 ``ESF_POWER_MANAGER_HOURS_METER_ADD_INTERVAL`` について記載を追加
+
+** デバイス死活監視
+*** 関数名を ``EsfPwrMgrWatchdogTimerFailureHandler`` から ``EsfPwrMgrOnWdtTimeout`` に変更
+
+* データ型一覧
+** ``ESF_POWER_MANAGER_DEVICE_FOR_NE2`` をコンフィグに移動したため削除
+
+* API定義
+** EsfPwrMgrStart
+*** OSALの初期化を追加
+
+** EsfPwrMgrOnWdtTimeout
+*** 引数をcallback関数ポインタ型に一致するよう修正
+*** 外部APIではない旨を追記
+
+* API使用時の呼び出し例
+** HoursMeter機能API呼び出しシーケンスの例
+*** Utility Timer APIの呼び出しを最新化
+
+** デバイス死活監視機能API呼び出しシーケンスの例
+*** OSAL, PL APIの呼び出しを最新化
+
+* T5におけるUSB規格情報取得、設定のためのI2C通信接続情報
+** CC1.5A対応のdst pinをBC_LVLに更新
+
+|0.1.5
+|PL結合時のフィードバック
+
+* 全体
+** HAL WDT → PL WDT 名称変更
+** HAL Timer → Utility Timer 名称変更
+** HAL,PL,OSALの初期化、終了処理のタイミングを最新に追従
+
+* 6.5. T5におけるUSB規格情報取得、設定のためのI2C通信接続情報
+** CC Ctrl、ENABLEレジスタのアクセス情報を追加
+
+|0.1.6
+|HALの実装に追従 +
+HAL電圧取得APIがヘッダファイルから削除されたため具体的にIFが提供されるまで EsfPwrMgrGetVoltage は未サポートを応答するように変更
+
+* 4.3. データ型定義
+** EsfPwrMgrError に kEsfPwrMgrErrorUnsupportedApi 追加
+* 4.4. API詳細
+**  EsfPwrMgrGetVoltage +
+    API未サポートエラー応答を追加
+
+|0.1.7
+|LEDManagerの仕様変更に合わせた修正 +
+
+* 全体
+** LEDManagerに関する記述を削除
+
+|0.1.8
+|WDT Terminate APIの追加 +
+
+* 全体
+** EsfPwrMgrWdtTerminate APIを追加
+
+|0.1.9
+|PowerManagerを停止してWDTによる再起動を待つAPIの追加 +
+
+* 全体
+** EsfPwrMgrStopForReboot APIを追加
+** EsfPwrMgrWdtTerminate APIの説明を修正
+
+|0.1.10
+|WDT に KeepAlive を送信する API の追加 +
+
+* 全体
+** EsfPwrMgrWdtKeepAlive API を追加
+
+|0.1.11
+| エクセプション情報機能 の追加 +
+リセット要因取得機能 の追加 +
+
+* 全体
+** 関数名を ``EsfPwrMgrOnWdtTimeout`` から ``WdtCallBack`` に変更
+** EsfPwrMgrGetResetCause API を追加
+** EsfPwrMgrGetExceptionInfo API を追加
+** EsfPwrMgrConvExceptionInfo API を追加
+** EsfPwrMgrClearExceptionInfo API を追加
+
+** 3.5.4 USB電流制限機能
+*** コンフィグ ``EXTERNAL_POWER_MANAGER_NE2_DEVICE_ENABLE`` をコンフィグ ``EXTERNAL_POWER_MANAGER_USB_DEVICE_ENABLE`` に修正
+
+* 4.3. データ型定義
+** ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE を追加
+** struct EsfPwrMgrExceptionInfo を追加
+** EsfPwrMgrResetCause を追加
+
+* 4.4.11. WdtCallBack の説明を修正
+** EXTERNAL_POWER_MANAGER_WDT_DUMP_ENABLE の説明を追加
+
+* 5. API使用時の呼び出し例
+** エクセプション情報機能 API 呼び出しシーケンスの例を追加
+
+|===

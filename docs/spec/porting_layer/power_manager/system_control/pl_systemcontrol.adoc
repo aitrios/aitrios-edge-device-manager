@@ -1,0 +1,1302 @@
+= PL SystemControl (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.3
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document describes the specifications of the SystemControl implementation, which is one of the impl layers of AITRIOS PL.  
+The purpose of the SystemControl implementation is to absorb differences in power control and other features that vary by camera.
+
+TIP: For example, functions such as rebooting and powering off differ depending on the camera. The PL SystemControl layer serves to absorb such differences.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. A layer that abstracts camera/OS-specific differences.
+
+|===
+
+<<<
+
+== Component Description
+
+The PL SystemControl layer is the core component of the PL interface that can be used without being aware of camera-specific differences. Its purpose is to absorb board-level differences related to system power control functions.  
+It can also be modified or extended to match the target camera.
+
+=== Component Overview
+
+The following diagram shows the software structure centered around this block.
+
+.Overview Diagram
+image::./images/systemcontrol_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Detailed Component Description
+
+An example usage sequence of PL SystemControl is shown below.  
+After executing `PlSystemCtlInitialize`, the upper layer can use PL SystemControl APIs to perform system power operations.  
+Additionally, for rebooting, retrieving reset causes, and obtaining/saving exception information, these operations can also be executed before `PlSystemCtlInitialize`.
+
+[#_systemcontrol_seq]
+.Sequence Overview
+image::./images/systemcontrol_seq.png[scaledwidth="100%",align="center"]
+
+==== Dependent Blocks (For Internal Use in PL SystemControl)
+.Dependent Blocks
+[width="100%",options="header"]
+None
+
+<<<
+
+=== State Transition
+
+The possible states of PL SystemControl are listed in <<#_TableStates>>.
+
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|PL_SYSCTL_READY
+|Initial state of PL SystemControl.
+
+|PL_SYSCTL_RUNNING
+|Executable state of PL SystemControl.
+|===
+
+PL SystemControl performs the state transitions shown in <<#_FigureState>>. +  
+If an error occurs during any API execution, no state transition will occur. +
+
+[#_FigureState]
+.State Transition Diagram
+image::./images/systemcontrol_state.png[scaledwidth="100%",align="center"]
+
+<<#_TableStateTransition>> shows the acceptance of API calls and the corresponding transition destinations for each state.  
+The state name shown in the table indicates the state after the API execution completes, meaning that the API call is accepted. +  
+"×" indicates that the API call is not accepted in that state; such API calls will return an error and no state transition will occur. For details of the errors, refer to the PlErrCode list (T.B.D.).
+
+TIP: PL SystemControl is designed for use cases such as forced reboot or forced power-off.  
+Forced reboot can be called even before `PlSystemCtlInitialize` is executed.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|State
+|PL_SYSCTL_READY |PL_SYSCTL_RUNNING
+.10+|API Name
+
+|``**PlSystemCtlInitialize**``
+|PL_SYSCTL_RUNNING
+|×
+
+|``**PlSystemCtlFinalize**``
+|×
+|PL_SYSCTL_READY
+
+|``**PlSystemCtlExecOperation**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|``**PlSystemCtlGetResetCause**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|``**PlSystemCtlGetExceptionInfo**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|``**PlSystemCtlSetExceptionInfo**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|``**PlSystemCtlConvExceptionInfo**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|``**PlSystemCtlClearExceptionInfo**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|``**PlSystemCtlDumpAllStack**``
+|PL_SYSCTL_READY
+|PL_SYSCTL_RUNNING
+
+|===
+
+<<<
+
+=== List of Component Functions
+
+<<#_TableFunction>> shows a list of functions.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section Number
+
+|Initialization / Finalization
+|Performs initialization and finalization for system-level operations.
+|<<#_Function0, 3.5.1.>>
+
+|System Operation
+|Executes system-level operations.
+|<<#_Function1, 3.5.2.>>
+
+|Reset Cause Retrieval
+|Retrieves the cause of the last system reset.
+|<<#_Function2, 3.5.3.>>
+
+|Exception Information Handling
+|Saves exception information such as stack data of the last running task to RTC memory. +
+Retrieves exception information from RTC memory. +
+Converts exception information to text format. +
+Deletes exception information stored in RTC memory.
+|<<#_Function3, 3.5.4.>>
+
+|Output of All Stack Information
+|Outputs the stack information of all threads existing at the time this API is executed.
+|<<#_Function4, 3.5.5.>>
+|===
+
+<<<
+
+=== Description of Component Functions
+
+[#_Function0]
+==== Initialization / Finalization
+Function Overview::  
+Performs initialization and finalization for system-level operations.
+
+Preconditions::  
+None
+
+Function Details::  
+For details, refer to <<#_PlSystemCtlInitialize, PlSystemCtlInitialize>> and <<#_PlSystemCtlFinalize, PlSystemCtlFinalize>>.
+
+Detailed Behavior::  
+For details, refer to <<#_PlSystemCtlInitialize, PlSystemCtlInitialize>> and <<#_PlSystemCtlFinalize, PlSystemCtlFinalize>>.
+
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlSystemCtlInitialize, PlSystemCtlInitialize>> and <<#_PlSystemCtlFinalize, PlSystemCtlFinalize>>.
+
+Items Under Consideration::  
+None
+
+[#_Function1]
+==== System Operation
+Function Overview::  
+Performs system-level operations such as power control.
+
+Preconditions::  
+None
+
+Function Details::  
+For details, refer to <<#_PlSystemCtlExecOperation, PlSystemCtlExecOperation>>.
+
+Detailed Behavior::  
+For details, refer to <<#_PlSystemCtlExecOperation, PlSystemCtlExecOperation>>.
+
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlSystemCtlExecOperation, PlSystemCtlExecOperation>>.
+
+Items Under Consideration::  
+None
+
+[#_Function2]
+==== Reset Cause Retrieval
+Function Overview::  
+Retrieves the cause of the system reset.
+
+Preconditions::  
+None
+
+Function Details::  
+For details, refer to <<#_PlSystemCtlGetResetCause, PlSystemCtlGetResetCause>>.
+
+Detailed Behavior::  
+For details, refer to <<#_PlSystemCtlGetResetCause, PlSystemCtlGetResetCause>>.
+
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlSystemCtlGetResetCause, PlSystemCtlGetResetCause>>.
+
+Items Under Consideration::  
+None
+
+[#_Function3]
+==== Exception Information Handling
+Function Overview::  
+Saves exception information such as the stack data of the last running task to RTC memory. +  
+Retrieves exception information from RTC memory. +  
+Converts exception information to text format. +  
+Deletes exception information stored in RTC memory.
+
+Preconditions::  
+None
+
+Function Details::  
+For details, refer to <<#_PlSystemCtlGetExceptionInfo, PlSystemCtlGetExceptionInfo>>, <<#_PlSystemCtlSetExceptionInfo, PlSystemCtlSetExceptionInfo>>, <<#_PlSystemCtlConvExceptionInfo, PlSystemCtlConvExceptionInfo>>, and <<#_PlSystemCtlClearExceptionInfo, PlSystemCtlClearExceptionInfo>>.
+
+Detailed Behavior::  
+For details, refer to <<#_PlSystemCtlGetExceptionInfo, PlSystemCtlGetExceptionInfo>>, <<#_PlSystemCtlSetExceptionInfo, PlSystemCtlSetExceptionInfo>>, <<#_PlSystemCtlConvExceptionInfo, PlSystemCtlConvExceptionInfo>>, and <<#_PlSystemCtlClearExceptionInfo, PlSystemCtlClearExceptionInfo>>.
+
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlSystemCtlGetExceptionInfo, PlSystemCtlGetExceptionInfo>>, <<#_PlSystemCtlSetExceptionInfo, PlSystemCtlSetExceptionInfo>>, <<#_PlSystemCtlConvExceptionInfo, PlSystemCtlConvExceptionInfo>>, and <<#_PlSystemCtlClearExceptionInfo, PlSystemCtlClearExceptionInfo>>.
+
+Items Under Consideration::  
+None
+
+[#_Function4]
+==== Output of All Stack Information
+Function Overview::  
+Outputs the stack information of all threads existing at the time this API is executed.
+Preconditions::  
+None
+Function Details::  
+For details, refer to <<#_PlSystemCtlDumpAllStack, PlSystemCtlDumpAllStack>>.
+Detailed Behavior::  
+For details, refer to <<#_PlSystemCtlDumpAllStack, PlSystemCtlDumpAllStack>>.
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlSystemCtlDumpAllStack, PlSystemCtlDumpAllStack>>.
+Items Under Consideration::  
+None
+
+<<<
+=== List of Non-Functional Requirements for the Component
+
+<<#_TableNonFunction>> shows the list of non-functional requirements.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section Number
+
+|Maximum Stack Usage
+|Maximum stack usage (in bytes)
+|<<#_NonFunctionStack, 3.7.>>
+
+|Maximum Heap Usage
+|Maximum heap usage (in bytes)
+|<<#_NonFunctionNormalHeap, 3.7.>>
+
+|Maximum Static Data Usage
+|Static data usage (in bytes)
+|<<#_NonFunctionStatic, 3.7.>>
+
+|Performance
+|Processing time of each API
+|<<#_NonFunctionPerformance, 3.7.>>
+|===
+
+=== Description of Non-Functional Requirements for the Component
+
+[#_NonFunctionStack]
+==== Maximum Stack Usage
+*** 256 bytes
+
+[#_NonFunctionNormalHeap]
+==== Maximum Heap Usage
+*** 0 bytes (not used)
+
+[#_NonFunctionStatic]
+==== Maximum Static Data Usage
+*** 0 bytes (not used)
+
+[#_NonFunctionPerformance]
+==== Performance
+*** `PlSystemCtlExecOperation` less than 1 [ms]  
+*** `PlSystemCtlGetResetCause` less than 1 [ms]  
+*** `PlSystemCtlGetExceptionInfo` less than 1 [ms]  
+*** `PlSystemCtlSetExceptionInfo` less than 1 [ms]  
+*** `PlSystemCtlConvExceptionInfo` less than 1 [ms]  
+*** `PlSystemCtlClearExceptionInfo` less than 1 [ms]  
+
+*Note: Processing time of lower modules is not included.*
+
+<<<
+
+== API Specification
+
+=== Definition List
+
+==== Data Type List
+
+<<#_TableDataType>> shows the list of data types.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview |Section Number
+
+|enum PlErrCode
+|Enumeration that defines the result of API execution.
+|<<#_PLERRCODE, 4.2.1.>>
+
+|enum PlSystemCtlOperation
+|Enumeration that defines the types of system-level operations.
+|<<#_PL_SYSTEMCTL_OPERATION, 4.2.2.>>
+
+|enum PlSystemCtlResetCause
+|Enumeration that defines reset causes.
+|<<#_PL_SYSTEMCTL_RESET_CAUSE, 4.2.3.>>
+
+|#define PL_SYSTEMCTL_EXCEPTION_INFO_SIZE
+|Definition of the maximum size of exception information in text format.
+|<<#_PL_SYSTEMCTL_EXCEPTION_INFO_SIZE, 4.2.4.>>
+
+|#define PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM
+|Definition of the maximum number of stack information entries in the exception information.
+|<<#_PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM, 4.2.5.>>
+
+|#define PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM
+|Definition of the number of data items in a stack dump.
+|<<#_PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM, 4.2.6.>>
+
+|struct PlSystemCtlExceptionInfoBody
+|Structure representing stack information.
+|<<#_PlSystemCtlExceptionInfoBody, 4.2.7.>>
+
+|struct PlSystemCtlExceptionInfo
+|Structure representing exception information.
+|<<#_PlSystemCtlExceptionInfo, 4.2.8.>>
+
+|===
+
+==== API List
+<<#_TablePublicAPI>> shows the list of APIs.
+
+[#_TablePublicAPI]
+.APIs Directly Usable by Upper Layers
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Overview |Section Number
+|PlSystemCtlInitialize
+|Performs initialization for executing system power operations.
+|<<#_PlSystemCtlInitialize, 4.3.1.>>
+
+|PlSystemCtlFinalize
+|Performs finalization for system power operations.
+|<<#_PlSystemCtlFinalize, 4.3.2.>>
+
+|PlSystemCtlExecOperation
+|Executes system-level operations.
+|<<#_PlSystemCtlExecOperation, 4.3.3.>>
+
+|PlSystemCtlGetResetCause
+|Retrieves the cause of the system reset.
+|<<#_PlSystemCtlGetResetCause, 4.3.4.>>
+
+|PlSystemCtlGetExceptionInfo
+|Retrieves exception information, such as stack data, from RTC memory.
+|<<#_PlSystemCtlGetExceptionInfo, 4.3.5.>>
+
+|PlSystemCtlSetExceptionInfo
+|Saves exception information, such as stack data of the last running task, to RTC memory.
+|<<#_PlSystemCtlSetExceptionInfo, 4.3.6.>>
+
+|PlSystemCtlConvExceptionInfo
+|Converts exception information to text format.
+|<<#_PlSystemCtlConvExceptionInfo, 4.3.7.>>
+
+|PlSystemCtlClearExceptionInfo
+|Deletes exception information stored in RTC memory.
+|<<#_PlSystemCtlClearExceptionInfo, 4.3.8.>>
+
+|PlSystemCtlDumpAllStack
+|Outputs all stack information.
+|<<#_PlSystemCtlDumpAllStack, 4.3.9>>
+|===
+
+<<<
+
+
+=== Data Type Definitions
+
+[#_PLERRCODE]
+==== PlErrCode
+An enumeration that defines the result of API execution.  
+(T.B.D.)
+
+[#_PL_SYSTEMCTL_OPERATION]
+==== PlSystemCtlOperation
+An enumeration that defines the types of system-level operations.
+
+* *Format*
+[source, C]
+....
+typedef enum {
+  kPlSystemCtlRebootCpu,
+  kPlSystemCtlRebootEdgeDevice,
+  kPlSystemCtlPowerOff,
+  kPlSystemCtlMax
+} PlSystemCtlOperation;
+....
+
+* *Values*
+
+[#_PL_SYSTEMCTL_OPERATIONValue]
+.Description of PlSystemCtlOperation Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlSystemCtlRebootCpu
+|Performs a reboot of the CPU.
+
+|kPlSystemCtlRebootEdgeDevice
+|Performs a reboot of the entire EdgeDevice.
+
+|kPlSystemCtlPowerOff
+|Turns off the system power.
+
+|kPlSystemCtlMax
+|Maximum value of the enum.
+|===
+
+TIP: Example use of `kPlSystemCtlRebootCpu`: Normal reboot or forced reboot during an error.
+
+TIP: Example use of `kPlSystemCtlRebootEdgeDevice`: Normal reboot of the entire EdgeDevice or forced reboot during an error.
+
+TIP: Example use of `kPlSystemCtlPowerOff`: Powering off the system via this API, with automatic restart via peripheral devices such as RTC.
+
+[#_PL_SYSTEMCTL_RESET_CAUSE]
+==== PlSystemCtlResetCause
+An enumeration that defines the causes of system reset.
+
+* *Format*
+[source, C]
+....
+typedef enum {
+  kPlSystemCtlResetCauseSysChipPowerOnReset,
+  kPlSystemCtlResetCauseSysBrownOut,
+  kPlSystemCtlResetCauseCoreSoft,
+  kPlSystemCtlResetCauseCoreDeepSleep,
+  kPlSystemCtlResetCauseWDT,
+  kPlSystemCtlResetCauseMax
+} PlSystemCtlResetCause;
+....
+
+* *Values*
+
+[#_PL_SYSTEMCTL_RESET_CAUSEValue]
+.Description of PlSystemCtlResetCause Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlSystemCtlResetCauseSysChipPowerOnReset |Chip power-on system reset
+|kPlSystemCtlResetCauseSysBrownOut |Brown-out system reset
+|kPlSystemCtlResetCauseCoreSoft|Software core reset
+|kPlSystemCtlResetCauseCoreDeepSleep|Deep-sleep core reset
+|kPlSystemCtlResetCauseWDT|Watchdog reset
+|kPlSystemCtlResetCauseMax|Maximum value of the enum
+|===
+
+[#_PL_SYSTEMCTL_EXCEPTION_INFO_SIZE]
+==== PL_SYSTEMCTL_EXCEPTION_INFO_SIZE
+Defines the maximum size of exception information in text format.
+
+* *Format*
+[source, C]
+....
+#ifdef CONFIG_STACK_COLORATION
+#define PL_SYSTEMCTL_EXCEPTION_INFO_SIZE                (18158)
+#else
+#define PL_SYSTEMCTL_EXCEPTION_INFO_SIZE                (18141)
+#endif
+....
+
+[#_PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM]
+==== PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM
+Defines the maximum number of stack information entries in the exception info.
+
+* *Format*
+[source, C]
+....
+#define PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM       (220)
+....
+
+[#_PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM]
+==== PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM
+Defines the number of data elements in a stack information entry.
+
+* *Format*
+[source, C]
+....
+#define PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM  (8)
+....
+
+[#_PlSystemCtlExceptionInfoBody]
+==== struct PlSystemCtlExceptionInfoBody
+Structure representing a single stack information entry.
+
+* *Format*
+[source, C]
+....
+struct PlSystemCtlExceptionInfoBody {
+  uint32_t addr;
+  uint32_t data[PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM];
+};
+....
+
+* *Values*
+
+[#_PlSystemCtlExceptionInfoBodyValue]
+.Description of PlSystemCtlExceptionInfoBody Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|addr |Start address of the stack data
+|data |Stack data
+|===
+
+[#_PlSystemCtlExceptionInfo]
+==== struct PlSystemCtlExceptionInfo
+Structure representing exception information.
+
+* *Format*
+[source, C]
+....
+struct PlSystemCtlExceptionInfo {
+  char          taskname[32];
+  uint32_t      reg_pc;
+  uint32_t      stack_base;
+  uint32_t      stack_size;
+#ifdef CONFIG_STACK_COLORATION
+  uint32_t      stack_used;
+#endif
+  uint32_t      stack_num;
+  struct PlSystemCtlExceptionInfoBody
+                stack_dump[PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM];
+};
+....
+
+* *Values*
+
+[#_PlSystemCtlExceptionInfoValue]
+.Description of PlSystemCtlExceptionInfo Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|taskname   |Task name
+|reg_pc     |PC register value
+|stack_base |Base address of the stack
+|stack_size |Size of the stack
+|stack_used |Used stack size
+|stack_num  |Number of stack entries
+|stack_dump |Stack information
+|===
+
+=== API Descriptions
+
+[#_PlSystemCtlInitialize]
+==== PlSystemCtlInitialize
+
+* *Function* +  
+Performs initialization for system-level operations.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlInitialize(void)
+....
+
+* *Arguments* +
+-
+
+* *Return Value* +  
+Returns a value of `PlErrCode` depending on the result of execution.
+
+* *Description* +  
+Performs initialization for system-level operations.
+
+[#_PlSystemCtlInitialize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Reentrancy
+|Allowed
+|Callable from Multiple Threads
+|Allowed
+|Callable from Multiple Tasks
+|Allowed
+|Does the API block internally?
+|Yes.  
+If another context is already using a PL SystemControl API, execution will wait until the current operation is complete.
+|===
+
+[#_PlSystemCtlInitialize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|None
+|- 
+|- 
+|- 
+|-
+|===
+
+<<<
+
+
+[#_PlSystemCtlFinalize]
+==== PlSystemCtlFinalize
+
+* *Function* +  
+Performs finalization related to system-level operations.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlFinalize(void)
+....
+
+* *Arguments* +  
+-
+
+* *Return Value* +  
+Returns a value of `PlErrCode` depending on the result of execution.
+
+* *Description* +  
+Performs finalization related to system-level operations.
+
+[#_PlSystemCtlFinalize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Reentrancy
+|Allowed
+|Callable from Multiple Threads
+|Allowed
+|Callable from Multiple Tasks
+|Allowed
+|Does the API block internally?
+|Yes.  
+If another context is already using a PL SystemControl API, execution will wait until the current operation is complete.
+|===
+
+[#_PlSystemCtlFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|None
+|- 
+|- 
+|- 
+|-
+|===
+
+<<<
+
+[#_PlSystemCtlExecOperation]
+==== PlSystemCtlExecOperation
+
+* *Function* +  
+Performs a system-level operation.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlExecOperation(PlSystemCtlOperation operation)
+....
+
+* *Arguments* +
+**[IN] PlSystemCtlOperation operation**::  
+The operation to be performed.
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+Performs the specified system operation.  
+This API can be called regardless of whether `PlSystemCtlInitialize` has been executed, when `kPlSystemCtlReboot` is specified.  
+There is no difference in effect before or after initialization.  
+This API is executed forcibly regardless of the execution state of other PL APIs.
+
+[#_PlSystemCtlExecOperation_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|No.  
+Operations are processed in the order they are executed.
+|===
+
+[#_PlSystemCtlExecOperation_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidState (tentative)
+|The system is already in an executable state.
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|None
+|===
+
+<<<
+
+[#_PlSystemCtlGetResetCause]
+==== PlSystemCtlGetResetCause
+
+* *Function* +  
+Retrieves the system reset cause.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlGetResetCause(PlSystemCtlResetCause *cause)
+....
+
+* *Arguments* +
+**[OUT] PlSystemCtlResetCause *cause**::  
+Pointer to the variable to receive the reset cause.  
+If `NULL` is specified, an error is returned.
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+Returns the system reset cause.  
+This API can be used regardless of whether `PlSystemCtlInitialize` has been executed.  
+There is no difference in behavior before or after initialization.  
+This API is executed regardless of the state of other PL APIs.
+
+[#_PlSystemCtlGetResetCause_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|No.  
+Operations are processed in the order they are executed.
+|===
+
+[#_PlSystemCtlGetResetCause_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|None
+
+|kPlErrInvalidValue (tentative)
+|Invalid reset cause code
+|-
+|No impact
+|None
+|===
+
+<<<
+
+[#_PlSystemCtlGetExceptionInfo]
+==== PlSystemCtlGetExceptionInfo
+
+* *Function* +  
+Retrieves exception information, including stack data, from RTC memory.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlGetExceptionInfo(struct PlSystemCtlExceptionInfo *info)
+....
+
+* *Argument Description* +
+**[OUT] <<#PlSystemCtlExceptionInfo, struct PlSystemCtlExceptionInfo>> *info**::  
+Pointer to the structure for receiving exception information.  
+Returns an error if `NULL` is specified.
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+Retrieves exception information, including stack data, from RTC memory.  
+If exception information was saved using <<#_PlSystemCtlSetExceptionInfo, PlSystemCtlSetExceptionInfo>> during a WDT interrupt, this API can retrieve that information after a WDT-triggered reboot. +
+
+This API can be used regardless of whether `PlSystemCtlInitialize` has been executed.  
+There is no difference in behavior before or after initialization.  
+This API is executed regardless of the execution status of other PL APIs.
+
+[#_PlSystemCtlGetExceptionInfo_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|Yes.  
+If `PlSystemCtlGetExceptionInfo`, `PlSystemCtlSetExceptionInfo`, `PlSystemCtlConvExceptionInfo`, or `PlSystemCtlClearExceptionInfo` is running in another context, execution will wait for completion.
+|===
+
+[#_PlSystemCtlGetExceptionInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|None
+
+|kPlErrMagicCode (tentative)
+|Magic code error
+|-
+|No impact
+|None
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|None
+|===
+
+<<<
+
+[#_PlSystemCtlSetExceptionInfo]
+==== PlSystemCtlSetExceptionInfo
+
+* *Function* +  
+Saves exception information, including stack data of the last running task, to RTC memory.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlSetExceptionInfo(void)
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+Saves exception information, such as the stack data of the last running task, to RTC memory.  
+By calling this API during a WDT interrupt, the exception information is saved and can later be retrieved after a WDT reboot using <<#_PlSystemCtlGetExceptionInfo, PlSystemCtlGetExceptionInfo>>. +
+
+This API can be used regardless of whether `PlSystemCtlInitialize` has been executed.  
+There is no difference in effect before or after initialization.  
+This API is executed regardless of the execution status of other PL APIs.
+
+[#_PlSystemCtlSetExceptionInfo_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|Yes.  
+If `PlSystemCtlGetExceptionInfo`, `PlSystemCtlSetExceptionInfo`, `PlSystemCtlConvExceptionInfo`, or `PlSystemCtlClearExceptionInfo` is running in another context, execution will wait for completion.
+|===
+
+[#_PlSystemCtlSetExceptionInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|None
+|===
+
+<<<
+
+[#_PlSystemCtlConvExceptionInfo]
+==== PlSystemCtlConvExceptionInfo
+
+* *Function* +  
+Converts exception information to text format.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlConvExceptionInfo(struct PlSystemCtlExceptionInfo *info, char *dst, uint32_t dst_size)
+....
+
+* *Argument Description* +
+**[IN] struct PlSystemCtlExceptionInfo *info**::  
+Exception information. Returns an error if `NULL` is specified.
+
+**[OUT] char *dst**::  
+Buffer for exception information in text format. Returns an error if `NULL` is specified.
+
+**[IN] uint32_t dst_size**::  
+Size of the text buffer. Returns an error if `0` is specified. See <<#_Note1>>.
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+This API converts exception information obtained via <<#_PlSystemCtlGetExceptionInfo, PlSystemCtlGetExceptionInfo>> to text format. +
+
+This API can be used regardless of whether `PlSystemCtlInitialize` has been executed.  
+There is no difference in effect before or after initialization.  
+This API is executed regardless of the execution status of other PL APIs.
+
+[#_PlSystemCtlConvExceptionInfo_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|Yes.  
+If `PlSystemCtlGetExceptionInfo`, `PlSystemCtlSetExceptionInfo`, `PlSystemCtlConvExceptionInfo`, or `PlSystemCtlClearExceptionInfo` is running in another context, execution will wait for completion.
+|===
+
+[#_PlSystemCtlConvExceptionInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrInvalidParam (tentative)
+|Parameter error
+|-
+|No impact
+|None
+
+|kPlErrWrite (tentative)
+|Write error
+|-
+|No impact
+|None
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|None
+|===
+
+<<<
+
+[#_PlSystemCtlClearExceptionInfo]
+==== PlSystemCtlClearExceptionInfo
+
+* *Function* +  
+Deletes the exception information stored in RTC memory.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlClearExceptionInfo(void)
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+Deletes the exception information stored in RTC memory. +
+
+This API can be used regardless of whether `PlSystemCtlInitialize` has been executed.  
+There is no difference in effect before or after initialization.  
+This API is executed regardless of the execution state of other PL APIs.
+
+[#_PlSystemCtlClearExceptionInfo_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|Yes.  
+If `PlSystemCtlGetExceptionInfo`, `PlSystemCtlSetExceptionInfo`, `PlSystemCtlConvExceptionInfo`, or `PlSystemCtlClearExceptionInfo` is running in another context, execution will wait for completion.
+|===
+
+[#_PlSystemCtlClearExceptionInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|None
+|===
+
+<<<
+
+[#_PlSystemCtlDumpAllStack]
+==== PlSystemCtlDumpAllStack
+
+* *Function* +  
+Outputs the stack information of all threads existing at the time of API execution.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlSystemCtlDumpAllStack(void)
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +  
+Returns one of the values defined in `PlErrCode` depending on the result.
+
+* *Description* +  
+Outputs the stack information of all threads existing at the time this API is executed.  
+This API can be used regardless of whether `PlSystemCtlInitialize` has been executed.  
+There is no difference in effect before or after initialization.  
+This API is executed regardless of the execution state of other PL APIs.  
+Concurrent calls may result in incorrect output.
+
+[#_PlSystemCtlDumpAllStack_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+
+|API Type
+|Synchronous API
+
+|Execution Context
+|Runs in the caller’s context
+
+|Reentrancy
+|Not allowed
+
+|Callable from Multiple Threads
+|Allowed
+
+|Callable from Multiple Tasks
+|Allowed
+
+|Does the API block internally?
+|Yes.  
+If `PlSystemCtlDumpAllStack` is already running in another context, execution will wait for completion.
+|===
+
+[#_PlSystemCtlDumpAllStack_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|None
+|===
+
+<<<
+
+== Example Usage of the API
+
+Refer to <<#_systemcontrol_seq, Sequence Overview>>.
+
+<<<
+
+== Notes and Component-Specific Remarks
+None
+
+== Precautions
+
+[#_Note1]
+=== Regarding the `dst_size` Argument of the PlSystemCtlConvExceptionInfo API
+
+If the `dst_size` argument is smaller than the size of the exception information, not all exception data can be retrieved. +  
+To retrieve all exception information on T5, the number of bytes defined by <<#_PL_SYSTEMCTL_EXCEPTION_INFO_SIZE, PL_SYSTEMCTL_EXCEPTION_INFO_SIZE>> is required.
+
+== List of OSS Used
+None
+
+<<<
+
+== References
+None
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+
+|0.0.1
+|Initial version
+
+|0.0.2
+|- Global: Added half-width spaces around English words (for better readability) +
+- Changed READY/RUNNING to PL_SYSCTL_READY/PL_SYSCTL_RUNNING +
+- Added `PlErrCode` to data types +
+
+- Moved `PlSystemCtlInitialize` and `PlSystemCtlFinalize` APIs to the beginning of the list +
+- Added error codes for `PlSystemCtlExecOperation` +
+- Added error codes for `PlSystemCtlGetResetCause` +
+- Added error codes for `PlSystemCtlGetExceptionInfo` +
+- Added error codes for `PlSystemCtlSetExceptionInfo` +
+- Replaced diagrams (*.png) with English-labeled versions
+
+|0.0.3
+|- Global: Added `PlSystemCtlConvExceptionInfo` and `PlSystemCtlClearExceptionInfo` APIs +
+- Added the following to the `PlSystemCtlResetCause` data type: +
+  `kPlSystemCtlResetCauseCpuMainWdt1` +
+- Updated descriptions of `PlSystemCtlResetCause` values +
+- Added the following data types: +
+  `#define PL_SYSTEMCTL_EXCEPTION_INFO_SIZE` +
+  `#define PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_NUM` +
+  `#define PL_SYSTEMCTL_EXCEPTION_INFO_STACKDUMP_DATA_NUM` +
+  `struct PlSystemCtlExceptionInfoBody` +
+  `struct PlSystemCtlExceptionInfo` +
+- Modified the argument of `PlSystemCtlGetExceptionInfo` API +
+- Updated description of `PlSystemCtlGetExceptionInfo` API +
+- Updated description of `PlSystemCtlSetExceptionInfo` API +
+- Updated content in the Precautions section +
+- Replaced diagrams (*.png)
+
+|0.0.4
+|Updated the `enum PlSystemCtlResetCause`
+|===

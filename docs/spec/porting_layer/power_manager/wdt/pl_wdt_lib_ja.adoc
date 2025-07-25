@@ -1,0 +1,1227 @@
+= PL WDTLib
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+NOTE: 本仕様書は PL 内部向けのドキュメントです。
+
+本書では AITRIOS PL レイヤーの一つである、PL WDTLib の仕様について記載します。PL WDTLib の目的は、WDT のオープン/クローズやタイムアウト時間の設定など、WDT の詳細な機能を担当することです。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting Layer. カメラ/ OS 差分を吸収する層
+
+|I/F
+|Interface
+|===
+
+<<<
+
+== コンポーネントの説明
+PL WDTLib の目的は、WDT のオープン/クローズやタイムアウト時間の設定など、WDT の詳細な機能を担当することです。
+
+
+=== コンポーネントの概要
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+
+.概要図
+image::./images/wdt_lib_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== コンポーネントの詳細説明
+
+PL WDTLib の使用シーケンス例を以下に示します。
+上位レイヤーは PlWdtInitialize 後、PL WDTLib API を使用して WDT 機能を使うことができます。
+
+[#_button_seq]
+.シーケンス概要
+image::./images/wdt_lib_seq.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== 状態遷移
+PL WDTLib の取り得る状態を <<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|PL_WDTLIB_READY
+|PL WDT 未初期化。
+
+|PL_WDTLIB_RUNNING
+|PL WDTLIB 初期化済み。
+
+|WDTLIB_CLOSE
+|WDT 未オープン。PL_WDTLIB_RUNNING のサブ状態です。
+
+|WDTLIB_OPEN
+|WDT オープン済み。PL_WDTLIB_RUNNING のサブ状態です。
+
+|WDTLIB_STOP
+|WDT 停止中。WDTLIB_OPEN のサブ状態です。
+
+|WDTLIB_START
+|WDT 起動中。WDTLIB_OPEN のサブ状態です。
+|===
+
+
+[#_FigureState]
+.状態遷移図
+image::./images/wdt_lib_state.png[scaledwidth="100%",align="center"]
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでの API 呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は PlErrCode 一覧 (T.B.D.) を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%, 20"]
+|===
+2.4+| 4+|状態
+.3+|PL_WDTLIB_READY
+3+|PL_WDTLIB_RUNNING
+.2+|WDTLIB_CLOSE
+2+|WDTLIB_OPEN
+|WDTLIB_STOP
+|WDTLIB_START
+.20+|API 名
+
+|``**PlWdtlibInitialize**``
+|PL_CLOSE
+|×
+|×
+|×
+
+|``**PlWdtFinalize**``
+|×
+|PL_WDTLIB_READY
+|PL_WDTLIB_READY
+|PL_WDTLIB_READY
+
+|``**PlWdtLibOpen**``
+|×
+|WDTLIB_STOP
+|×
+|×
+
+|``**PlWdtLibClose**``
+|×
+|×
+|WDTLIB_CLOSE
+|×
+
+|``**PlWdtLibStart**``
+|×
+|×
+|WDTLIB_START
+|×
+
+|``**PlWdtLibStop**``
+|×
+|×
+|×
+|WDTLIB_STOP
+
+|``**PlWdtLibSetTimeout**``
+|×
+|×
+|WDTLIB_STOP
+|×
+
+|``**PlWdtLibRegisterIrqHandler**``
+|×
+|×
+|WDTLIB_STOP
+|×
+
+|``**PlWdtLibUnregisterIrqHandler**``
+|×
+|×
+|WDTLIB_STOP
+|×
+
+|``**PlWdtLibKeepAlive**``
+|×
+|×
+|×
+|WDTLIB_START
+|===
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> を以下に示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|PL WDTLib ハンドルの取得・解放
+|PL WDTLib API を使用するためのハンドルを取得・解放します。
+|<<#_Function1, 3.5.1.>>
+
+|WDT を起動・停止
+|WDT を起動・停止します。
+|<<#_Function2, 3.5.2.>>
+
+|タイムアウト時間設定
+|WDT のタイムアウト時間を設定します。
+|<<#_Function3, 3.5.3.>>
+
+|WDT の割り込み設定
+|割り込みハンドラの登録・解除を行います。
+|<<#_Function4, 3.5.4.>>
+
+|KeepAlive 送信
+|KeepAlive を送信します。
+|<<#_Function5, 3.5.5.>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== PL WDTLib ハンドルの取得・解放
+機能概要::
+PL WDTLib API を使用するためのハンドルの取得・解放します。
+前提条件::
+PlWdtlibInitialize が実行済みであること。
+機能詳細::
+PL WDTLib ハンドルの取得は <<#_PlWdtLibOpen, PlWdtLibOpen>> を参照してください。 +
+PL WDTLib ハンドルの解放は <<#_PlWdtLibClose, PlWdtLibClose>> を参照してください。
+詳細挙動::
+PL WDTLib ハンドルの取得は <<#_PlWdtLibOpen_disc, PlWdtLibOpen>> を参照してください。 +
+PL WDTLib ハンドルの解放は <<#_PlWdtLibClose_disc, PlWdtLibClose>> を参照してください。
+エラー時の挙動、復帰方法::
+PL WDTLib ハンドルの取得は <<#_PlWdtLibOpen_error, PlWdtLibOpen>> を参照してください。 +
+PL WDTLib ハンドルの解放は <<#_PlWdtLibClose_error, PlWdtLibClose>> を参照してください。
+検討事項::
+なし
+
+[#_Function2]
+==== WDT の起動・停止
+機能概要::
+WDT を起動・停止します。
+前提条件::
+PlWdtlibInitialize が実行済みであること。 +
+PL WDTLib の状態が <<#_TableStates, WDTLIB_OPEN>> であること。
+機能詳細::
+WDT の起動は <<#_PlWdtLibStart, PlWdtLibStart>> を参照してください。 +
+WDT の停止は <<#_HPlWdtLibStop, PlWdtLibStop>> を参照してください。
+詳細挙動::
+WDT の起動は <<#_PlWdtLibStart_disc, PlWdtLibStart>> を参照してください。 +
+WDT の停止は <<#_HPlWdtLibStop_dsic, PlWdtLibStop>> を参照してください。
+エラー時の挙動、復帰方法::
+WDT の起動は <<#_PlWdtLibStart_error, PlWdtLibStart>> を参照してください。 +
+WDT の停止は <<#_HPlWdtLibStop_error, PlWdtLibStop>> を参照してください。
+検討事項::
+なし
+
+[#_Function3]
+==== タイムアウト時間設定
+機能概要::
+WDT のタイムアウト時間を設定します。
+前提条件::
+PlWdtlibInitialize が実行済みであること。 +
+PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> であること。
+機能詳細::
+タイムアウト時間設定は <<#_PlWdtLibSetTimeout, PlWdtLibSetTimeout>> を参照してください。
+詳細挙動::
+タイムアウト時間設定は <<#_PlWdtLibSetTimeout_disc, PlWdtLibSetTimeout>> を参照してください。
+エラー時の挙動、復帰方法::
+タイムアウト時間設定は <<#_PlWdtLibSetTimeout_error, PlWdtLibSetTimeout>> を参照してください。
+検討事項::
+なし
+
+[#_Function4]
+==== WDT の割り込み設定
+機能概要::
+WDT の割り込みハンドラを登録・解除します。
+前提条件::
+PlWdtlibInitialize が実行済みであること。 +
+PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> であること。
+機能詳細::
+割り込みハンドラの登録は <<#_PlWdtLibRegisterIrqHandler, PlWdtLibRegisterIrqHandler>> を参照してください。 +
+割り込みハンドラの解除は <<#_PlWdtLibUnregisterIrqHandler, PlWdtLibUnregisterIrqHandler>> を参照してください。
+詳細挙動::
+割り込みハンドラの登録は <<#_PlWdtLibRegisterIrqHandler_disc, PlWdtLibRegisterIrqHandler>> を参照してください。 +
+割り込みハンドラの解除は <<#_PlWdtLibUnregisterIrqHandler_disc, PlWdtLibUnregisterIrqHandler>> を参照してください。
+エラー時の挙動、復帰方法::
+割り込みハンドラの登録は <<#_PlWdtLibRegisterIrqHandler_error, PlWdtLibRegisterIrqHandler>> を参照してください。 +
+割り込みハンドラの解除は <<#_PlWdtLibUnregisterIrqHandler_error, PlWdtLibUnregisterIrqHandler>> を参照してください。
+検討事項::
+なし
+
+[#_Function5]
+==== KeepAlive 送信
+機能概要::
+KeepAlive を送信します。
+前提条件::
+PlWdtlibInitialize が実行済みであること。 +
+PL WDTLib の状態が <<#_TableStates, WDTLIB_START>> であること。
+機能詳細::
+KeepAlive 送信は <<#_PlWdtLibKeepAlive, PlWdtLibKeepAlive>> を参照してください。
+詳細挙動::
+KeepAlive 送信は <<#_PlWdtLibKeepAlive_disc, PlWdtLibKeepAlive>> を参照してください。
+エラー時の挙動、復帰方法::
+KeepAlive 送信は <<#_PlWdtLibKeepAlive_error, PlWdtLibKeepAlive>> を参照してください。
+検討事項::
+なし
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> を以下に示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack 最大使用量
+|PL WDTLib が使用する最大スタックサイズ
+|<<#_stack, 3.7.>>
+
+|ヒープ最大使用量
+|PL WDTLib が使用する最大ヒープサイズ
+|<<#_heap, 3.7.>>
+
+|staticデータ最大使用量
+|PL WDTLib が使用する最大 static データサイズ
+|<<#_static, 3.7.>>
+
+|パフォーマンス
+|PL WDTLib が提供する機能のパフォーマンス
+|<<#_paformance, 3.7.>>
+|===
+
+=== コンポーネントの非機能要件説明
+[#_stack]
+==== Stack 最大使用量
+1024 バイト
+
+==== ヒープ最大使用量
+[#_heap]
+PL WDTLib ではヒープを使用しません。
+
+[#_static]
+==== static データ最大使用量
+128 バイト
+
+[#_paformance]
+==== パフォーマンス
+1 ミリ秒未満
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> を以下に示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum PlErrCode
+|APIの実行結果を定義する列挙型です。
+|<<#_PlErrCode, 4.3.1.>>
+
+|PlWdtLibHandle
+|PL WDTLib API を使用するためのハンドラを表す構造体です。
+|<<#_PlWdtLibHandle, 4.3.2.>>
+
+|PlWdtLibIrqHandler
+|WDT の割り込みハンドラを表す関数ポインタです。
+|<<#_PlWdtLibIrqHandler, 4.3.3.>>
+
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> を以下に示します。
+
+[#_TablePublicAPI]
+.上位レイヤーから直接使用可能な API
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+|PlWdtLibInitialize
+|PL WDTLib を使用可能状態にします。
+|<<#_PlWdtLibInitialize, 4.4.1.>>
+
+|PlWdtLibFinalize
+|PL WDTLib を使用不可状態にします。
+|<<#_PlWdtLibFinalize, 4.4.2.>>
+
+|PlWdtLibOpen
+|WDT をオープンします。
+|<<#_PlWdtLibOpen, 4.4.3.>>
+
+|PlWdtLibClose
+|WDT をクローズします。
+|<<#_PlWdtLibClose, 4.4.4.>>
+
+|PlWdtLibStrat
+|WDT を起動します。
+|<<#_PlWdtLibStart, 4.4.5.>>
+
+|PlWdtLibStop
+|WDT を停止します。
+|<<#_PlWdtLibStop, 4.4.6.>>
+
+|PlWdtLibSetTimeout
+|WDT のタイムアウト時間を設定します。
+|<<#_PlWdtLibSetTimeout, 4.4.7.>>
+
+|PlWdtLibRegisterIrqHandler
+|WDT の割り込みハンドラを登録します。
+|<<#_PlWdtLibRegisterIrqHandler, 4.4.8.>>
+
+|PlWdtLibUnregisterIrqHandler
+|WDT を割り込みハンドラを解除します。
+|<<#_PlWdtLibUnregisterIrqHandler, 4.4.9.>>
+
+|PlWdtLibKeepAlive
+|KeepAlive を送信します。
+|<<#_PlWdtLibKeepAlive, 4.4.10.>>
+|===
+
+<<<
+
+=== ビルドコンフィグ
+[#_BuildConfig]
+==== ビルドコンフィグ (esp32s3 の場合)
+WDT の設定情報をビルドコンフィグに記載します。
+
+* *書式* +
+[source, C]
+....
+CONFIG_EXTERNAL_PL_WDT_NUM=2
+CONFIG_EXTERNAL_PL_WDT_LOW_THREAD_PRIORITY=50
+CONFIG_EXTERNAL_PL_WDT_HIGH_THREAD_PRIORITY=120
+CONFIG_EXTERNAL_PL_WDT_KEEP_ALIVE_SEC=10
+CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC=60
+CONFIG_EXTERNAL_PL_WDT1_TIMEOUT_SEC=70
+....
+
+[#_BuildConfig_table]
+.BuildConfig の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|CONFIG_EXTERNAL_PL_WDT_NUM
+|使用する WDT の個数。 +
+個数に合わせて OS の CONFIG の定義を変更してください。 +
+CONFIG_ESP32_MWDT0, CONFIG_ESP32_MWDT1
+|CONFIG_EXTERNAL_PL_WDT_LOW_THREAD_PRIORITY
+|KeepAlive 送信用スレッド (優先度低) の優先度
+|CONFIG_EXTERNAL_PL_WDT_HIGH_THREAD_PRIORITY
+|KeepAlive 送信用スレッド (優先度高) の優先度
+|CONFIG_EXTERNAL_PL_WDT_KEEP_ALIVE_SEC
+|KeepAlive 送信間隔 [sec]。タイムアウト時間以上に設定した場合はサポート外です。
+|CONFIG_EXTERNAL_PL_WDT0_TIMEOUT_SEC
+|WDT0 のタイムアウト時間 [sec]。1 秒以下の場合はサポート外です。
+|CONFIG_EXTERNAL_PL_WDT1_TIMEOUT_SEC
+|WDT1 のタイムアウト時間 [sec]。1 秒以下の場合はサポート外です。
+|===
+<<<
+
+=== データ型定義
+[#_PlErrCode]
+==== PlErrCode
+API の実行結果を定義する列挙型です。
+(T.B.D.)
+
+[#_PlWdtLibHandle]
+==== PlWdtLibHandle
+PL WDTLib API を使用するためのハンドルを表す構造体です。
+
+* *書式* +
+[source, C]
+....
+typedef void* PlWdtLibHandle;
+....
+
+[#_PlWdtLibIrqHandler]
+==== PlWdtLibIrqHandler
+WDT 割り込みハンドラ本体を表す関数ポインタです。 +
+システムが WDT 割り込みを検出した際に実行されます。
+
+* *書式* +
+[source, C]
+....
+typedef void (*PlWdtLibIrqHandler)(void *private_data)
+....
+
+* *引数の説明* +
+**[OUT] void *private_data**::
+PlWdtLibRegisterIrqHandler で指定された private_data がセットされます。
+
+<<<
+
+=== 各 API の説明
+
+
+[#_PlWdtLibInitialize]
+==== PlWdtLibInitialize
+
+* *機能* +
+PL WDTLib を使用可能状態にします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibInitialize(void)
+....
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL WDTLib を使用可能状態にします。
+
+[#_PlWdtLibInitialize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。ただし、二重に Initialize を実行した場合、エラーになります。
+|===
+
+[#_PlWdtLibInitialize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|すでに使用可能状態になっている。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibFinalize]
+==== PlWdtLibFinalize
+* *機能* +
+PL WDTLib を使用不可状態にします。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL WDTLib を使用不可状態にします。
+** 本 API は PlWdtlibInitialize の実行後に使用可能です。
+
+[#_PlWdtLibFinalize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。PL impl 実装者は、PL API 内で実行してください。ただし、二重に Finalize を実行した場合、エラーになります。
+|===
+
+[#_PlWdtLibFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibOpen]
+==== PlWdtLibOpen
+
+* *機能* +
+PL WDTLib API を使用するためのハンドルを取得します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibOpen(PlWdtLibHandle *handle, uint32_t wdt_num)
+....
+* *引数の説明* +
+**[OUT] <<#_PlWdtLibHandle, PlWdtLibHandle>> *handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+**[IN] uint32_t wdt_num**::
+ハンドルを取得する WDT 番号。取得出来る WDT ハンドルの個数はビルドコンフィグ (CONFIG_EXTERNAL_PL_WDT_NUM) で設定します。 +
+CONFIG_EXTERNAL_PL_WDT_NUM = 3 の場合、wdt_num に指定できる値は 0, 1, 2 です。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** PL WDTLib API を使用するためのハンドルを取得します。
+** すでにハンドルを取得している wdt_num を指定した場合は、エラーを返します。
+** CONFIG_EXTERNAL_PL_WDT_NUM 以上の値を指定した場合は、エラーを返します。
+** CONFIG に定義していない WDT が指定された場合はエラーを返します。
+
+[#_PlWdtLibOpen_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibOpen_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibClose]
+==== PlWdtLibClose
+
+* *機能* +
+WDTハンドルを解放します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibClose(const PlWdtLibHandle handle)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> *handle**::
+PL WDTLib ハンドル。NULL の場合エラーを返します。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** WDT ハンドルを解放します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> でない場合は、エラーを返します。
+
+[#_PlWdtLibClose_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibClose_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibStart]
+==== PlWdtLibStart
+
+* *機能* +
+WDT を起動します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibStart(const PlWdtLibHandle handle)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** WDT を起動します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> でない場合は、エラーを返します。
+
+[#_PlWdtLibStart_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibStart_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibStop]
+==== PlWdtLibStop
+
+* *機能* +
+WDT を停止します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibStop(const PlWdtLibHandle handle)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** WDT を停止します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_START>> でない場合は、エラーを返します。
+
+[#_PlWdtLibStop_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibStop_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLockError (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibSetTimeout]
+==== PlWdtLibSetTimeout
+
+* *機能* +
+WDT のタイムアウト時間を設定します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibSetTimeout(const PlWdtLibHandle handle, uint32_t timeout)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+**[IN] uint32_t timeout**::
+WDT のタイムアウト時間[sec]。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** WDT のタイムアウト時間を設定します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> でない場合は、エラーを返します。
+
+[#_PlWdtLibSetTimeout_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibSetTimeout_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibRegisterIrqHandler]
+==== PlWdtLibRegisterIrqHandler
+
+* *機能* +
+WDT の割り込みハンドラを登録します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibRegisterIrqHandler(const PlWdtLibHandle handle, PlWdtLibIrqHandler handler, void *private_data)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+**[IN] <<#_PlWdtLibIrqHandler, PlWdtLibIrqHandler>> handler**::
+WDT の割り込みハンドラ。NULL の場合はエラーを返します。
+
+**[IN] void *private_data**::
+割り込みハンドラのデータ。NULL でも構いません。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** WDT の割り込みハンドラを登録します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> でない場合は、エラーを返します。
+** 指定したハンドルの WDT が割り込みハンドラ登録済みの場合は、エラーを返します。
+
+[#_PlWdtLibRegisterIrqHandler_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibRegisterIrqHandler_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock(仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibUnregisterIrqHandler]
+==== PlWdtLibUnregisterIrqHandler
+
+* *機能* +
+割り込みハンドラの登録を解除します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibUnregisterIrqHandler(const PlWdtLibHandle handle)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 割り込みハンドラの登録を解除します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_STOP>> でない場合は、エラーを返します。
+** 指定したハンドルの WDT が割り込みハンドラ未登録の場合は、エラーを返します。
+
+[#_PlWdtLibUnregisterIrqHandler_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibUnregisterIrqHandler_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlWdtLibKeepAlive]
+==== PlWdtLibKeepAlive
+
+* *機能* +
+KeepAliveを送信します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlWdtLibKeepAlive(const PlWdtLibHandle handle)
+....
+* *引数の説明* +
+**[IN] const <<#_PlWdtLibHandle, PlWdtLibHandle>> handle**::
+PL WDTLib ハンドル。NULL の場合はエラーを返します。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** KeepAliveを送信します。
+** PlWdtLibOpen で取得したハンドル以外が入力された場合は、エラーを返します。
+** PL WDTLib の状態が <<#_TableStates, WDTLIB_START>> でない場合は、エラーを返します。
+
+[#_PlWdtLibKeepAlive_disc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+PL WDTLib API が他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_PlWdtLibKeepAlive_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrInvalidState (仮)
+|PlWdtlibInitialize が実行されていない。
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam (仮)
+|パラメータエラー
+|-
+|影響なし
+|不要
+
+|kPlErrLock/kPlErrUnlock(仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+== API 使用時の呼び出し例
+=== PlWdtLibStart までの一例
+.PlWdtLibStart
+image::./images/wdt_lib_start.png[scalewidth="100%", align="center"]
+
+=== WDT 発火時の一例 (割り込みハンドラ登録あり)
+.PL WDTLib interrupt (Registered)
+image::./images/wdt_lib_interrupt.png[scalewidth="100%", align="center"]
+
+=== WDT 発火時の一例 (割り込みハンドラ登録なし)
+.PL WDTLib interrupt (Unregistered)
+image::./images/wdt_lib_interrupt_os.png[scalewidth="100%", align="center"]
+
+=== PlWdtLibClose までの一例
+.PlWdtLibClose
+image::./images/wdt_lib_stop.png[scalewidth="100%", align="center"]
+
+== 使用している OSS の一覧
+なし
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+
+|0.0.2
+|- 全体 : 英単語の前後に半角空白を挿入 (読みやすくするため) +
+- 用語 : PL の説明を修正 +
+- 依存ブロック : Osal Msg を削除 +
+- PL の記述を PL WDT に変更
+- PL_WDT_READY/PL_WDT_RUNNING を PL_WDTLIB_READY/PL_WDTLIB_RUNNING に変更 +
+- WDT_OPEN/WDT_CLOSE/WDT_START/WDT_STOP を WDTLIB_OPEN/WDTLIB_CLOSE/WDTLIB_START/WDTLIB_STOP に変更 +
+- データ型に PlErrCode を追加 +
+- PlWdtLibInitialize/PlWdtLibFinalize API を Public に変更し、API 一覧の先頭に記述 +
+- PlWdtLibInitialize のエラーコードを変更 +
+- 図 (*.png) を英語表記に変更
+
+|===

@@ -1,0 +1,4499 @@
+= PL Network Manager (LLM Translation)
+:sectnums:
+:sectnumlevels: 4
+:chapter-label:
+:revnumber: 0.0.4
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 4
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br/>]]
+
+== Purpose and Scope
+
+This document describes the specifications of the PL Network Manager, one of the layers of the AITRIOS PL. +
+The purpose of the PL Network Manager is to absorb the differences that arise per board, such as the available network interfaces.
+
+The functions provided by POSIX Sockets are assumed to be controlled directly by the upper layer using sockets. This module handles the states before such socket control is possible, as well as the control aspects that cannot be handled by the socket interface.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[width="100%", cols="35%,65%",options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. +
+A layer that absorbs camera-specific differences.
+
+|ESF
+|Edge Software Framework.
+
+|I/F
+|Interface. +
+A software interface layer that handles interaction with the upper layers.
+
+|impl
+|implements. +
+A layer that implements the functions and behavior of the software interface.
+
+|Network I/F
+|An interface required for network communication. +
+e.g. Ethernet ("eth0")
+
+|Ether
+|Ethernet is a communication standard used for network connections and signal transmission via LAN cables (wired).
+
+|Wi-Fi
+|Wi-Fi (Wireless Fidelity) is a communication standard used for network connections and signal transmission via wireless communication.
+
+|Wi-Fi STA
+|Station mode is one of the operating modes of Wi-Fi devices, allowing a Wi-Fi terminal (wireless LAN client) to connect to a Wi-Fi access point (such as a wireless LAN router).
+
+|Wi-Fi AP
+|Access Point mode is one of the operating modes of a Wi-Fi router, where the router functions are disabled and it operates solely as a Wi-Fi access point.
+
+|===
+
+<<<
+
+== Component Description
+
+The PL Network component is the core implementation of the PL I/F, which can be used without being aware of camera-specific differences. +
+Its purpose is to absorb camera-specific differences related to network functionality.
+
+It can also be extended or modified to match the target camera.
+
+=== Component Overview
+
+The following is a software configuration diagram centered on this component.
+
+.Overview Diagram
+[{mermaid_block}, title=Overview Diagram]
+----
+block-beta
+  columns 12
+
+  system_app["System App"]:6
+  vns_app["VnS App"]:6
+
+  block:ESF:12
+    columns 8
+    esf_t("ESF"):8
+    esf_network["Network"]
+    esf_led["LED"]
+    esf_button["Button"]
+    esf_power["Power"]
+    esf_system["System"]
+    esf_log["Log"]
+    esf_memory["Memory"]
+    esf_other["...."]
+  end
+
+  block:pl:12
+    columns 8
+    pl_t("PL I/F"):8
+    pl_network["Network"]
+    pl_led["LED"]
+    pl_button["Button"]
+    pl_power["Power"]
+    pl_storage["Storage"]
+    pl_fw["Firmware"]
+    pl_memory["Memory"]
+    pl_other["...."]
+  end
+
+  block:pl_impl:6
+    columns 4
+    pl_impl_t("PL impl(T5)"):4
+    pl_network_impl["Network"]
+    pl_led_impl["LED"]
+    pl_button_impl["Button"]
+    pl_other_impl["...."]
+  end
+
+  block:pl_impl_t3p:6
+    columns 4
+    pl_impl_t3p_t("PL impl(T3P)"):4
+    pl_network_impl_t3p["Network"]
+    pl_led_impl_t3p["LED"]
+    pl_button_impl_t3p["Button"]
+    pl_other_impl_t3p["...."]
+  end
+
+  block:hal:6
+    columns 4
+    hal_t("HAL"):4
+    hal_ioexp["IOExpLib"]
+    hal_driver["Driver"]
+    hal_i2c["I2C"]
+    hal_other["...."]
+  end
+
+  block:utility:6
+    columns 4
+    utility_t("Utility"):4
+    utility_msg["MSG"]
+    utility_timer["Timer"]
+    utility_log["Log"]
+    utility_other["...."]
+  end
+
+  block:os:12
+   columns 6
+    os_t("OS/HW"):6
+    os_nuttx_esp32s3["Nuttx ESP32S3"]
+    os_nuttx_esp32["Nuttx ESP32"]
+    os_freertos["FreeRTOS"]
+    space:2
+    os_vendoros["Vendor OS"]
+  end
+
+  %% APP
+  style system_app fill:#15a,color:#fff,stroke:#000
+  style vns_app fill:#15a,color:#fff,stroke:#000
+  %% ESF
+  style ESF fill:#ada,stroke:#000
+  classDef esf_block fill:#efe,stroke:#000
+  class esf_network,esf_led,esf_button,esf_power,esf_system,esf_log,esf_memory,esf_other esf_block
+  %% PL I/F
+  style pl fill:#fe9,stroke:#f00,stroke-width:2px
+  style pl_network fill:#fe5,stroke:#f00,stroke-width:4px
+  classDef pl_block fill:#ffc,stroke:#000
+  class pl_led,pl_button,pl_storage,pl_power,pl_memory,pl_fw,pl_other pl_block
+  %% PL impl
+  style pl_impl fill:#fc5,stroke:#f00,stroke-width:2px
+  style pl_impl_t3p fill:#fc5,stroke:#f00,stroke-width:2px
+  style pl_network_impl fill:#fe5,stroke:#f00,stroke-width:4px
+  style pl_network_impl_t3p fill:#fe5,stroke:#f00,stroke-width:4px
+  class pl_led_impl,pl_button_impl,pl_storage_impl,pl_other_impl,pl_led_impl_t3p,pl_button_impl_t3p,pl_other_impl_t3p pl_block
+  %% HAL
+  style hal fill:#fc9,stroke:#000
+  classDef hal_block fill:#ffc,stroke:#000
+  class hal_ioexp,hal_driver,hal_i2c,hal_other hal_block
+  %% Utility
+  style utility fill:#FDE,stroke:#000
+  classDef utility_block fill:#ede,stroke:#000
+  class utility_msg,utility_timer,utility_log,utility_other utility_block
+  %% OS
+  style os fill:#aaa,stroke:#000
+  style os_nuttx_esp32s3 fill:#fff,stroke:#000
+  style os_nuttx_esp32 fill:#fff,stroke:#000
+  %% dot
+  classDef dot_block fill:#fff,stroke:#000,stroke-dasharray: 5 5
+  class os_freertos,os_vendoros dot_block
+  %% Title
+  classDef title_block stroke:transparent,fill:transparent
+  class esf_t,pl_t,pl_impl_t,pl_impl_t3p_t,hal_t,osal_t,utility_t,os_t title_block
+----
+
+<<<
+
+=== Detailed Description of the Component
+
+The PL Network Manager component consists of the following subcomponents. +
+
+==== PL Network Manager (I/F) +
+
+* *PL Network* +  
+This is the component that controls the network interfaces provided by the system. +  
+It distributes control to each network I/F component based on the specified network interface type. +  
+For details, refer to <<#_Functions,Component Function List>>. +  
+Supported network interfaces are listed in <<#_TableNetworkInterfaces>>. +  
+
+[#_TableNetworkInterfaces]
+.Supported Network Interfaces
+[width="100%",options="header"]
+|===
+|No |Network Interface
+|1
+|Ethernet
+|2
+|Wi-Fi
+|===
+
+* *PL Ether* +  
+This component controls Ethernet-connected network interfaces. +
+
+* *PL Wi-Fi* +  
+This component controls Wi-Fi-connected network interfaces. +
+
+IMPORTANT: If the system includes additional network interfaces (such as Bluetooth or LTE), please add a component for the corresponding network interface.
+
+==== PL Network Manager (impl) +
+
+This is the component responsible for network control depending on the OS/HW of each camera.
+
+* *T5* +
+** *PL Ether (impl)* +
+*** *LAN9250* +  
+This component configures the hardware of the externally connected LAN9250 device (Ethernet IC), including I/O port settings and communication device driver settings. +  
+The target hardware for configuration is listed in <<#_TableNetdevLan9250>>.
+
+[#_TableNetdevLan9250]
+.Hardware Settings (LAN9250)
+[width="100%",options="header"]
+|===
+|No |Hardware Name |Hardware Type |Description
+|1
+|ETH_SPI
+|SPI
+|Configures the device driver used for SPI communication with the LAN9250 device.
+|2
+|ETH_RST
+|I/O
+|Configures the hardware reset signal for the LAN9250 device.
+|3
+|ETH_IRQ
+|I/O
+|Configures the interrupt signal from the LAN9250 device.
+|4
+|ETH_PWR_EN
+|I/O
+|Configures the power enable switch signal for the LAN9250 device.
+|===
+
+** *PL Wi-Fi (impl)* +
+*** *Wi-Fi (STA)* +  
+This component controls the Wi-Fi network when connected in station mode.
+
+*** *Wi-Fi (AP)* +  
+This component controls the Wi-Fi network when connected in access point mode.
+
+.Component Diagram (T5)
+[{mermaid_block}, title=Component Diagram (T5)]
+----
+flowchart TB
+  subgraph master["　"]
+    direction TB
+    app["Upper Layer"]
+    subgraph pl_if["Porting Layer I/F"]
+      subgraph pl_network_if["PL Network Manager(I/F)"]
+        direction BT
+        pl_network["PL Network"]:::active_block
+        pl_ether["PL Ether"]:::active_block
+        pl_wifi["PL Wi-Fi"]:::active_block
+        pl_network_msg[(Message Queue)]:::active_block
+      end
+    end
+    subgraph pl_impl["Porting Layer impl(T5)"]
+        subgraph pl_network_impl["PL Network Manager(impl)"]
+          subgraph pl_ether_impl["PL Ether(impl)"]
+            pl_ether_lan9250["LAN9250"]:::active_block
+          end
+          subgraph pl_wifi_impl["PL Wi-Fi(impl)"]
+            direction BT
+            pl_wifi_sta_impl["Wi-Fi<br>(STA)"]:::active_block
+            pl_wifi_ap_impl["Wi-Fi<br>(AP)"]:::active_block
+          end
+        end
+    end
+    hal["HAL"]
+    os["OS"]
+  end
+
+  app -->|"PL Network public API call<br>PlNetwork***()"| pl_network
+  pl_network -->|"Ether<br>Network Control"| pl_ether
+  pl_ether -->|"Ether<br>Network Events"| pl_network
+  pl_network -->|"Wi-Fi<br>Network Control"| pl_wifi
+  pl_wifi -->|"Wi-Fi<br>Network Events"| pl_network
+  pl_network -->|"Network I/F Control<br>(ifup, ifdown...)"| os
+  %% Ether Device
+  pl_ether --> pl_ether_impl
+  pl_ether_impl -->|"IOExp Port Control"| hal --> os
+  pl_ether_impl -->|"Ethernet Driver Control"| os
+  %% Wi-Fi Device Control
+  pl_wifi --> pl_wifi_impl
+  pl_wifi_impl -->|"Wi-Fi Driver Control"| os
+  %% Network Event Message
+  pl_network -->|"Network Event<br>Message Send"| pl_network_msg
+  pl_network_msg -->|"Network Event<br>Message Receive"| pl_network
+  pl_network -->|"Network Event Handler<br>(kPlNetworkEvent***)"| app
+
+  style master fill:transparent,stroke:transparent
+  style app fill:#ada,stroke:#000
+  %% PL(I/F)
+  style pl_if fill:#fe9,stroke:#000
+  style pl_network_if fill:#fc5,stroke:#f00,stroke-width:2px
+  %% PL(impl)
+  style pl_impl fill:#fc5,stroke:#000
+  style pl_network_impl fill:#fa2,stroke:#f00,stroke-width:2px
+  style pl_ether_impl stroke:#f00,stroke-width:2px
+  style pl_wifi_impl stroke:#f00,stroke-width:2px
+  classDef active_block fill:#fe5,stroke:#f00,stroke-width:4px
+  %% HAL
+  style hal fill:#fc9,stroke:#000
+  %% OS
+  style os fill:#aaa,stroke:#000
+----
+
+* *T3P* +
+** *PL Ether (impl)* +  
+Since built-in devices mounted on the ESP32 board are used, there is no specific control in this component.
+
+** *PL Wi-Fi (impl)* +  
+As Wi-Fi is not supported, there is no specific control in this component.
+
+.Component Diagram (T3P)
+[{mermaid_block}, title=Component Diagram (T3P)]
+----
+flowchart TB
+  subgraph master["　"]
+    direction TB
+    app["Upper Layer"]
+    subgraph pl_if["Porting Layer I/F"]
+      subgraph pl_network_if["PL Network Manager(I/F)"]
+        direction BT
+        pl_network["PL Network"]:::active_block
+        pl_ether["PL Ether"]:::active_block
+        pl_wifi["PL Wi-Fi"]:::active_block
+        pl_network_msg[(Message Queue)]:::active_block
+      end
+    end
+    subgraph pl_impl["Porting Layer impl(T3P)"]
+        subgraph pl_network_impl["PL Network Manager(impl)"]
+          pl_ether_impl["PL Ether(impl)"]:::dot_block
+          pl_wifi_impl["PL Wi-Fi(impl)"]:::dot_block
+        end
+    end
+    os["OS"]
+  end
+
+  app -->|"PL Network public API call<br>PlNetwork***()"| pl_network
+  pl_network -->|"Ether<br>Network Control"| pl_ether
+  pl_ether -->|"Ether<br>Network Events"| pl_network
+  pl_network -->|"Wi-Fi<br>Network Control"| pl_wifi
+  pl_wifi -->|"Wi-Fi<br>Network Events"| pl_network
+  pl_network -->|"Network I/F Control<br>(ifup, ifdown...)"| os
+  %% Ether device
+  pl_ether -.-> pl_ether_impl
+  pl_ether_impl -.-> os
+  %% Wi-Fi device
+  pl_wifi -.-> pl_wifi_impl
+  pl_wifi_impl -.-> os
+  %% Network event messages
+  pl_network -->|"Network Event<br>Message Send"| pl_network_msg
+  pl_network_msg -->|"Network Event<br>Message Receive"| pl_network
+  pl_network -->|"Network Event Handler<br>(kPlNetworkEvent***)"| app
+
+  style master fill:transparent,stroke:transparent
+  style app fill:#ada,stroke:#000
+  %% PL (I/F)
+  style pl_if fill:#fe9,stroke:#000
+  style pl_network_if fill:#fc5,stroke:#f00,stroke-width:2px
+  %% PL (impl)
+  style pl_impl fill:#fc5,stroke:#000
+  style pl_network_impl fill:#fa2,stroke:#f00,stroke-width:2px
+  classDef active_block fill:#fe5,stroke:#f00,stroke-width:2px
+  classDef dot_block fill:#ffc,stroke:#f00,stroke-width:2px,stroke-dasharray: 5 5
+  %% OS
+  style os fill:#aaa,stroke:#000
+----
+
+==== Dependent Components
+
+Components related to the PL Network Manager component are listed in <<#_TableComponents>>.
+
+[#_TableComponents]
+.Dependent Components List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Component Name |Usage
+|link:./hal_ioexp_ja.adoc[HAL IOExpLib]
+|Used to control I/O ports when external devices are connected via an I/O expander.
+|===
+
+<<<
+
+=== State Transitions
+
+==== Internal States
+
+Internal states of the PL Network Manager component are listed in <<#_TableStateInternal>>.
+
+[#_TableStateInternal]
+.State List (Internal States)
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|Ready
+|Initial state.
+
+|Running
+|State in which processing is possible.
+|===
+
+The PL Network Manager transitions between the states shown in <<#_FigureStateInternal>> according to the API calls. +
+No state transition occurs when an error is returned by an API. +
+
+[#_FigureStateInternal]
+[{mermaid_block}, title=State Transition Diagram (Internal States)]
+----
+stateDiagram-v2
+    [*] --> Ready
+    Ready --> Running : PlNetworkInitialize
+    Running --> Ready : PlNetworkFinalize
+    Running --> Running : PlNetwork***<br>Other APIs
+----
+
+Accepted APIs in each state and their transition destinations are listed in <<#_TableStateTransitionInternal>>. +
+The state names in the table represent the state after the API has successfully executed, meaning the API is callable in that state. +
+``×`` indicates the API is not accepted in that state, and the call will return an error without causing a state transition. +
+
+[#_TableStateTransitionInternal]
+.State Transition Table (Internal States)
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|State
+^|Ready ^|Running
+.6+^|API Name
+
+|``**<<#_PlNetworkInitialize,PlNetworkInitialize>>**``
+^|``Running``
+^|×
+
+|``**<<#_PlNetworkFinalize,PlNetworkFinalize>>**``
+^|×
+^|``Ready``
+
+|``**<<#_PlNetworkGetSystemInfo,PlNetworkGetSystemInfo>>**``
+^|×
+^|○
+
+|``**<<#_PlNetworkGetNetStat,PlNetworkGetNetStat>>**``
+^|×
+^|○
+
+|``**<<#_PlNetworkStructInitialize,PlNetworkStructInitialize>>**``
+^|×
+^|○
+
+|Other APIs
+^|×
+^|○
+|===
+
+==== State Transitions per Network I/F
+
+The possible connection states for each network interface are shown in <<#_TableStateNetwork>>.
+
+[#_TableStateNetwork]
+.State List (Network)
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|Stopped
+|Network is stopped.
+
+|Started
+|Network is active.
+|===
+
+Each component internally transitions between states as shown in <<#_FigureStateNetwork>>, depending on the network state. +
+States are managed separately for each network interface.
+
+[#_FigureStateNetwork]
+[{mermaid_block}, title=State Transition Diagram (Network)]
+----
+stateDiagram-v2
+    [*] --> Stopped : PlNetworkInitialize
+    Stopped --> Started : PlNetworkStart
+    Started --> Stopped : PlNetworkStop
+    Stopped --> Stopped : PlNetwork***<br>Other APIs
+    Started --> Started : PlNetwork***<br>Other APIs
+----
+
+API availability in each state and the resulting state transitions are listed in <<#_TableStateTransitionNetwork>>. +
+The state names in the table indicate the resulting state after successful API execution, meaning the API is callable in that state. +
+``×`` indicates that the API cannot be called in that state; doing so will result in an error and no state transition. +
+``○`` indicates that the API can be called, but it does not cause a state transition. +
+
+[#_TableStateTransitionNetwork]
+.State Transition Table (Network)
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+^|State
+^|Stopped ^|Started
+.7+|API Name
+
+|``**<<#_PlNetworkSetConfig,PlNetworkSetConfig>>**``
+^|○
+^|×
+
+|``**<<#_PlNetworkGetConfig,PlNetworkGetConfig>>**``
+^|○
+^|○
+
+|``**<<#_PlNetworkGetStatus,PlNetworkGetStatus>>**``
+^|○
+^|○
+
+|``**<<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler>>**``
+^|○
+^|×
+
+|``**<<#_PlNetworkUnregisterEventHandler,PlNetworkUnregisterEventHandler>>**``
+^|○
+^|×
+
+|``**<<#_PlNetworkStart,PlNetworkStart>>**``
+^|``Started``
+^|×
+
+|``**<<#_PlNetworkStop,PlNetworkStop>>**``
+^|×
+^|``Stopped``
+|===
+
+<<<
+
+==== State Transitions Triggered by Network Events
+
+The PL Network Manager component generates network events in response to changes in network connection status. +
+Each network event is notified to the upper layer via the event handler registered using <<#_PlNetworkRegisterEventHandler,PlNetworkRegisterEventHandler>>. +
+
+TIP: The upper layer can use network events to perform actions such as LED control.
+
+* *PL Ether* +
+Network events in Ethernet networks cause state transitions as shown in <<#_FigureStateEventEther>>. +
+For supported network events, refer to <<#_SupportedNetworkEventEther,Network State Support Status per Camera>>.
+
+[#_FigureStateEventEther]
+[{mermaid_block}, title=State Transition Diagram (Ether)]
+----
+stateDiagram-v2
+    [*] --> kPlNetworkEventIfUp
+    kPlNetworkEventIfUp --> kPlNetworkEventIfDown : PlNetworkStop
+    kPlNetworkEventIfUp --> Active
+    state Active {
+      kPlNetworkEventLinkDown --> kPlNetworkEventLinkUp : Link Up
+      kPlNetworkEventLinkUp --> kPlNetworkEventLinkDown : Link Down
+    }
+    Active --> kPlNetworkEventIfDown : PlNetworkStop
+    kPlNetworkEventIfDown --> kPlNetworkEventIfUp : PlNetworkStart
+----
+
+CAUTION: The diagram assumes that events occur in the order ``kPlNetworkEventIfUp`` → ``kPlNetworkEventLinkUp`` when starting the network, and ``kPlNetworkEventLinkDown`` → ``kPlNetworkEventIfDown`` when stopping it. However, the actual event order may differ depending on the Ethernet driver implementation.
+
+* *PL Wi-Fi* +
+Network events in Wi-Fi networks cause state transitions as shown in <<#_FigureStateEventWifiSta>> and <<#_FigureStateEventWifiSAp>>. +
+For supported network events, refer to <<#_SupportedNetworkEventWifi,Network State Support Status per Camera>>.
+
+[#_FigureStateEventWifiSta]
+[{mermaid_block}, title=State Transition Diagram (Wi-Fi(STA))]
+----
+stateDiagram-v2
+    [*] --> kPlNetworkEventWifiStaStart
+    kPlNetworkEventWifiStaStart --> kPlNetworkEventWifiStaStop : PlNetworkStop
+    kPlNetworkEventWifiStaStart --> Active
+    state Active {
+      kPlNetworkEventWifiStaDisconnected --> kPlNetworkEventWifiStaConnected : Connected
+      kPlNetworkEventWifiStaConnected --> kPlNetworkEventWifiStaDisconnected : Disconnected
+      kPlNetworkEventWifiStaAuthmodeChange
+      kPlNetworkEventWifiStaRssiLow
+      kPlNetworkEventWifiStaBeaconTimeout
+    }
+    Active --> kPlNetworkEventWifiStaStop : PlNetworkStop
+    kPlNetworkEventWifiStaStop --> kPlNetworkEventWifiStaStart : PlNetworkStart
+----
+
+[#_FigureStateEventWifiSAp]
+[{mermaid_block}, title=State Transition Diagram (Wi-Fi(AP))]
+----
+stateDiagram-v2
+    [*] --> kPlNetworkEventWifiApStart
+    kPlNetworkEventWifiApStart --> kPlNetworkEventWifiApStop : PlNetworkStop
+    kPlNetworkEventWifiApStart --> Active
+    state Active {
+      kPlNetworkEventWifiApDisconnected --> kPlNetworkEventWifiApConnected : Connected
+      kPlNetworkEventWifiApConnected --> kPlNetworkEventWifiApDisconnected : Disconnected
+      kPlNetworkEventWifiApProbeReqRecved
+    }
+    Active --> kPlNetworkEventWifiApStop : PlNetworkStop
+    kPlNetworkEventWifiApStop --> kPlNetworkEventWifiApStart : PlNetworkStart
+----
+
+<<<
+
+[#_Functions]
+=== Function List of the Component
+
+<<#_TableFunction>> shows the list of functions provided by the component.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+
+|Network Initialization
+|Performs the initialization process for the network. +
+|<<#_Function1>>
+
+|Network Finalization
+|Performs the finalization process for the network. +
+|<<#_Function2>>
+
+|Retrieve Network Information of the System
+|Retrieves network information owned by the system, such as the list of available network interfaces.
+|<<#_Function3>>
+
+|Set/Get Network Configuration
+|Sets or gets the configuration of the specified network interface. +
+|<<#_Function4>>
+
+|Get Network Interface Status
+|Retrieves the status of the specified network interface. +
+|<<#_Function5>>
+
+|Get Overall Network Status of the System
+|Retrieves the overall network status of the system (equivalent to netstat).
+|<<#_Function6>>
+
+|Register/Unregister Event Handler
+|Registers or unregisters an event handler for the specified network interface.
+|<<#_Function7>>
+
+|Start Network
+|Activates the specified network interface (equivalent to ifup).
+|<<#_Function8>>
+
+|Stop Network
+|Deactivates the specified network interface (equivalent to ifdown).
+|<<#_Function9>>
+
+|Initialize Various Structures
+|Initializes structures specific to PL Network.
+|<<#_Function10>>
+|===
+
+<<<
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== Network Initialization
+
+Function Overview::  
+Performs network initialization.
+
+Preconditions::  
+HalIoexpInitialize must have been executed. +  
+HalDriverInitialize must have been executed. +  
+HalI2cInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkInitialize, PlNetworkInitialize>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkInitialize, PlNetworkInitialize>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkInitialize, PlNetworkInitialize>> for details.
+
+Considerations::  
+None
+
+[#_Function2]
+==== Network Finalization
+
+Function Overview::  
+Performs network finalization.
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkFinalize, PlNetworkFinalize>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkFinalize, PlNetworkFinalize>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkFinalize, PlNetworkFinalize>> for details.
+
+Considerations::  
+None
+
+[#_Function3]
+==== Retrieve System Network Information
+
+Function Overview::  
+Retrieves network information from the system, such as a list of available network interfaces.
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkGetSystemInfo, PlNetworkGetSystemInfo>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkGetSystemInfo, PlNetworkGetSystemInfo>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkGetSystemInfo, PlNetworkGetSystemInfo>> for details.
+
+Considerations::  
+None
+
+[#_Function4]
+==== Set/Get Network Configuration
+
+Function Overview::  
+Sets or retrieves the configuration of the specified network interface.
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+For setting: see <<#_PlNetworkSetConfig, PlNetworkSetConfig>>. +  
+For getting: see <<#_PlNetworkGetConfig, PlNetworkGetConfig>>.
+
+Detailed Behavior::  
+For setting: see <<#_PlNetworkSetConfig, PlNetworkSetConfig>>. +  
+For getting: see <<#_PlNetworkGetConfig, PlNetworkGetConfig>>.
+
+Error Behavior and Recovery::  
+For setting: see <<#_PlNetworkSetConfig, PlNetworkSetConfig>>. +  
+For getting: see <<#_PlNetworkGetConfig, PlNetworkGetConfig>>.
+
+Considerations::  
+None
+
+[#_Function5]
+==== Get Network Interface Status
+
+Function Overview::  
+Retrieves the status of the specified network interface.
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkGetStatus, PlNetworkGetStatus>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkGetStatus, PlNetworkGetStatus>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkGetStatus, PlNetworkGetStatus>> for details.
+
+Considerations::  
+None
+
+[#_Function6]
+==== Get Overall Network Status of the System
+
+Function Overview::  
+Retrieves the overall network status of the system as a string (equivalent to netstat).
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkGetNetStat, PlNetworkGetNetStat>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkGetNetStat, PlNetworkGetNetStat>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkGetNetStat, PlNetworkGetNetStat>> for details.
+
+Considerations::  
+None
+
+[#_Function7]
+==== Register/Unregister Event Handler
+
+Function Overview::  
+Registers or unregisters an event handler for the specified network interface.
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+For registration: see <<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler>>. +  
+For unregistration: see <<#_PlNetworkUnregisterEventHandler, PlNetworkUnregisterEventHandler>>.
+
+Detailed Behavior::  
+For registration: see <<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler>>. +  
+For unregistration: see <<#_PlNetworkUnregisterEventHandler, PlNetworkUnregisterEventHandler>>.
+
+Error Behavior and Recovery::  
+For registration: see <<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler>>. +  
+For unregistration: see <<#_PlNetworkUnregisterEventHandler, PlNetworkUnregisterEventHandler>>.
+
+Considerations::  
+None
+
+[#_Function8]
+==== Start Network
+
+Function Overview::  
+Enables the specified network interface (equivalent to ifup).
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkStart, PlNetworkStart>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkStart, PlNetworkStart>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkStart, PlNetworkStart>> for details.
+
+Considerations::  
+None
+
+[#_Function9]
+==== Stop Network
+
+Function Overview::  
+Disables the specified network interface (equivalent to ifdown).
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkStop, PlNetworkStop>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkStop, PlNetworkStop>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkStop, PlNetworkStop>> for details.
+
+Considerations::  
+None
+
+[#_Function10]
+==== Initialize Structures
+
+Function Overview::  
+Initializes PL Network-specific structures.
+
+Preconditions::  
+PlNetworkInitialize must have been executed.
+
+Function Details::  
+See <<#_PlNetworkStructInitialize, PlNetworkStructInitialize>> for details.
+
+Detailed Behavior::  
+See <<#_PlNetworkStructInitialize, PlNetworkStructInitialize>> for details.
+
+Error Behavior and Recovery::  
+See <<#_PlNetworkStructInitialize, PlNetworkStructInitialize>> for details.
+
+Considerations::  
+None
+
+<<<
+
+=== Non-functional Requirements of the Component
+
+<<#_TableNonFunction>> lists the non-functional requirements.
+
+[#_TableNonFunction]
+.Non-functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement |Description |Section
+
+|Maximum Stack Usage
+|Maximum stack usage within the PL Network component.
+|<<#_NonFunctionStack>>
+
+|Maximum Regular Heap Usage
+|Maximum regular heap usage within the PL Network component.
+|<<#_NonFunctionHeap>>
+
+|Maximum Static Data Usage
+|Maximum static data usage within the PL Network component.
+|<<#_NonFunctionStatic>>
+
+|Performance
+|Performance requirements expected of the PL Network component (e.g., execution time).
+|<<#_NonFunctionPerformance>>
+|===
+
+=== Description of Non-functional Requirements
+
+[#_NonFunctionStack]
+==== Maximum Stack Usage
+
+<<#_TableNonFunctionStack>> shows the stack usage list.
+
+[#_TableNonFunctionStack]
+.Stack Usage List
+[width="100%",options="header"]
+|===
+|Usage |Size
+|Network event thread
+|4096 Byte
+
+|Ethernet network monitoring thread
+|4096 Byte
+|===
+
+[#_NonFunctionHeap]
+==== Maximum Regular Heap Usage
+
+<<#_TableNonFunctionHeap>> shows the heap usage list.
+
+[#_TableNonFunctionHeap]
+.Heap Memory Usage List
+[width="100%",options="header"]
+|===
+|Usage |Size
+|Network interface list information
+|88 bytes * total number of network interfaces (*)
+
+|Ethernet network information
+|136 bytes
+
+|Wi-Fi network information
+|88 bytes
+
+|Network event message buffer
+|384 bytes
+|===
+
+(*) In the case of T5, the total number of network interfaces is 2, resulting in 176 bytes.
+
+[#_NonFunctionStatic]
+==== Maximum Static Data Usage
+
+<<#_TableNonFunctionStatic>> shows the static memory usage list.
+
+[#_TableNonFunctionStatic]
+.Static Memory Usage List
+[width="100%",options="header"]
+|===
+|Usage |Size
+|System network information
+|132 bytes
+
+|Total number of network interfaces
+|4 bytes
+
+|PL Network internal state
+|4 bytes
+
+|Event monitoring thread ID
+|4 bytes
+
+|Mutex resource
+|24 bytes
+
+|Network event message list information
+|16 bytes
+|===
+
+[#_NonFunctionPerformance]
+==== Performance
+
+T.B.D.
+
+=== Component Constraints and Notes
+
+==== Constraints
+
+* Multiple Network Event Handlers +
+  Multiple registrations of network event handlers are not supported. +
+  Only one event handler may be registered per network interface.
+
+* Wi-Fi Encryption Method +
+  Encryption method configuration is not supported. +
+  WPA2-PSK is used by default.
+
+* Wi-Fi Bandwidth +
+  Bandwidth configuration is not supported. +
+  HT20 (20 MHz bandwidth) is used by default.
+
+* Wi-Fi AP Mode +
+  Access Point mode is not supported. +
+  Please use Station (STA) mode.
+
+==== Notes
+
+* Network Event Handler Execution +
+  Network event handlers are executed by a thread within PL Network. +
+  Note that multiple events cannot be captured simultaneously. +
+  If a handler occupies the thread for a long time, execution of subsequent handlers will be delayed accordingly.
+
+* Link Status +
+  If <<#_PlNetworkGetStatus, PlNetworkGetStatus>> is called while the target network interface is in the down state, the link status may not be retrieved correctly.
+
+<<<
+
+== API Specification
+
+=== Definition Overview
+
+==== Config Values at Build Time
+
+<<#_TABLE_PL_CONFIG>> lists the config values used at build time.
+
+[#_TABLE_PL_CONFIG]
+.Config Values
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|Config Name |Default Value |Description
+
+|CONFIG_PL_NETWORK_HAVE_ETHER
+|n
+|Boolean value indicating whether the system can use Ethernet.
+
+y: Available / n: Unavailable
+
+|CONFIG_PL_NETWORK_HAVE_WIFI
+|n
+|Boolean value indicating whether the system can use Wi-Fi.
+
+y: Available / n: Unavailable
+|===
+
+==== Data Type List
+
+<<#_TableDataType>> lists the available data types.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+
+|enum PlErrCode
+|Enumeration defining API execution result codes.
+|<<#_PlErrCode>>
+
+|enum PlNetworkType
+|Enumeration representing the type of network interface.
+|<<#_PlNetworkType>>
+
+|enum PlNetworkWifiMode
+|Enumeration representing the Wi-Fi connection mode.
+|<<#_PlNetworkWifiMode>>
+
+|enum PlNetworkEvent
+|Enumeration representing network events.
+|<<#_PlNetworkEvent>>
+
+|enum PlNetworkStructType
+|Enumeration representing the structure type.
+|<<#_PlNetworkStructType>>
+
+|struct PlNetworkSystemInfo
+|Structure representing the system's network information.
+|<<#_PlNetworkSystemInfo>>
+
+|struct PlNetworkConfig
+|Parameter used for PlNetworkSet/GetConfig. +
+Holds sub-structures for each I/F type. +
+(e.g., struct PlNetworkWifiConfig)
+|<<#_PlNetworkConfig>>
+
+|struct PlNetworkWifiConfig
+|Structure representing configuration parameters for Wi-Fi.
+|<<#_PlNetworkWifiConfig>>
+
+|struct PlNetworkStatus
+|Parameter used in PlNetworkGetStatus. +
+Includes sub-structures representing each I/F's status.
+|<<#_PlNetworkStatus>>
+
+|struct PlNetworkWifiStatus
+|Structure representing the Wi-Fi status.
+|<<#_PlNetworkWifiStatus>>
+
+|PlNetworkEventHandler
+|Function pointer type for network event handlers.
+|<<#_PlNetworkEventHandler>>
+|===
+
+[#L_API_LIST]
+==== API List
+
+<<#_TableAPI>> lists the available APIs.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|API Name |Description |Section
+
+|PlNetworkInitialize
+|Performs initialization related to networking.
+|<<#_PlNetworkInitialize>>
+
+|PlNetworkFinalize
+|Performs finalization related to networking.
+|<<#_PlNetworkFinalize>>
+
+|PlNetworkGetSystemInfo
+|Retrieves network information held by the system, such as available network interfaces.
+|<<#_PlNetworkGetSystemInfo>>
+
+|PlNetworkSetConfig
+|Sets configuration for the specified network interface.
+|<<#_PlNetworkSetConfig>>
+
+|PlNetworkGetConfig
+|Retrieves configuration of the specified network interface.
+|<<#_PlNetworkGetConfig>>
+
+|PlNetworkGetStatus
+|Retrieves the status of the specified network interface.
+|<<#_PlNetworkGetStatus>>
+
+|PlNetworkGetNetStat
+|Retrieves the overall system network status as a string (equivalent to netstat).
+|<<#_PlNetworkGetNetStat>>
+
+|PlNetworkRegisterEventHandler
+|Registers a callback function to detect events for the specified network interface.
+|<<#_PlNetworkRegisterEventHandler>>
+
+|PlNetworkUnregisterEventHandler
+|Unregisters a previously registered callback for the specified network interface.
+|<<#_PlNetworkUnregisterEventHandler>>
+
+|PlNetworkStart
+|Enables the specified network interface (equivalent to ifup).
+|<<#_PlNetworkStart>>
+
+|PlNetworkStop
+|Disables the specified network interface (equivalent to ifdown).
+|<<#_PlNetworkStop>>
+
+|PlNetworkStructInitialize
+|Initializes the specified structure.
+|<<#_PlNetworkStructInitialize>>
+|===
+
+<<<
+
+==== Macro List
+
+<<#_TableMacro>> shows the list of macros.
+
+[#_TableMacro]
+.Macro List
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|Macro Name |Description |Section
+
+|PL_NETWORK_SYSTEM_INFO_INITIALIZER
+|Initializes `struct PlNetworkSystemInfo`.
+|<<#_PL_NETWORK_SYSTEM_INFO_INITIALIZER, 4.4.1>>
+
+|PL_NETWORK_WIFI_CONFIG_INITIALIZER
+|Initializes `struct PlNetworkWifiConfig`.
+|<<#_PL_NETWORK_WIFI_CONFIG_INITIALIZER, 4.4.2>>
+
+|PL_NETWORK_WIFI_STATUS_INITIALIZER
+|Initializes `struct PlNetworkWifiStatus`.
+|<<#_PL_NETWORK_WIFI_STATUS_INITIALIZER, 4.4.3>>
+|===
+
+=== Data Type Definitions
+
+[#_PlErrCode]
+==== PlErrCode
+
+Enumeration defining the execution result codes of APIs. (T.B.D.)
+
+[#_PlNetworkType]
+==== PlNetworkType
+
+Enumeration representing the type of network interface.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkTypeEther,
+    kPlNetworkTypeWifi,
+    kPlNetworkTypeUnkown,
+    kPlNetworkTypeMax
+} PlNetworkType;
+....
+
+* *Values*
+
+.Description of PlNetworkType values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlNetworkTypeEther
+|Ethernet
+|kPlNetworkTypeWifi
+|Wi-Fi
+|kPlNetworkTypeUnkown
+|Undefined network interface
+|kPlNetworkTypeMax
+|Maximum enum value
+|===
+
+[#_PlNetworkWifiMode]
+==== PlNetworkWifiMode
+
+Enumeration representing the Wi-Fi connection mode.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkWifiModeSta,
+    kPlNetworkWifiModeAp,
+    kPlNetworkWifiModeUnkown,
+    kPlNetworkWifiModeMax
+} PlNetworkWifiMode;
+....
+
+* *Values*
+
+.Description of PlNetworkWifiMode values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlNetworkWifiModeSta
+|Station mode
+|kPlNetworkWifiModeAp
+|Access Point (AP) mode
+|kPlNetworkWifiModeUnkown
+|Undefined Wi-Fi mode
+|kPlNetworkWifiModeMax
+|Maximum enum value
+|===
+
+[#_PlNetworkEvent]
+==== PlNetworkEvent
+
+Enumeration representing network events. +
+The events and their meanings vary depending on the system. +
+Supported events and their meanings for each camera are described in <<#_SupportedNetworkEvent>>.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkEventLinkUp,
+    kPlNetworkEventLinkDown,
+    kPlNetworkEventIfUp,
+    kPlNetworkEventIfDown,
+    kPlNetworkEventWifiReady,
+    kPlNetworkEventWifiApStart,
+    kPlNetworkEventWifiApStop,
+    kPlNetworkEventWifiApConnected,
+    kPlNetworkEventWifiApDisconnected,
+    kPlNetworkEventWifiApProbeReqRecved,
+    kPlNetworkEventWifiStaStart,
+    kPlNetworkEventWifiStaStop,
+    kPlNetworkEventWifiStaConnected,
+    kPlNetworkEventWifiStaDisconnected,
+    kPlNetworkEventWifiStaAuthmodeChange,
+    kPlNetworkEventWifiStaRssiLow,
+    kPlNetworkEventWifiStaBeaconTimeout,
+    kPlNetworkEventPhyIdValid,
+    kPlNetworkEventPhyIdInvalid,
+    kPlNetworkEventMax
+} PlNetworkEvent;
+....
+
+[#_PlNetworkStructType]
+==== PlNetworkStructType
+
+Enumeration representing the type of structure.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+    kPlNetworkStructTypeSystemInfo,
+    kPlNetworkStructTypeWifiConfig,
+    kPlNetworkStructTypeWifiStatus,
+    kPlNetworkStructTypeMax
+} PlNetworkStructType;
+....
+
+* *Values*
+
+.Description of PlNetworkStructType values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kPlNetworkStructTypeSystemInfo
+|Represents `struct PlNetworkSystemInfo`.
+|kPlNetworkStructTypeWifiConfig
+|Represents `struct PlNetworkWifiConfig`.
+|kPlNetworkStructTypeWifiStatus
+|Represents `struct PlNetworkWifiStatus`.
+|kPlNetworkStructTypeMax
+|Maximum enum value.
+|===
+
+[#_PlNetworkSystemInfo]
+==== PlNetworkSystemInfo
+
+Structure representing network information held by the system.
+
+* *Definition*
+
+[source, C]
+....
+typedef struct {
+    char           if_name[32+1];
+    PlNetworkType  type;
+    bool           cloud_enable;
+    bool           local_enable;
+} PlNetworkSystemInfo;
+....
+
+* *Values*
+
+[#_PlNetworkSystemInfoValue]
+.Description of PlNetworkSystemInfo values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|char if_name[32+1]
+|Name of the network interface.
+|<<#_PlNetworkType, PlNetworkType>> type
+|Type of the network interface.
+|bool cloud_enable
+|Whether the interface is available for cloud connection.
+|bool local_enable
+|Whether the interface is available for local connection.
+|===
+
+[#_PlNetworkConfig]
+==== PlNetworkConfig
+
+Parameter used in PlNetworkSet/GetConfig. Contains a structure for each network interface type.
+
+* *Definition*
+
+[source, C]
+....
+typedef struct {
+    PlNetworkType type,
+    union {
+        struct PlNetworkWifiConfig wifi;
+        // Bluetooth, etc
+    };
+} PlNetworkConfig;
+....
+
+* *Values*
+
+[#_PlNetworkConfigValue]
+.Description of PlNetworkConfig values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|<<#_PlNetworkType, PlNetworkType>> type
+|Type of network interface
+|<<#_PlNetworkWifiConfig, PlNetworkWifiConfig>> wifi
+|Wi-Fi configuration parameters
+|===
+
+[#_PlNetworkWifiConfig]
+==== PlNetworkWifiConfig
+
+Structure representing configuration parameters for Wi-Fi.
+
+* *Definition*
+
+[source, C]
+....
+typedef struct {
+    PlNetworkWifiMode  mode;
+    char               ssid[32+1];
+    char               pass[64+1];
+} PlNetworkWifiConfig;
+....
+
+* *Values*
+
+[#_PlNetworkWifiConfigValue]
+.Description of PlNetworkWifiConfig values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|<<#_PlNetworkWifiMode, PlNetworkWifiMode>> mode
+|Wi-Fi connection mode
+|char ssid[32+1]
+|SSID of the target access point
+|char pass[64+1]
+|Password for the access point
+|===
+
+[#_PlNetworkStatus]
+==== PlNetworkStatus
+
+Parameter used in PlNetworkGetStatus. Contains the status structure for each network interface.
+
+* *Definition*
+
+[source, C]
+....
+typedef struct {
+    union {
+        PlNetworkWifiStatus wifi;
+        // Bluetooth, etc
+    };
+    bool is_link_up;
+    bool is_if_up;
+    bool is_phy_id_valid;
+} PlNetworkStatus;
+....
+
+* *Values*
+
+[#_PlNetworkStatusValue]
+.Description of PlNetworkStatus values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|<<#_PlNetworkWifiStatus, PlNetworkWifiStatus>> wifi
+|Structure representing the status of Wi-Fi
+|bool is_link_up
+|true: Link is up +
+false: Link is down
+|bool is_if_up
+|true: Interface is up +
+false: Interface is down
+|bool is_phy_id_valid
+|true: PHY ID is valid +
+false: PHY ID is invalid
+|===
+
+[#_PlNetworkWifiStatus]
+==== PlNetworkWifiStatus
+
+Structure representing the status of Wi-Fi.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+    kPlWifiCountryPolicyAuto,
+    kPlWifiCountryPolicyManual,
+    kPlWifiCountryPolicyMax,
+} PlWifiCountryPolicy;
+
+typedef struct {
+    char                 cc[3];
+    uint8_t              schan;
+    uint8_t              nchan;
+    int8_t               max_tx_power;
+    PlWifiCountryPolicy  policy;
+} PlWifiCountry;
+
+typedef enum {
+    kPlWifiBandWidthHt20,
+    kPlWifiBandWidthHt40,
+    kPlWifiBandWidthMax,
+} PlWifiBandWidth;
+
+typedef struct {
+    int8_t            rssi;
+    PlWifiBandWidth   band_width;
+    PlWifiCountry     country;
+} PlNetworkWifiStatus;
+....
+
+* *Values*
+
+[#_PlNetworkWifiStatusValue]
+
+Refer to <<#_SupportedNetworkStatus, Supported Network Status per Camera>> for support details of each parameter by camera.
+
+.Description of PlNetworkWifiStatus values
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+2+|Member Name |Description
+
+2+|int8_t rssi
+|Signal strength
+
+2+|PlWifiBandWidth band_width
+|Channel bandwidth +
+(HT20 or HT40)
+
+.5+|PlWifiCountry country
+|char cc[3]
+|Country code
+
+|uint8_t schan
+|Starting channel number
+
+|uint8_t nchan
+|Total number of channels
+
+|int8_t max_tx_power
+|Maximum transmission power
+
+|PlWifiCountryPolicy policy
+|Method of setting country code +
+(Auto or Manual)
+|===
+
+[#_PlNetworkEventHandler]
+==== PlNetworkEventHandler
+
+Function pointer representing a network event handler.
+
+Used with PlNetworkRegisterEventHandler. +
+This handler allows the upper layer to detect <<#_PlNetworkEvent, network events>> such as ifup, ifdown, Wi-Fi Connected, etc.
+
+* *Definition*
+
+[source, C]
+....
+typedef void (*PlNetworkEventHandler)(const char *if_name, PlNetworkEvent event, void *private_data);
+....
+
+* *Parameter Descriptions*
+
+**``[IN] const char *if_name``**::  
+Name of the network interface where the event occurred.
+
+**``[IN] <<#_PlNetworkEvent, PlNetworkEvent>> event``**::  
+The event that occurred.
+
+**``[IN] void *private_data``**::  
+The private_data specified in PlNetworkRegisterEventHandler.
+
+<<<
+
+=== API Definition
+
+[#_PlNetworkInitialize]
+==== PlNetworkInitialize
+
+* *Function* +
+Initializes the network components.
+
+* *Signature* +
+
+[source, C]
+....
+PlErrCode PlNetworkInitialize(void)
+....
+
+* *Parameters* +
+-
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the execution result.
+
+* *Description* +
+** Performs initialization related to the network components.
+** Generates the network system information (<<#_PlNetworkSystemInfo, PlNetworkSystemInfo>>) and retains it until `PlNetworkFinalize()` is executed.
+** Based on the network system information, performs initialization for each network I/F.
+** Allocates memory buffers for message transmission and reception with the network event thread.
+** Creates a network event thread (`PlNetworkEventThread`) for sending and receiving network events.
+** If all above operations succeed, the internal state transitions to `RUNNING`.
+** If any of the above operations fail, this API returns an error.
+** For an example usage, refer to <<#_SequenceInitialize>>.
+
+[#_PlNetworkInitialize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrant |Not allowed
+|Callable from multiple threads |Not allowed
+|Callable from multiple tasks |Not allowed
+|Blocking |Does not block
+|===
+
+[#_PlNetworkInitialize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None required
+
+|kPlErrInvalidState
+|Multiple calls to PlNetworkInitialize
+|-
+|No impact
+|Retry after PlNetworkFinalize or reboot the system
+
+|kPlErrInvalidOperation
+|Mutex initialization failed
+|-
+|No impact
+|Reboot the system
+
+|kPlErrMemory
+|Memory allocation failed
+|-
+|No impact
+|Reboot the system
+
+|kPlErrInvalidOperation
+|Network initialization failed
+|-
+|No impact
+|Reboot the system
+
+|kPlThreadError
+|Thread creation failed
+|-
+|No impact
+|Reboot the system
+|===
+
+<<<
+
+[#_PlNetworkFinalize]
+==== PlNetworkFinalize
+
+* *Function* +
+Performs network finalization processing.
+
+* *Signature* +
+
+[source, C]
+....
+PlErrCode PlNetworkFinalize(void)
+....
+
+* *Parameters* +
+-
+
+* *Return Value* +
+Returns one of the `PlErrCode` values based on the execution result.
+
+* *Description* +
+** Performs finalization processing for the network.
+** Performs finalization processing for each network I/F based on the retained network system information.
+** Releases the retained network system information.
+** Terminates the event thread (`PlNetworkEventThread`).
+** Releases memory buffers allocated for message transmission and reception in `PlNetworkInitialize`.
+** Transitions the internal state to `READY`.
+** If any of the above operations fail, this API returns an error.
+** For example usage, refer to <<#_SequenceFinalize>>.
+
+[#_PlNetworkFinalize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrant |Not allowed
+|Callable from multiple threads |Not allowed
+|Callable from multiple tasks |Not allowed
+|Blocking |Does not block
+|===
+
+[#_PlNetworkFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Retry after executing PlNetworkInitialize or reboot the system
+
+|kPlErrInvalidOperation
+|Network finalization failed
+|-
+|No impact
+|Reboot the system
+
+|kPlThreadError
+|Thread termination failed
+|-
+|No impact
+|Reboot the system
+|===
+
+<<<
+
+[#_PlNetworkGetSystemInfo]
+==== PlNetworkGetSystemInfo
+
+* *Function* +
+Retrieves network information owned by the system, such as the list of available network I/Fs.
+
+* *Signature* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetSystemInfo(uint32_t *info_total_num, PlNetworkSystemInfo **infos)
+....
+
+* *Parameters* +
+**[OUT] uint32_t *info_total_num**:: 
+The total number of network interfaces owned by the system.
+
+**[OUT] <<#_PlNetworkSystemInfo,PlNetworkSystemInfo>> *infos**:: 
+Pointer to a structure array that represents network information. +
+The number of elements corresponds to `info_total_num`. +
+
+* *Return Value* +
+Returns one of the `PlErrCode` values based on the execution result.
+
+* *Description* +
+** Retrieves network information owned by the system.
+** This API is available after executing `PlNetworkInitialize`.
+** For example usage, refer to <<#_SequenceGetSystemInfo>>.
+
+[#_PlNetworkGetSystemInfo_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrant |Not allowed
+|Callable from multiple threads |Not allowed
+|Callable from multiple tasks |Not allowed
+|Blocking |Blocks
+|===
+
+[#_PlNetworkGetSystemInfo_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam
+|Invalid parameter
+|-
+|No impact
+|Reboot the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Retry after executing PlNetworkInitialize or reboot the system
+
+|kPlErrLock
+|Mutex lock failed
+|-
+|No impact
+|Reboot the system
+|===
+
+<<<
+
+[#_PlNetworkSetConfig]
+==== PlNetworkSetConfig
+
+* *Function* +
+Sets the configuration for the specified network I/F.
+
+* *Signature* +
+
+[source, C]
+....
+PlErrCode PlNetworkSetConfig(const char *if_name, const PlNetworkConfig *config)
+....
+
+* *Parameters* +
+**[IN] const char *if_name**:: 
+The target network interface for configuration.
+
+**[IN] const <<#_PlNetworkConfig,PlNetworkConfig>> *config**:: 
+Configuration parameters. The content should match the target network I/F.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the execution result.
+
+* *Description* +
+** Sets configuration for the specified network I/F.
+** This API is available after executing `PlNetworkInitialize`.
+** It is possible to reconfigure an I/F that has already been configured once.
+** The target network I/F should be selected from the list retrieved by `PlNetworkGetSystemInfo`.
+** If the target network I/F has already been started by `PlNetworkStart`, this API returns an error.
+** If the target network I/F type is Ethernet (`kPlNetworkTypeEther`), the corresponding Ethernet network configuration API will be called. +
++
+CAUTION: Since Ethernet has no configurable parameters, this API will return `kPlErrNoSupported`.
+** If the target network I/F type is Wi-Fi (`kPlNetworkTypeWifi`), the corresponding Wi-Fi network configuration API will be called. +
++
+CAUTION: Wi-Fi AP mode is not supported, so this API will return `kPlErrNoSupported`.
+** If the network I/F type is not supported, this API returns an error.
+** The configuration parameters are retained per network I/F and are referred to when determining the I/F type in subsequent PL Network API calls.
+** For usage examples, refer to <<#_SequenceSetConfig>>.
+
+[#_PlNetworkSetConfig_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrant |Not allowed
+|Callable from multiple threads |Not allowed
+|Callable from multiple tasks |Not allowed
+|Blocking |Blocks
+|===
+
+[#_PlNetworkSetConfig_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Parameters |System State After Error |Recovery Method
+
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam
+|Invalid parameter
+|-
+|No impact
+|Reboot the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Retry after executing PlNetworkInitialize or reboot the system
+
+|kPlErrLock
+|Mutex lock failure
+|-
+|No impact
+|Reboot the system
+
+|kPlErrNotFound
+|No matching network I/F
+|-
+|No impact
+|Reboot the system
+
+|kPlErrInvalidState
+|Network already started
+|-
+|No impact
+|Retry after executing PlNetworkStop or reboot the system
+
+|kPlErrNoSupported
+|Not supported
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidOperation
+|Configuration failed
+|-
+|No impact
+|Retry or reboot the system
+|===
+
+<<<
+
+[#_PlNetworkGetConfig]
+==== PlNetworkGetConfig
+* *Function* +
+Retrieves the configuration of the specified network I/F.
+
+* *Signature* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetConfig(const char *if_name, PlNetworkConfig *config)
+....
+
+* *Parameters* +
+**[IN] const char *if_name**:: 
+The target network interface for configuration retrieval.
+
+**[OUT] <<#_PlNetworkConfig,PlNetworkConfig>> *config**:: 
+Configuration parameters for the specified if_name.
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the result.
+
+* *Description* +
+** Retrieves the configuration for the specified network I/F.
+** This API can be used after executing `PlNetworkInitialize`.
+** The target I/F should be selected from the list obtained by `PlNetworkGetSystemInfo`.
+** It can be executed regardless of whether `PlNetworkStart` or `PlNetworkStop` has been called for the target I/F.
+** If the target I/F type is Ethernet (`kPlNetworkTypeEther`), the Ethernet configuration retrieval API is called. +
++
+CAUTION: Since Ethernet has no configurable parameters, this API returns `kPlErrNoSupported`.
+** If the target I/F type is Wi-Fi (`kPlNetworkTypeWifi`), the Wi-Fi configuration retrieval API is called. +
++
+CAUTION: Wi-Fi AP mode is not supported and this API will return `kPlErrNoSupported`.
+** If the I/F type is anything else, this API returns an error.
+** See <<#_SequenceGetConfig>> for an example usage.
+
+[#_PlNetworkGetConfig_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type 
+|Synchronous
+|Execution Context 
+|Runs in the caller’s context
+|Reentrant 
+|Not allowed
+|Callable from multiple threads 
+|Not allowed
+|Callable from multiple tasks 
+|Not allowed
+|Blocking 
+|Yes
+|===
+
+[#_PlNetworkGetConfig_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|kPlErrCodeOk 
+|Success 
+|– 
+|No impact 
+|Not required
+|kPlErrInvalidParam 
+|Invalid arguments 
+|– 
+|No impact 
+|Restart the system
+|kPlErrInvalidState 
+|`PlNetworkInitialize` not called 
+|– 
+|No impact 
+|Retry after calling `PlNetworkInitialize` or reboot
+|kPlErrLock 
+|Mutex lock failure 
+|– 
+|No impact 
+|Reboot the system
+|kPlErrNotFound 
+|Network I/F mismatch 
+|– |No impact 
+|Reboot the system
+|kPlErrInvalidState 
+|Network already started 
+|– |No impact 
+|Retry after calling `PlNetworkStop` or reboot
+|kPlErrNoSupported 
+|Not supported 
+|– 
+|No impact 
+|Not required
+|kPlErrInvalidOperation 
+|Failed to retrieve configuration 
+|– 
+|No impact 
+|Retry or reboot the system
+|===
+
+<<<
+
+[#_PlNetworkGetStatus]
+==== PlNetworkGetStatus
+* *Function* +
+Retrieves the status of the specified network I/F.
+
+* *Signature* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetStatus(const char *if_name, PlNetworkStatus *status)
+....
+
+* *Parameters* +
+**[IN] const char *if_name**:: 
+Target network interface.
+
+**[OUT] <<#_PlNetworkStatus,PlNetworkStatus>> *status**:: 
+Status of the specified network I/F.
+
+* *Return Value* +
+Returns one of the PlErrCode values based on the result.
+
+* *Description* +
+** Retrieves the status of the specified network I/F.
+** This API can be used after executing `PlNetworkInitialize`.
+** The target I/F should be selected from the list obtained by `PlNetworkGetSystemInfo`.
+** It can be executed regardless of whether the target I/F is started or stopped via `PlNetworkStart` or `PlNetworkStop`.
+** If the I/F type is Ethernet (`kPlNetworkTypeEther`), the corresponding Ethernet status retrieval API is called.
+** If the I/F type is Wi-Fi (`kPlNetworkTypeWifi`), the corresponding Wi-Fi status retrieval API is called. +
++
+CAUTION: Wi-Fi AP mode is not supported, and this API returns `kPlErrCodeOk`.
+** If the I/F type is anything else, this API returns an error.
+** See <<#_SequenceGetStatus>> for an example usage.
+
+[#_PlNetworkGetStatus_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type 
+|Synchronous
+|Execution Context 
+|Runs in the caller’s context
+|Reentrant 
+|Not allowed
+|Callable from multiple threads 
+|Not allowed
+|Callable from multiple tasks 
+|Not allowed
+|Blocking 
+|Yes
+|===
+
+[#_PlNetworkGetStatus_error]
+.Error Information
+[width="100%", options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+
+|kPlErrCodeOk
+|Success
+|–
+|No impact
+|Not required
+
+|kPlErrInvalidParam
+|Invalid arguments
+|–
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|`PlNetworkInitialize` not called
+|–
+|No impact
+|Retry after calling `PlNetworkInitialize` or reboot
+
+|kPlErrLock
+|Mutex lock failure
+|–
+|No impact
+|Reboot the system
+
+|kPlErrNotFound
+|Network I/F mismatch
+|–
+|No impact
+|Reboot the system
+
+|kPlErrInvalidOperation
+|Failed to retrieve status
+|–
+|No impact
+|Retry or reboot the system
+|===
+
+<<<
+
+[#_PlNetworkGetNetStat]
+==== PlNetworkGetNetStat
+* *Function* +
+Retrieves the overall network status of the system in a string format. +
+Equivalent to the `netstat` command in POSIX systems.
+
+* *Syntax* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetNetStat(char *buf, const uint32_t buf_size)
+....
+
+* *Parameter Descriptions* +
+**[OUT] char *buf**:: 
+Buffer to store the result.
+
+**[IN] const uint32_t buf_size**:: 
+Size of the buffer.
+
+* *Return Value* +
+Returns one of the `PlErrCode` values depending on the result of execution.
+
+* *Description* +
+** Retrieves the overall network status of the system in a string format.
+** This API can be used after `PlNetworkInitialize` is called.
+** The string returned by this API depends on the operating system.
+** This API can be used regardless of the `PlNetworkStart` or `Stop` state.
+** The result is written into `buf` up to `buf_size` bytes.
+** For an example API call, refer to <<#_SequenceGetNetStat>>.
+** The purpose of this API is to allow the retrieved string to be printed to a console or saved in a log file for human-readable inspection only.
+** For example, if the system is running Nuttx, the output may appear as follows:
+[source, C]
+....
+             IPv4   TCP   UDP  ICMP
+Received     0026  001c  0009  0000
+Dropped      0001  0000  0000  0000
+  IPv4        VHL: 0000   Frg: 0000
+
+  Checksum   0000  0000  0000  ----
+  TCP         ACK: 0000   SYN: 0000
+              RST: 0002  0002      
+  Type       0000  ----  ----  0000
+
+Sent         002c  0023  0009  0000
+  Rexmit     ----  0001  ----  ----
+....
+** Received: Number of packets received
+** Dropped: Number of dropped packets
+*** IPv4
+**** VHL: IP header errors
+**** Frg: Errors from receiving IP fragments (currently not supported)
+*** Checksum
+**** Number of checksum errors for IPv4, TCP, UDP
+*** TCP
+**** ACK: Dropped ACKs
+**** SYN: Dropped SYNs
+**** RST: Dropped RST and SYNRST packets
+*** Type
+**** IPv4: Packets with unknown protocol discarded
+**** ICMP: ICMP packets with unsupported types discarded
+** Sent: Number of packets sent
+*** Rexmit: Number of retransmitted packets
+
+
+[#_PlNetworkGetNetStat_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Not supported
+|Callable from multiple threads
+|Not supported
+|Callable from multiple tasks
+|Not supported
+|Blocking inside the API
+|Yes
+|===
+
+[#_PlNetworkGetNetStat_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Argument State |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Execute PlNetworkInitialize and retry or restart the system
+
+|kPlErrLock
+|Failed to acquire mutex lock
+|-
+|No impact
+|Restart the system
+
+|kPlErrOpen
+|Failed to open file
+|-
+|No impact
+|Retry or restart the system
+
+|kPlErrInvalidOperation
+|Failed to read file
+|-
+|No impact
+|Retry or restart the system
+
+|kPlErrClose
+|Failed to close file
+|-
+|No impact
+|Retry or restart the system
+|===
+
+<<<
+
+[#_PlNetworkRegisterEventHandler]
+==== PlNetworkRegisterEventHandler
+* *Function* +
+Registers an event handler for the specified network I/F.
+
+* *Syntax* +
+
+[source, C]
+....
+PlErrCode PlNetworkRegisterEventHandler(const char *if_name, PlNetworkEventHandler handler, void *private_data)
+....
+
+* *Parameter Description* +
+**[IN] const char *if_name**:: 
+The network I/F to register the handler for.
+
+**[IN] <<#_PlNetworkEventHandler,PlNetworkEventHandler>> handler**:: 
+The event handler function.
+
+**[IN] void *private_data**:: 
+User data. NULL is also acceptable.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** Registers an event handler for the specified network I/F.
+** This API is available after PlNetworkInitialize has been executed.
+** Select the target network I/F from the list obtained via PlNetworkGetSystemInfo.
+** Returns an error if a handler is already registered.
+** Returns an error if the specified network I/F is already started using PlNetworkStart.
+** If the network I/F type is Ethernet (``kPlNetworkTypeEther``), the Ethernet event registration API is called. +
++
+CAUTION: For Ethernet networks, since network events are monitored by polling and event registration is not required, ``kPlErrCodeOk`` is returned.
+** If the network I/F type is Wi-Fi (``kPlNetworkTypeWifi``), the Wi-Fi event registration API is called. +
++
+CAUTION: Since Wi-Fi AP mode is not supported, ``kPlErrCodeOk`` is returned.
+** For any other network I/F types, this API returns an error.
+** For an example usage, see <<#_SequenceRegisterEventHandler>>.
+
+[#_PlNetworkRegisterEventHandler_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Not supported
+|Callable from multiple threads
+|Not supported
+|Callable from multiple tasks
+|Not supported
+|Blocking inside the API
+|Yes
+|===
+
+[#_PlNetworkRegisterEventHandler_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Argument State |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Execute PlNetworkInitialize, retry, or restart the system
+
+|kPlErrLock
+|Failed to acquire mutex lock
+|-
+|No impact
+|Restart the system
+
+|kPlErrNotFound
+|Network I/F mismatch
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|Network already started
+|-
+|No impact
+|Execute PlNetworkStop, retry, or restart the system
+
+|kPlErrHandler
+|Handler already registered
+|-
+|No impact
+|Execute PlNetworkUnregisterEventHandler, retry, or restart the system
+
+|kPlErrInvalidOperation
+|Failed to register event
+|-
+|No impact
+|Retry or restart the system
+|===
+
+<<<
+
+[#_PlNetworkUnregisterEventHandler]
+==== PlNetworkUnregisterEventHandler
+* *Function* +
+Unregisters the event handler for the specified network I/F.
+
+* *Syntax* +
+
+[source, C]
+....
+PlErrCode PlNetworkUnregisterEventHandler(const char *if_name)
+....
+
+* *Parameter Description* +
+**[IN] const char *if_name**:: 
+Target network I/F.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** Unregisters the event handler for the specified network I/F.
+** This API is available after executing PlNetworkInitialize.
+** Select the target network I/F from the list obtained via PlNetworkGetSystemInfo.
+** Returns an error if no handler is registered.
+** Returns an error if the target network I/F is already started with PlNetworkStart.
+** If this API is called while the event handler for the target network I/F is running, it waits for the handler to finish before proceeding.
+** If the network I/F type is Ethernet (``kPlNetworkTypeEther``), the Ethernet event unregistration API is called. +
++
+CAUTION: For Ethernet networks, since event monitoring is done by polling and no registration is required, this API returns ``kPlErrCodeOk``.
+** If the network I/F type is Wi-Fi (``kPlNetworkTypeWifi``), the Wi-Fi event unregistration API is called. +
++
+CAUTION: Since Wi-Fi AP mode is not supported, this API returns ``kPlErrCodeOk``.
+** For any other network I/F types, this API returns an error.
+** For example usage, refer to <<#_SequenceUnregisterEventHandler>>.
+
+[#_PlNetworkUnregisterEventHandler_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrant
+|Not supported
+|Callable from multiple threads
+|Not supported
+|Callable from multiple tasks
+|Not supported
+|Blocking inside the API
+|Yes
+|===
+
+[#_PlNetworkUnregisterEventHandler_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Argument State |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Execute PlNetworkInitialize, retry, or restart the system
+
+|kPlErrLock
+|Failed to acquire mutex lock
+|-
+|No impact
+|Restart the system
+
+|kPlErrNotFound
+|Network I/F mismatch
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|Network already started
+|-
+|No impact
+|Execute PlNetworkStop, retry, or restart the system
+
+|kPlErrHandler
+|No handler registered
+|-
+|No impact
+|Execute PlNetworkRegisterEventHandler, retry, or restart the system
+
+|kPlErrInvalidOperation
+|Failed to unregister event
+|-
+|No impact
+|Retry or restart the system
+|===
+
+<<<
+
+[#_PlNetworkStart]
+==== PlNetworkStart
+* *Function* +
+Enables the specified network I/F (equivalent to ifup).
+
+* *Syntax* +
+
+[source, C]
+....
+PlErrCode PlNetworkStart(const char *if_name)
+....
+
+* *Parameter Description* +
+**[IN] const char *if_name**:: 
+Target network I/F.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** Enables the specified network I/F (equivalent to ifup).
+** This API is available after executing PlNetworkInitialize.
+** Select the target network I/F from the list obtained via PlNetworkGetSystemInfo.
+** Returns an error if the target network I/F is already started with PlNetworkStart.
+** If the network I/F type is Ethernet (``kPlNetworkTypeEther``), the Ethernet network start API is called.
+** If the network I/F type is Wi-Fi (``kPlNetworkTypeWifi``), the Wi-Fi network start API is called. +
++
+CAUTION: Since Wi-Fi AP mode is not supported, this API returns ``kPlErrCodeOk``.
+** This API is asynchronous. Use the handler registered with PlNetworkRegisterEventHandler to detect network status changes.
+** For any other network I/F types, this API returns an error.
+** For example usage, refer to <<#_SequenceStart>>.
+
+[#_PlNetworkStart_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Asynchronous API
+|Execution Context
+|Until PlNetworkStart returns: runs in the caller's context
+
+While the network event handler is running: runs in the PL-side thread
+|Reentrant
+|Not supported
+|Callable from multiple threads
+|Not supported
+|Callable from multiple tasks
+|Not supported
+|Blocking inside the API
+|Yes
+|===
+
+[#_PlNetworkStart_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Argument State |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Execute PlNetworkInitialize, retry, or restart the system
+
+|kPlErrLock
+|Failed to acquire mutex lock
+|-
+|No impact
+|Restart the system
+
+|kPlErrNotFound
+|Network I/F mismatch
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|Network already started
+|-
+|No impact
+|Execute PlNetworkStop, retry, or restart the system
+
+|kPlErrInvalidOperation
+|Failed to start network
+|-
+|No impact
+|Retry or restart the system
+|===
+
+<<<
+
+[#_PlNetworkStop]
+==== PlNetworkStop
+* *Function* +
+Disables the specified network I/F (equivalent to ifdown).
+
+* *Syntax* +
+
+[source, C]
+....
+PlErrCode PlNetworkStop(const char *if_name)
+....
+
+* *Parameter Description* +
+**[IN] const char *if_name**:: 
+Target network I/F.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** Disables the specified network I/F (equivalent to ifdown).
+** This API is available after executing PlNetworkInitialize.
+** Select the target network I/F from the list obtained via PlNetworkGetSystemInfo.
+** If the target network I/F has already been stopped with PlNetworkStop or has not been started with PlNetworkStart, this API returns an error.
+** If the network I/F type is Ethernet (``kPlNetworkTypeEther``), the Ethernet network stop API is called.
+** If the network I/F type is Wi-Fi (``kPlNetworkTypeWifi``), the Wi-Fi network stop API is called. +
++
+CAUTION: Since Wi-Fi AP mode is not supported, this API returns ``kPlErrCodeOk``.
+** This API is asynchronous. Use the handler registered with PlNetworkRegisterEventHandler to detect network status changes.
+** For any other network I/F types, this API returns an error.
+** For example usage, refer to <<#_SequenceStop>>.
+
+[#_PlNetworkStop_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Asynchronous API
+|Execution Context
+|Until PlNetworkStop returns: Runs in the caller’s context +
+Network event handler execution: Runs in the PL thread
+|Reentrant
+|Not supported
+|Callable from multiple threads
+|Not supported
+|Callable from multiple tasks
+|Not supported
+|Blocking inside the API
+|Yes
+|===
+
+[#_PlNetworkStop_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Argument State |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Execute PlNetworkInitialize, then retry or restart the system
+
+|kPlErrLock
+|Failed to acquire mutex lock
+|-
+|No impact
+|Restart the system
+
+|kPlErrNotFound
+|Network I/F mismatch
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|Network already stopped
+|-
+|No impact
+|Execute PlNetworkStart, then retry or restart the system
+
+|kPlErrInvalidOperation
+|Failed to stop network
+|-
+|No impact
+|Retry or restart the system
+|===
+
+<<<
+
+[#_PlNetworkStructInitialize]
+==== PlNetworkStructInitialize
+* *Function* +
+Initializes the specified structure.
+
+* *Syntax* +
+
+[source, C]
+....
+PlErrCode PlNetworkStructInitialize(void *structure, PlNetworkStructType type)
+....
+
+* *Parameter Description* +
+**[OUT] void *structure**:: 
+Pointer to the structure to initialize.
+
+**[IN] <<#_PlNetworkStructType,PlNetworkStructType>> type**:: 
+Structure type.
+
+* *Return Value* +
+Returns one of the PlErrCode values depending on the result.
+
+* *Description* +
+** Initializes the specified structure.
+
+*** If type is ``kPlNetworkStructTypeSystemInfo`` +
++
+[width="100%",options="header"]
+|===
+|Member |Initial Value
+|char if_name[32+1]
+|'\0' (NULL character)
+
+|PlNetworkType type
+|kPlNetworkTypeUnkown
+
+|bool cloud_enable
+|false
+
+|bool local_enable
+|false
+|===
+
+*** If type is ``kPlNetworkStructTypeWifiConfig`` +
++
+[width="100%",options="header"]
+|===
+|Member |Initial Value
+|PlNetworkWifiMode mode
+|kPlNetworkWifiModeUnkown
+
+|char ssid[32+1]
+|'\0' (NULL character)
+
+|char pass[64+1]
+|'\0' (NULL character)
+|===
+
+*** If type is ``kPlNetworkStructTypeWifiStatus`` +
++
+[width="100%",options="header"]
+|===
+2+|Member |Initial Value
+2+|int8_t rssi
+|0
+
+2+|PlWifiBandWidth band_width
+|kPlWifiBandWidthHt20
+
+.5+|PlWifiCountry country
+|char cc[3]
+|"01 "
+
+|uint8_t schan
+|1
+
+|uint8_t nchan
+|11
+
+|int8_t max_tx_power
+|0
+
+|PlWifiCountryPolicy policy
+|kPlWifiCountryPolicyManual
+|===
+
+** This API is available after executing PlNetworkInitialize.
+** Example usage +
++
+[source, C]
+....
+PlNetworkWifiConfig config;
+PlNetworkStructInitialize((void*)&config, PlNetworkStructTypeWifiConfig);
+....
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller’s context
+|Reentrant
+|Not supported
+|Callable from multiple threads
+|Not supported
+|Callable from multiple tasks
+|Not supported
+|Blocking inside the API
+|Yes
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Argument State |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|None
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|Restart the system
+
+|kPlErrInvalidState
+|PlNetworkInitialize not executed
+|-
+|No impact
+|Execute PlNetworkInitialize, then retry or restart the system
+
+|kPlErrLock
+|Failed to acquire mutex lock
+|-
+|No impact
+|Restart the system
+|===
+
+<<<
+
+=== Description of Each Macro
+[#_PL_NETWORK_SYSTEM_INFO_INITIALIZER]
+==== PL_NETWORK_SYSTEM_INFO_INITIALIZER
+* *Function* +
+Initializes <<#_PlNetworkSystemInfo,PlNetworkSystemInfo>>. +
+Can be used regardless of whether PlNetworkInitialize has been executed.
+
+* *Syntax* +
+
+[source, C]
+....
+#define PL_NETWORK_SYSTEM_INFO_INITIALIZER
+....
+
+* *Parameter Description* +
+-
+
+* *Description* +
+Initializes a PlNetworkSystemInfo structure variable with the following values: +
++
+[width="100%",options="header"]
+|===
+|Member |Initial Value
+|char if_name[32+1]
+|'\0' (NULL character)
+
+|PlNetworkType type
+|kPlNetworkTypeUnkown
+
+|bool cloud_enable
+|false
+
+|bool local_enable
+|false
+|===
+
+* *Usage Example* +
++
+[source, C]
+....
+PlNetworkSystemInfo info = PL_NETWORK_SYSTEM_INFO_INITIALIZER;
+....
+
+<<<
+
+[#_PL_NETWORK_WIFI_CONFIG_INITIALIZER]
+==== PL_NETWORK_WIFI_CONFIG_INITIALIZER
+* *Function* +
+Initializes <<#_PlNetworkWifiConfig,PlNetworkWifiConfig>>. +
+Can be used regardless of whether PlNetworkInitialize has been executed.
+
+* *Syntax* +
+
+[source, C]
+....
+#define PL_NETWORK_WIFI_CONFIG_INITIALIZER
+....
+
+* *Parameter Description* +
+-
+
+* *Description* +
+Initializes a PlNetworkWifiConfig structure variable with the following values: +
++
+[width="100%",options="header"]
+|===
+|Member |Initial Value
+|PlNetworkWifiMode mode
+|kPlNetworkWifiModeUnkown
+
+|char ssid[32+1]
+|'\0' (NULL character)
+
+|char pass[64+1]
+|'\0' (NULL character)
+|===
+
+* *Usage Example* +
++
+[source, C]
+....
+PlNetworkWifiConfig config = PL_NETWORK_WIFI_CONFIG_INITIALIZER;
+....
+
+<<<
+
+[#_PL_NETWORK_WIFI_STATUS_INITIALIZER]
+==== PL_NETWORK_WIFI_STATUS_INITIALIZER
+* *Function* +
+Initializes <<#_PlNetworkWifiStatus,PlNetworkWifiStatus>>. +
+Can be used regardless of whether PlNetworkInitialize has been executed.
+
+* *Syntax* +
+
+[source, C]
+....
+#define PL_NETWORK_WIFI_STATUS_INITIALIZER
+....
+
+* *Parameter Description* +
+-
+
+* *Description* +
+Initializes a PlNetworkWifiStatus structure variable with the following values: +
++
+[width="100%",options="header"]
+|===
+2+|Member |Initial Value
+2+|int8_t rssi
+|0
+
+2+|PlWifiBandWidth band_width
+|kPlWifiBandWidthHt20
+
+.5+|PlWifiCountry country
+|char cc[3]
+|"01 "
+
+|uint8_t schan
+|1
+
+|uint8_t nchan
+|11
+
+|int8_t max_tx_power
+|0
+
+|PlWifiCountryPolicy policy
+|kPlWifiCountryPolicyManual
+|===
+
+* *Usage Example* +
++
+[source, C]
+....
+PlNetworkWifiStatus status = PL_NETWORK_WIFI_STATUS_INITIALIZER;
+....
+
+<<<
+
+[#_SequenceSample]
+== API Usage Examples
+[#_SequenceInitialize]
+=== Network Initialization
+* *PL Network* +
+** Allocates internal resources such as mutexes and memory. +
+** Generates network system information and calls the network initialization API for each network I/F type. +
+** Creates the network event thread (PlNetworkEventThread). +
+
+* *PL Ether* +
+** Performs initialization processing related to the Ethernet network. +
+
+* *PL Wi-Fi* +
+** Performs initialization processing related to the Wi-Fi network. +
+
+[{mermaid_block}, title=Network Initialization]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkInitialize()
+    {mermaid_break} internal state != Ready
+      Note over pl_network : Multiple calls to PlNetworkInitialize
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS: Allocate memory (network event message)
+    OS -->> -pl_network : pointer
+    {mermaid_break} pointer == NULL
+      Note over pl_network : Memory allocation failed
+      pl_network -->> app : kPlErrMemory
+    end
+
+    pl_network ->> +OS : Initialize mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Mutex initialization failed
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : Initialize network I/F list
+    OS -->> -pl_network : void
+
+    loop 0 to kNetworkSystemInfoTotalNum
+      pl_network ->> +OS : Allocate memory (network I/F list info)
+      OS -->> -pl_network : pointer
+      {mermaid_break} pointer == NULL
+        Note over pl_network : Memory allocation failed
+        pl_network -->> app : kPlErrMemory
+      end
+
+      alt type == kPlNetworkTypeEther
+        pl_network ->> +pl_ether : PlEtherInitialize()
+        Note over pl_network,OS : Initialize Ethernet network
+        pl_ether -->> -pl_network : Response (kPlErr***)
+      else type == kPlNetworkTypeWifi
+        pl_network ->> +pl_wifi : PlWifiInitialize()
+        Note over pl_network,OS : Initialize Wi-Fi network
+        pl_wifi -->> -pl_network : Response (kPlErr***)
+      end
+
+      {mermaid_break} response != kPlErrCodeOk
+        Note over pl_network : Network initialization failed
+        pl_network -->> app : kPlErrInvalidOperation
+      end
+
+      pl_network ->> +OS : Add to network I/F list
+      OS -->> -pl_network : void
+    end
+
+    pl_network ->> +OS : Create event thread
+      create participant Network Event Thread
+      OS ->> Network Event Thread : thread create
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Thread creation failed
+      pl_network -->> app : kPlThreadError
+    end
+
+    pl_network ->> pl_network : Ready->Running
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceFinalize]
+=== Network Finalization
+* *PL Network* +
+** Calls the network finalization API for each network I/F type using the network system information. +
+** Deletes internally held network system information. +
+** Terminates the network event thread (PlNetworkEventThread). +
+** Releases allocated resources. +
+
+* *PL Ether* +
+** Performs finalization processing related to the Ethernet network. +
+
+* *PL Wi-Fi* +
+** Performs finalization processing related to the Wi-Fi network. +
+
+[{mermaid_block}, title=Network Finalization]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkFinalize()
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    loop 0 to kNetworkSystemInfoTotalNum
+      alt type == kPlNetworkTypeEther
+        pl_network ->> +pl_ether : PlEtherFinalize()
+        Note over pl_network,OS : Finalize Ethernet network
+        pl_ether -->> -pl_network : Response (kPlErr***)
+      else type == kPlNetworkTypeWifi
+        pl_network ->> +pl_wifi : PlWifiFinalize()
+        Note over pl_network,OS : Finalize Wi-Fi network
+        pl_wifi -->> -pl_network : Response (kPlErr***)
+      end
+
+      pl_network ->> +OS: Delete from network I/F list
+      OS -->> -pl_network : void
+
+      pl_network ->> +OS: Free memory (network I/F list info)
+      OS -->> -pl_network : void
+    end
+
+    pl_network ->> +OS : Send thread termination message
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      pl_network ->> +OS : Cancel thread
+      OS -->> -pl_network : void
+    end
+
+    event_thread ->> +event_thread : thread wakeup
+    event_thread ->> +OS: Get network event message
+    OS -->> -event_thread : Received message buffer address
+    alt message received
+      alt message type == termination event
+        Note over event_thread : Thread termination
+        deactivate event_thread
+        destroy event_thread
+        OS -x event_thread : thread end
+      end
+    end
+
+    pl_network ->> +OS : Wait for network event termination
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Thread termination failed
+      pl_network -->> app : kPlThreadError
+    end
+
+    pl_network ->> +OS: Free memory (network event message)
+    OS -->> -pl_network : void
+
+    pl_network ->> +OS : Release mutex resource
+    OS -->> -pl_network : result
+
+    pl_network ->> pl_network : Running->Ready
+  pl_network -->> -app : Response (kPlErr***)
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetSystemInfo]
+=== Retrieving System Network Information
+* *PL Network* +
+** Returns the system's internally held network information to the upper layer. +
+
+[{mermaid_block}, title=Retrieving System Network Information]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetSystemInfo(&info_total_num, &infos)
+    {mermaid_break} (info_total_num == NULL) || (infos == NULL)
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> pl_network : Set system network information
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetNetStat]
+=== Retrieving Overall Network Status of the System
+* *PL Network* +
+** Calls system API to obtain network information. +
+** Returns the retrieved network information to the upper layer. +
+
+[{mermaid_block}, title=Retrieving Overall Network Status of the System]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetNetStat(&buf, buf_size)
+    {mermaid_break} (buf == NULL) || (buf_size < 1)
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +OS : Retrieve overall system network status
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Failed to retrieve network status
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceSetConfig]
+=== Setting Network Configuration
+* *PL Network* +
+** Determines <<#_PlNetworkType,network I/F type>> based on the network I/F name and configuration, and calls the corresponding network configuration setting API. +
+** Internally stores the network configuration. +
+
+* *PL Ether* +
+** Applies parameters to the Ethernet network. +
+
+* *PL Wi-Fi* +
+** Applies parameters to the Wi-Fi network. +
+
+[{mermaid_block}, title=Setting Network Configuration]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkSetConfig(if_name, &config)
+    {mermaid_break} (if_name == NULL) || (config == NULL)
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list info
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : network I/F info
+    pl_network -->> -pl_network : Result of network I/F search
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Network I/F not found
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} network I/F state != Stopped
+      Note over pl_network : Invalid internal state
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherSetConfig(net_info, config)
+      Note over pl_network,OS : Set Ethernet network configuration
+      pl_ether -->> -pl_network : Response (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiSetConfig(net_info, config)
+      Note over pl_network,OS : Set Wi-Fi network configuration
+      pl_wifi -->> -pl_network : Response (kPlErr***)
+    end
+
+    {mermaid_break} response == kPlErrNoSupported
+      Note over pl_network : Not supported
+      pl_network -->> app : kPlErrNoSupported
+    end
+    {mermaid_break} response != kPlErrCodeOk
+      Note over pl_network : Network configuration failed
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Store configuration internally
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetConfig]
+=== Retrieving Network Configuration
+* *PL Network* +
+** Determines the <<#_PlNetworkType, network I/F type>> from the specified network I/F name and list information, and calls the network configuration retrieval API for the corresponding type. +
+
+* *PL Ether* +
+** Retrieves the Ethernet network parameters. +
+** The retrieved parameters are set into `config` and returned to the upper layer. +
+
+* *PL Wi-Fi* +
+** Retrieves the Wi-Fi network parameters. +
+** The retrieved parameters are set into `config` and returned to the upper layer. +
+
+[{mermaid_block}, title=Retrieving Network Configuration]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetConfig(if_name, &config)
+    {mermaid_break} (if_name == NULL) || (config == NULL)
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list info
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : network I/F info
+    pl_network -->> -pl_network : Search result
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Network I/F not found
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} network I/F state != Stopped
+      Note over pl_network : Invalid internal state
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherGetConfig(net_info, config)
+      Note over pl_network,OS : Retrieve Ethernet network configuration
+      pl_ether -->> -pl_network : result (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiGetConfig(net_info, config)
+      Note over pl_network,OS : Retrieve Wi-Fi network configuration
+      pl_wifi -->> -pl_network : result (kPlErr***)
+    end
+
+    {mermaid_break} result == kPlErrNoSupported
+      Note over pl_network : Not supported
+      pl_network -->> app : kPlErrNoSupported
+    end
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Failed to retrieve network configuration
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceGetStatus]
+=== Retrieving Network Status
+* *PL Network* +
+** Determines the <<#_PlNetworkType, network I/F type>> from the specified network I/F name and list information, and calls the network status retrieval API for the corresponding type. +
+
+* *PL Ether* +
+** Retrieves the Ethernet network status. +
+** The retrieved network status is set into `status` and returned to the upper layer. +
+
+* *PL Wi-Fi* +
+** Retrieves the Wi-Fi network status. +
+** The retrieved network status is set into `status` and returned to the upper layer. +
+
+[{mermaid_block}, title=Retrieving Network Status]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkGetStatus(if_name, &status)
+    {mermaid_break} (if_name == NULL) || (status == NULL)
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list info
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : network I/F info
+    pl_network -->> -pl_network : Search result
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Network I/F not found
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherGetStatus(net_info, status)
+      Note over pl_network,OS : Retrieve Ethernet network status
+      pl_ether -->> -pl_network : result (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiGetStatus(net_info, status)
+      Note over pl_network,OS : Retrieve Wi-Fi network status
+      pl_wifi -->> -pl_network : result (kPlErr***)
+    end
+
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Failed to retrieve network status
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceRegisterEventHandler]
+=== Registering an Event Handler
+* *PL Network* +
+** Internally stores the <<#_PlNetworkEventHandler, event handler>>. +
+** Determines the <<#_PlNetworkType, network I/F type>> from the specified network I/F name and list information, and calls the event handler registration API for the corresponding type. +
+
+* *PL Ether* +
+** Registers an event handler for Ethernet events. +
+
+* *PL Wi-Fi* +
+** Registers an event handler for Wi-Fi events. +
+
+[{mermaid_block}, title=Registering an Event Handler]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkRegisterEventHandler(if_name, handler, private_data)
+    {mermaid_break} if_name == NULL
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Failed to lock mutex
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list info
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : network I/F info
+    pl_network -->> -pl_network : Search result
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Network I/F not found
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} network I/F state != Stopped
+      Note over pl_network : Invalid internal state
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler already registered
+      Note over pl_network : Handler already registered
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherRegisterEventHandler(net_info)
+      Note over pl_network,OS : Registering Ethernet event
+      pl_ether -->> -pl_network : result (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiRegisterEventHandler(net_info)
+      Note over pl_network,OS : Registering Wi-Fi event
+      pl_wifi -->> -pl_network : result (kPlErr***)
+    end
+
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Event registration failed
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Store event handler
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceUnregisterEventHandler]
+=== Unregistering an Event Handler
+* *PL Network* +
+** Unregisters the internally stored <<#_PlNetworkEventHandler, event handler>>. +
+** Determines the <<#_PlNetworkType, network I/F type>> from the specified network I/F name and list information, and calls the event handler unregistration API for the corresponding type. +
+
+* *PL Ether* +
+** Unregisters the event handler for Ethernet events. +
+
+* *PL Wi-Fi* +
+** Unregisters the event handler for Wi-Fi events. +
+
+[{mermaid_block}, title=Unregistering an Event Handler]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkUnregisterEventHandler(if_name)
+    {mermaid_break} if_name == NULL
+      Note over pl_network : Invalid parameter
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Lock mutex
+    OS -->> -pl_network : result
+    {mermaid_break} result != OK
+      Note over pl_network : Failed to lock mutex
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list info
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : network I/F info
+    pl_network -->> -pl_network : Search result
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Network I/F not found
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} network I/F state != Stopped
+      Note over pl_network : Invalid internal state
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler == NULL
+      Note over pl_network : Handler not registered
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherUnregisterEventHandler(net_info)
+      Note over pl_network,OS : Unregistering Ethernet event
+      pl_ether -->> -pl_network : result (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiUnregisterEventHandler(net_info)
+      Note over pl_network,OS : Unregistering Wi-Fi event
+      pl_wifi -->> -pl_network : result (kPlErr***)
+    end
+
+    {mermaid_break} result != kPlErrCodeOk
+      Note over pl_network : Event unregistration failed
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Unregister event handler
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+....
+
+<<<
+
+[#_SequenceStart]
+=== Starting the Network
+* *PL Network* +
+** Determines the <<#_PlNetworkType, network I/F type>> from the specified network I/F name and the network I/F list information, and calls the network start API for each network I/F type. +
+** Sets the internal state to `Started`.
+
+* *PL Ether* +
+** Starts the Ethernet network connection. +
+** Sends a network event message asynchronously according to the network state change. +
+
+* *PL Wi-Fi* +
+** Starts the Wi-Fi network connection. +
+** Sends a network event message asynchronously according to the network state change. +
+
+* *PL Network(Thread)* +
+** Upon receiving a network event message, executes the event handler registered via <<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler()>> and notifies the upper layer of the <<#_PlNetworkEvent, network event>>. +
+
+[{mermaid_block}, title=Starting the Network]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkStart(if_name)
+    {mermaid_break} if_name != NULL
+      Note over pl_network : Invalid argument
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} Internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Mutex lock
+    OS -->> -pl_network : Result
+    {mermaid_break} Result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list information
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : Network I/F info
+    pl_network -->> -pl_network : Network I/F search result
+    {mermaid_break} Result != kPlErrCodeOk
+      Note over pl_network : Network I/F mismatch
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} Network I/F state != Started
+      Note over pl_network : Abnormal internal state
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler != NULL
+      Note over pl_network : Handler already registered
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherStop(net_info)
+      Note over pl_network,OS : Start Ethernet network
+      pl_ether -->> -pl_network : Return value (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiStop(net_info)
+      Note over pl_network,OS : Start Wi-Fi network
+      pl_wifi -->> -pl_network : Return value (kPlErr***)
+    end
+
+    {mermaid_break} Return value != kPlErrCodeOk
+      Note over pl_network : Network start failed
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Stopped -> Started
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : Result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+
+  Note over app,OS : Start network
+  activate pl_ether
+  Note over pl_ether : Get interface status
+  opt eth0 ifdown -> ifup detected
+    pl_ether ->> +pl_network : Send network event message{mermaid_br}("eth0", kPlNetworkEventIfUp, reason)
+      pl_network ->> +OS : Send network event message
+      OS -->> -pl_network : Result
+    pl_network -->> -pl_ether : Return value (kPlErr***)
+  end
+  deactivate pl_ether
+
+  event_thread ->> +event_thread : Thread wakeup
+    event_thread ->> +OS : Get network event message
+    OS -->> -event_thread : Received message buffer address
+
+    alt Message received
+      alt Message type == Network event
+        event_thread ->> +pl_network : Retrieve network I/F list
+        pl_network ->> +OS : Search network I/F list
+        OS -->> -pl_network : Network I/F info
+        pl_network -->> -event_thread : Network I/F search result
+        alt (Search result == kPlErrCodeOk) && (handler != NULL)
+          event_thread ->> +app : handler("eth0", kPlNetworkEventIfUp, private_data)
+          Note over app : Execute event handler
+          app -->> -event_thread : void
+        end
+      end
+    end
+  deactivate event_thread
+....
+
+<<<
+
+[#_SequenceStop]
+=== Stopping the Network
+* *PL Network* +
+** Determines the <<#_PlNetworkType, network I/F type>> from the specified network I/F name and the network I/F list information, and calls the network stop API for each network I/F type. +
+** Sets the internal state to `Stopped`.
+
+* *PL Ether* +
+** Stops the Ethernet network connection. +
+** Sends a network event message asynchronously according to the network state change. +
+
+* *PL Wi-Fi* +
+** Stops the Wi-Fi network connection. +
+** Sends a network event message asynchronously according to the network state change. +
+
+* *PL Network(Thread)* +
+** Upon receiving a network event message, executes the event handler registered via <<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler()>> and notifies the upper layer of the <<#_PlNetworkEvent, network event>>. +
+
+[{mermaid_block}, title=Stopping the Network]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+    participant OS
+
+  activate app
+  app ->> +pl_network : PlNetworkStop(if_name)
+    {mermaid_break} if_name != NULL
+      Note over pl_network : Invalid argument
+      pl_network -->> app : kPlErrInvalidParam
+    end
+
+    {mermaid_break} Internal state != Running
+      Note over pl_network : PlNetworkInitialize not executed
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    pl_network ->> +OS : Mutex lock
+    OS -->> -pl_network : Result
+    {mermaid_break} Result != OK
+      Note over pl_network : Mutex lock failed
+      pl_network -->> app : kPlErrLock
+    end
+
+    pl_network ->> +pl_network : Retrieve network I/F list information
+    pl_network ->> +OS : Search network I/F list
+    OS -->> -pl_network : Network I/F info
+    pl_network -->> -pl_network : Network I/F search result
+    {mermaid_break} Result != kPlErrCodeOk
+      Note over pl_network : Network I/F mismatch
+      pl_network -->> app : kPlErrNotFound
+    end
+
+    {mermaid_break} Network I/F state != Stopped
+      Note over pl_network : Abnormal internal state
+      pl_network -->> app : kPlErrInvalidState
+    end
+
+    {mermaid_break} handler != NULL
+      Note over pl_network : Handler already registered
+      pl_network -->> app : kPlErrHandler
+    end
+
+    alt type == kPlNetworkTypeEther
+      pl_network ->> +pl_ether : PlEtherStart(net_info)
+      Note over pl_network,OS : Stop Ethernet network
+      pl_ether -->> -pl_network : Return value (kPlErr***)
+    else type == kPlNetworkTypeWifi
+      pl_network ->> +pl_wifi : PlWifiStart(net_info)
+      Note over pl_network,OS : Stop Wi-Fi network
+      pl_wifi -->> -pl_network : Return value (kPlErr***)
+    end
+
+    {mermaid_break} Return value != kPlErrCodeOk
+      Note over pl_network : Network stop failed
+      pl_network -->> app : kPlErrInvalidOperation
+    end
+
+    pl_network ->> pl_network : Started -> Stopped
+
+    pl_network ->> +OS : Unlock mutex
+    OS -->> -pl_network : Result
+  pl_network -->> -app : kPlErrCodeOk
+  deactivate app
+
+  Note over app,OS : Stop network
+  activate pl_ether
+  Note over pl_ether : Get interface status
+  opt eth0 detect interface up
+    pl_ether ->> +pl_network : Send network event message{mermaid_br}("eth0", kPlNetworkEventIfDown, reason)
+      pl_network ->> +OS : Set network event message to queue
+      OS -->> -pl_network : Result
+    pl_network -->> -pl_ether : Return value (kPlErr***)
+  end
+  deactivate pl_ether
+
+  event_thread ->> +event_thread : Thread wakeup
+    event_thread ->> +OS : Get network event message from queue
+    OS -->> -event_thread : Network event message buffer
+
+    alt Message is valid
+      alt Command == Network event
+        event_thread ->> +pl_network : Get network list
+        pl_network ->> +OS : Search network info
+        OS -->> -pl_network : Network info
+        pl_network -->> -event_thread : Return value (kPlErr***)
+        alt (err_code == kPlErrCodeOk) && (handler != NULL)
+          event_thread ->> +app : handler("eth0", kPlNetworkEventIfDown, private_data)
+          Note over app : Execute network event handler
+          app -->> -event_thread : void
+        end
+      end
+    end
+  deactivate event_thread
+....
+
+<<<
+
+[#_SequenceExecuteEventHandler]
+=== Executing the Event Handler
+* *PL Ether* +
+* *PL Wi-Fi* +
+** Sends a network event message asynchronously according to the network state change. +
+
+* *PL Network(Thread)* +
+** Upon receiving a network event message, executes the event handler registered via <<#_PlNetworkRegisterEventHandler, PlNetworkRegisterEventHandler()>> and notifies the upper layer of the <<#_PlNetworkEvent, network event>>. +
+
+[{mermaid_block}, title=Executing the Event Handler]
+....
+sequenceDiagram
+    autonumber
+    participant app as Upper Layer
+    box azure PL Network Manager
+      participant pl_network as PL Network
+      participant event_thread as Network Event Thread
+      participant pl_ether as PL Ether
+      participant pl_wifi as PL Wi-Fi
+    end
+
+  activate pl_ether
+  Note over pl_ether : Get link status
+  opt eth0 detect link up
+    pl_ether ->> +pl_network : Send network event{mermaid_br}("eth0", kPlNetworkEventLinkUp, reason)
+      pl_network ->> +OS : Set network event message to queue
+      OS -->> -pl_network : result
+    pl_network -->> -pl_ether : return value(kPlErr***)
+  end
+  deactivate pl_ether
+
+  event_thread ->> +event_thread : Thread wakeup
+    event_thread ->> +OS : Get network event message from queue
+    OS -->> -event_thread : Network event message buffer
+
+    alt Message is valid
+      alt Command == Network event
+        event_thread ->> +pl_network : Get network list
+        pl_network ->> +OS : Search network info
+        OS -->> -pl_network : Network info
+        pl_network -->> -event_thread : Return value (kPlErr***)
+        alt (err_code == kPlErrCodeOk) && (handler != NULL)
+          event_thread ->> +app : handler("eth0", kPlNetworkEventLinkUp, private_data)
+          Note over app : Execute network event handler
+          app -->> -event_thread : void
+        end
+      end
+    end
+  deactivate event_thread
+....
+
+<<<
+
+== Special Notes and Component-Specific Descriptions
+=== System Network Information for Each Camera
+The support status for each parameter described in <<#_PlNetworkSystemInfo, PlNetworkSystemInfo>> is shown for each camera in <<#_TableSupportedSystemNetwork>>.
+
+[#_TableSupportedSystemNetwork]
+.System Network Information
+|===
+2.2+^.^|*System Network Info* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+.4+|0
+|if_name
+|"eth0"
+|"eth0"
+|"eth0"
+
+|type
+|kPlNetworkTypeEther
+|kPlNetworkTypeEther
+|kPlNetworkTypeEther
+
+|cloud_enable
+|y
+|y
+|y
+
+|local_enable
+|n
+|n
+|n
+
+.4+|1
+|if_name
+|"wlan0"
+|"wlan0"
+|N/A
+
+|type
+|kPlNetworkTypeWifi
+|kPlNetworkTypeWifi
+|N/A
+
+|cloud_enable
+|y
+|y
+|N/A
+
+|local_enable
+|n
+|n
+|N/A
+
+.4+|2
+|if_name
+|N/A
+|N/A
+|N/A
+
+|type
+|N/A
+|N/A
+|N/A
+
+|cloud_enable
+|N/A
+|N/A
+|N/A
+
+|local_enable
+|N/A
+|N/A
+|N/A
+
+2+|*Total Number of Network I/Fs*
+|2
+|2
+|1
+|===
+
+[#_SupportedNetworkEvent]
+=== Network Event Support Status for Each Camera
+
+[#_SupportedNetworkEventEther]
+* *Ether* +
+The support status of <<#_PlNetworkEvent, network events>> that occur on the Ethernet network is shown in <<#_TableSupportedNetworkEventEther>>. +
++
+[#_TableSupportedNetworkEventEther]
+.Network Events (Ether)
+[width="100%"]
+|===
+.2+^.^|*Network Event* .2+^.^|*Description* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|kPlNetworkEventIfUp
+|Network I/F became available
+^|○
+^|○
+^|○
+
+|kPlNetworkEventIfDown
+|Network I/F became unavailable
+^|○
+^|○
+^|○
+
+|kPlNetworkEventLinkUp
+|Network I/F became capable of communication
+^|○
+^|○
+^|○
+
+|kPlNetworkEventLinkDown
+|Network I/F became incapable of communication
+^|○
+^|○
+^|○
+
+|kPlNetworkEventPhyIdValid
+|PHY ID obtained from network I/F is valid
+^|○
+^|○
+^|○
+
+|kPlNetworkEventPhyIdInvalid
+|PHY ID obtained from network I/F is invalid
+^|○
+^|○
+^|○
+|===
+
+[#_SupportedNetworkEventWifi]
+* *Wi-Fi* +
+The support status of <<#_PlNetworkEvent, network events>> that occur in Wi-Fi networks is shown in <<#_TableSupportedNetworkEventWifiSta>> and <<#_TableSupportedNetworkEventWifiAp>>. +
++
+NOTE: Events starting with WIFI_*** are directly notified from the ESP-IDF Wi-Fi driver. +
+See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/wifi.html#esp32-s3-wi-fi-event-description[Wi-Fi Event Description]
++
+[#_TableSupportedNetworkEventWifiSta]
+.Network Events (Wi-Fi (STA))
+[width="100%"]
+|===
+.2+^.^|*Network Event* .2+^.^|*Description* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|kPlNetworkEventWifiReady
+|Wi-Fi driver is ready
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaStart
+|Network I/F became available
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaStop
+|Network I/F became unavailable
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaConnected
+|Connected to an access point and communication is available
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaDisconnected
+|Disconnected from the access point and communication is unavailable
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaAuthmodeChange
+|Authentication mode of the access point has changed
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaRssiLow
+|Signal strength (RSSI) of the access point is low
+^|○
+^|○
+^|×
+
+|kPlNetworkEventWifiStaBeaconTimeout
+|Beacon from the access point could not be received and a timeout occurred
+^|○
+^|○
+^|×
+|===
+
++
+[#_TableSupportedNetworkEventWifiAp]
+.Network Events (Wi-Fi (AP))
+[width="100%"]
+|===
+.2+^.^|*Network Event* .2+^.^|*Description* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|kPlNetworkEventWifiReady
+|Wi-Fi driver is ready
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApStart
+|Network I/F became available
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApStop
+|Network I/F became unavailable
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApConnected
+|Connected with a Wi-Fi client and communication is available
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApDisconnected
+|Disconnected from a Wi-Fi client and communication is unavailable
+^|×
+^|×
+^|×
+
+|kPlNetworkEventWifiApProbeReqRecved
+|Received a probe request from a Wi-Fi client
+^|×
+^|×
+^|×
+|===
+
+[#_SupportedNetworkStatus]
+=== Network Status Support Status for Each Camera
+The support status of each parameter described in <<#_PlNetworkStatus, PlNetworkStatus>> is shown for each camera below.
+
+* *Ether* +
+The support status of network status retrievable on Ethernet networks is shown in <<#_TableSupportedNetworkStatusEther>>. +
++
+[#_TableSupportedNetworkStatusEther]
+.Network Status Support (Ether)
+|===
+.2+^.^|*Network Status* .2+^.^|*Description* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+|is_if_up
+|Network I/F status (true: ifup, false: ifdown)
+^|○
+^|○
+^|○
+
+|is_link_up
+|Network communication status (true: communication available, false: unavailable)
+^|○
+^|○
+^|○
+
+|is_phy_id_valid
+|PHY ID status of the network I/F (true: valid, false: invalid or not ifup)
+^|○
+^|○
+^|○
+
+|PlNetworkWifiStatus
+|Wi-Fi network status (unsupported)
+^|×
+^|×
+^|×
+|===
+
+* *Wi-Fi* +
+The support status of retrievable network states for Wi-Fi networks is shown in <<#_TableSupportedNetworkStatusWifiSta>> and <<#_TableSupportedNetworkStatusWifiAp>>. +
++
+[#_TableSupportedNetworkStatusWifiSta]
+.Network Status Support (Wi-Fi (STA))
+|===
+3.2+^.^|*Network Status* .2+^.^|*Description* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+3+|is_if_up
+|Network I/F state (true: ifup, false: ifdown)
+^|○
+^|○
+^|×
+
+3+|is_link_up
+|Connection status with the Wi-Fi station (true: connected, false: not connected)
+^|○
+^|○
+^|×
+
+3+|is_phy_id_valid
+|PHY ID acquisition status of the network I/F (not supported)
+^|×
+^|×
+^|×
+
+.6+|PlNetworkWifiStatus
+2+|rssi
+|Signal strength with the Wi-Fi station
+^|○
+^|○
+^|×
+
+.5+|country
+|cc
+|Country code of the Wi-Fi station
+^|○
+^|○
+^|×
+
+|schan
+|Starting channel number of the Wi-Fi station
+^|○
+^|○
+^|×
+
+|nchan
+|Total number of Wi-Fi station channels
+^|○
+^|○
+^|×
+
+|max_tx_power
+|Maximum transmission power setting of the Wi-Fi station
+^|○
+^|○
+^|×
+
+|policy
+|Country code setting method of the Wi-Fi station
+^|○
+^|○
+^|×
+|===
+
++
+[#_TableSupportedNetworkStatusWifiAp]
+.Network Status Support (Wi-Fi (AP))
+|===
+3.2+^.^|*Network Status* .2+^.^|*Description* 3+^|*Support Status*
+^|*T5* ^|*T3R-S3* ^|*T3P*
+
+3+|is_if_up
+|Network I/F state (true: ifup, false: ifdown)
+^|×
+^|×
+^|×
+
+3+|is_link_up
+|Connection status with a Wi-Fi client (true: connected, false: not connected)
+^|×
+^|×
+^|×
+
+3+|is_phy_id_valid
+|PHY ID acquisition status of the network I/F (not supported)
+^|×
+^|×
+^|×
+
+.6+|PlNetworkWifiStatus
+2+|rssi
+|Signal strength of the Wi-Fi access point (not supported)
+^|×
+^|×
+^|×
+
+.5+|country
+|cc
+|Country code of the Wi-Fi access point
+^|×
+^|×
+^|×
+
+|schan
+|Starting channel number of the Wi-Fi access point
+^|×
+^|×
+^|×
+
+|nchan
+|Total number of Wi-Fi access point channels
+^|×
+^|×
+^|×
+
+|max_tx_power
+|Maximum transmission power setting of the Wi-Fi access point
+^|×
+^|×
+^|×
+
+|policy
+|Country code setting method of the Wi-Fi access point
+^|×
+^|×
+^|×
+|===
+
+== List of Open Source Software Used
+T.B.D.
+
+<<<
+
+== References
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Document |Link
+|ESP-IDF Programming Guide
+|https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/network/esp_wifi.html
+|===
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|Initial version
+
+|v0.0.2
+|Integrated the HAL Network Function Specification and OSAL Network Function Specification +
+Reflected implementation content
+
+* Overall
+** Renamed "HAL" to "PL"
+** Changed diagrams (sequence diagrams, state transition diagrams, etc.) to Mermaid format
+
+* 3.2. Component Details
+** Added the "Netdev" component
+** Added descriptions for the following dependent components:
+*** HAL IOExpLIB
+*** Utility MSG
+
+* 3.3.3. State Transitions via PL Network Events
+** Added a note that the order of Ethernet network events may vary depending on the implementation of the Ethernet driver
+
+* 3.4. Component Function List
+** Updated descriptions to match implementation details
+
+* 3.7. Non-Functional Requirements of Components
+** Rewrote from detailed design level to broader specification level
+
+* 3.8. Component Constraints and Notes
+** Added constraint items
+
+* 4.1.3. API List
+* 4.3. API Definitions
+** Removed internal APIs (to be described in the detailed design document)
+** Updated descriptions to match implementation details
+
+* 6. Special Notes and Component-Specific Descriptions
+** Removed descriptions related to HAL Config
+** Added camera-specific descriptions
+
+|v0.0.3
+|
+** 3.8.2. Notes +
+Added a note that link status may not be accurately obtained while the interface is down.
+
+** 3.2. Component Details +
+** 3.2.1. Dependent Components +
+Removed descriptions related to Utility MSG due to change to not use Utility MSG for network event message send/receive.
+
+** 3.5.1. Network Initialization +
+Removed "UtilityMsgInitialize~" from prerequisites.
+
+** 3.7.2. Maximum Usage of Normal Heap +
+Added buffers for network event messages.
+
+** 4.3.1. PlNetworkInitialize +
+** 4.3.2. PlNetworkFinalize +
+Removed Utility Msg handle acquisition/release, and replaced with memory allocation/release for network event messages.
+
+** 5.1. Network Initialization +
+** 5.2. Network Finalization +
+** 5.10. Starting the Network +
+** 5.11. Stopping the Network +
+Updated sequence diagrams related to Utility Msg.
+
+** 3. Component Description +
+Updated component diagrams and descriptions to support T5/T3P shared codebase.
+
+** 5. Example Calls When Using the API +
+Updated component names in sequence diagrams.
+
+|v0.0.4
+|
+** 4.2.4. PlNetworkEvent +
+Added PHY ID acquisition event.
+
+** 4.2.7. PlNetworkStatus +
+Added is_phy_id_valid.
+
+** 6.2. Network Event Support Status per Camera +
+*** Ether +
+Added PHY ID acquisition events.
+
+** 6.3. Network Status Support Status per Camera +
+Added is_phy_id_valid.
+|===

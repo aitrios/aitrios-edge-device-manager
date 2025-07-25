@@ -1,0 +1,1061 @@
+= PL Appmemory (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+<<<
+
+== Purpose and Scope
+
+This document describes the specifications of the AppMemory region in the Memory impl layer, one of the implementation layers of AITRIOS PL. +
+The AppMemory region is a memory region used at runtime by WASM (AoT). +
+Therefore, the purpose of PL Appmemory is to absorb interface differences caused by SoC and memory size, and to provide access methods to memory for the upper-layer WASM.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[options="header"]
+|===
+|Term |Description
+|PL
+|Porting Layer. A layer that absorbs camera/OS differences.
+
+|himem
+|high memory
+
+|VnS APP
+|Vision and Sensing Application
+
+|AoT
+|Ahead of Time
+WASM file format type.
+
+|WASM
+|Web Assembly
+
+|WAMR
+|Web Assembly Micro Runtime
+
+|AppMemory region
+|Application Memory +
+Memory region usable by WASM (AoT)
+
+|native address
+|Absolute address of the AppMemory region from the System APP side. +
+See <<#_WASM_AoT_Memory, 6.1.>> for details. +
+
+|app_offset
+|Offset position in the AppMemory region from the WASM (AoT) side. +
+See <<#_WASM_AoT_Memory, 6.1.>> for details. +
+
+|===
+
+<<<
+
+== Component Description
+
+=== Component Overview
+
+The following diagram shows the software configuration centered on this block.
+
+.Overview Diagram
+image::./images/appmem_component.png[scaledwidth="100%",align="center"]
+
+=== Detailed Component Description
+
+=== Function List
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description  |Section Number
+
+|Initialization/Finalization of PL Appmemory
+|Initializes/finalizes PL Appmemory function.
+|<<#_Function1, 3.4.1.>>
+
+|Assign/Release Virtual Memory Region to/from Physical Memory Region of AppMemory
+|Assigns/releases virtual memory region to/from physical memory region of AppMemory.
+|<<#_Function2, 3.4.2.>>
+
+|Allocate/Free/Resize Dynamic Memory from AppMemory Region
+|Allocates dynamic memory from the AppMemory region.
+|<<#_Function3, 3.4.3.>>
+
+|Allocate/Free/Resize Dynamic Memory for WASM (AoT)
+|Allocates/frees/resizes dynamic memory for WASM (AoT).
+|<<#_Function4, 3.4.4.>>
+
+|Write Data to AppMemory Region
+|Writes specified data to the AppMemory region.
+|<<#_Function5, 3.4.5.>>
+
+|Judgement of Mappability
+|Judges whether the given memory can be mapped with PlAppmemMap.
+|<<#_Function6, 3.4.6.>>
+
+|===
+
+<<<
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== Initialization/Finalization of PL Appmemory Functions
+Function Overview::  
+Initializes and finalizes PL Appmemory functions. +  
+Initialization enables the use of various PL Appmemory APIs.  
+Prerequisites::  
+None.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlAppmemInitialize>> and <<#_PlAppmemFinalize>>.  
+Behavior on Error / Recovery Method::  
+See <<#_PlAppmemInitialize>> and <<#_PlAppmemFinalize>>.  
+Considerations::  
+None.
+
+[#_Function2]
+==== Mapping/Unmapping Virtual Memory to Physical AppMemory Region
+Function Overview::  
+Maps or unmaps virtual memory to the physical AppMemory region.  
+Prerequisites::  
+PL Appmemory functions must be initialized.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlAppmemMap>> and <<#_PlAppmemUnmap>>.  
+Behavior on Error / Recovery Method::  
+See <<#_PlAppmemMap>> and <<#_PlAppmemUnmap>>.  
+Considerations::  
+None.
+
+[#_Function3]
+==== Dynamic Memory Allocation/Deallocation/Reallocation from AppMemory
+Function Overview::  
+Allocates dynamic memory from the AppMemory region.  
+Prerequisites::  
+PL Appmemory functions must be initialized.  
+Function Details::  
+None.  
+Detailed Behavior::  
+When used as linear memory, see <<#_PlAppmemMalloc>>, <<#_PlAppmemRealloc>>, and <<#_PlAppmemFree>>.  
+Behavior on Error / Recovery Method::  
+When used as linear memory, see <<#_PlAppmemMalloc>>, <<#_PlAppmemRealloc>>, and <<#_PlAppmemFree>>.  
+Considerations::  
+None.
+
+[#_Function4]
+==== Dynamic Memory Allocation/Deallocation/Reallocation for WASM (AoT)
+Function Overview::  
+Allocates, deallocates, or reallocates dynamic memory for WASM (AoT).  
+Prerequisites::  
+PL Appmemory functions must be initialized.  
+Function Details::  
+None.  
+Detailed Behavior::  
+When used as AppHeap, see <<#_PlAppmemMalloc>>, <<#_PlAppmemRealloc>>, and <<#_PlAppmemFree>>.  
+Behavior on Error / Recovery Method::  
+When used as AppHeap, see <<#_PlAppmemMalloc>>, <<#_PlAppmemRealloc>>, and <<#_PlAppmemFree>>.  
+Considerations::  
+None.
+
+[#_Function5]
+==== Writing Data to AppMemory
+Function Overview::  
+Writes specified data to the AppMemory region.  
+Prerequisites::  
+PL Appmemory functions must be initialized.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlAppmemPwrite>>.  
+Behavior on Error / Recovery Method::  
+See <<#_PlAppmemPwrite>>.  
+Considerations::  
+None.
+
+[#_Function6]
+==== Determining Map Capability
+Function Overview::  
+Determines whether the given memory is mappable using PlAppmemMap.  
+Prerequisites::  
+PL Appmemory functions must be initialized.  
+Function Details::  
+None.  
+Detailed Behavior::  
+See <<#_PlAppmemIsMapSupport>> and <<#_PlAppmemIsMapSupport>>.  
+Behavior on Error / Recovery Method::  
+See <<#_PlAppmemIsMapSupport>> and <<#_PlAppmemIsMapSupport>>.  
+Considerations::  
+None.
+
+<<<
+
+
+=== Non-functional Requirements of the Component
+
+<<#_TableNonFunction>> shows the list of non-functional requirements.
+
+[#_TableNonFunction]
+.Non-functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Item |Description |Section
+|Maximum Stack Usage
+|Amount of stack used within the component.
+|<<#_NonFunctionStack, 3.6.>>
+
+|Maximum Heap Usage
+|Amount of normal heap used within the component.
+|<<#_NonFunctionHeap, 3.6.>>
+
+|Maximum Static Data Usage
+|Amount of static data used within the component.
+|<<#_NonFunctionStatic, 3.6.>>
+
+|Performance
+|Performance of each API.
+|<<#_NonFunctionPerformance, 3.6.>>
+|===
+
+=== Description of Non-functional Requirements
+
+The non-functional requirements of this component are listed below.
+
+[#_NonFunctionStack]
+==== Maximum Stack Usage
+64 bytes
+
+[#_NonFunctionHeap]
+==== Maximum Heap Usage
+128 bytes
+
+[#_NonFunctionStatic]
+==== Maximum Static Data Usage
+128 bytes
+
+[#_NonFunctionPerformance]
+==== Performance
+All APIs operate within 1 ms.
+
+<<<
+
+== API Specifications
+
+=== Definition List
+
+==== Data Type List
+
+<<#_TableDataType>> shows the list of data types.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type |Description |Section
+|enum PlErrCode
+|Enumeration defining the result of API execution.
+|<<#_PlErrCode, 4.2.1.>>
+
+|PlAppmemUsage
+|Type used when allocating memory via PlAppmem.
+|<<#_PlAppmemUsage, 4.2.2.>>
+
+|PlAppMemory
+|Type of memory allocated via PlAppmemMalloc.
+|<<#_PlAppMemory, 4.2.3.>>
+|===
+
+==== API List
+
+<<#_TablePublicAPI>> shows the list of APIs directly usable from the upper application.
+
+[#_TablePublicAPI]
+.Public APIs Directly Usable from Upper Application
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Description |Section
+|PlAppmemInitialize
+|Initializes the PlAppmemory functionality.
+|<<#_PlAppmemInitialize, 4.3.1.>>
+
+|PlAppmemFinalize
+|Finalizes the PlAppmemory functionality.
+|<<#_PlAppmemFinalize, 4.3.2.>>
+
+|PlAppmemSetBlock
+|Sets the number of blocks for the AppMemory region.
+|<<#_PlAppmemSetBlock, 4.3.3.>>
+
+|PlAppmemMalloc
+|Allocates memory from the AppMemory region or normal region.
+|<<#_PlAppmemMalloc, 4.3.4.>>
+
+|PlAppmemRealloc
+|Reallocates memory from the AppMemory region or normal region.
+|<<#_PlAppmemRealloc, 4.3.5.>>
+
+|PlAppmemFree
+|Frees memory from the AppMemory region or normal region.
+|<<#_PlAppmemFree, 4.3.6.>>
+
+|PlAppmemMap
+|Maps a memory block allocated from the AppMemory region.
+|<<#_PlAppmemMap, 4.3.7.>>
+
+|PlAppmemUnmap
+|Unmaps a memory block allocated from the AppMemory region.
+|<<#_PlAppmemUnmap, 4.3.8.>>
+
+|PlAppmemPwrite
+|Writes a buffer to the AppMemory region.
+|<<#_PlAppmemPwrite, 4.3.9.>>
+|===
+
+<<<
+
+=== Data Type Definitions
+
+[#_PlErrCode]
+==== PlErrCode
+An enumeration that defines the result codes returned by the API. +
+(T.B.D.)
+
+[#_PlAppmemUsage]
+==== PlAppmemUsage
+Specifies the memory type to allocate in `PlAppmemMalloc`.
+
+* *Syntax* +
+[source, C]
+....
+typedef enum {
+  kPlAppHeap = 0,
+  kPlAppLinearMemory
+} PlAppmemUsage;
+....
+
+.PlAppmemUsage List
+[width="100%", cols="20%,60%",options="header"]
+|===
+|Name |Description
+|kPlAppHeap
+|Specifies allocation from the normal heap.
+
+|kPlAppLinearMemory
+|Specifies allocation from the AppMemory region. +
+ Use case: when a large continuous memory region is needed. +
+ The number of allocations is limited to the value set by <<#_PlAppmemSetBlock>>.
+|===
+
+[#_PlAppMemory]
+==== PlAppMemory
+The memory type returned by `PlAppmemMalloc`.
+
+* *Definition* +
+[source, C]
+....
+typedef void *PlAppMemory;
+....
+
+<<<
+
+[#_api_info]
+=== API Descriptions
+
+[#_PlAppmemInitialize]
+==== PlAppmemInitialize
+
+* *Function* +
+Initializes the PlAppmemory functionality.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlAppmemInitialize(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** Performs initialization processing related to PlAppmem.
+
+[#_PlAppmemInitialize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Reentrancy
+|Allowed
+|Multithreaded Access
+|Allowed
+|Multitask Access
+|Allowed
+|Blocking Behavior
+|This API performs blocking operations.
+|===
+
+[#_PlAppmemInitialize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlErrInvalidState (Tentative)
+|State error such as double initialization
+|-
+|No impact
+|Not required
+
+|kPlErrLock / kPlErrUnlock (Tentative)
+|Failure in mutex lock/unlock
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+
+[#_PlAppmemFinalize]
+==== PlAppmemFinalize
+
+* *Function* +
+Finalizes the Pl Appmemory functionality.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlAppmemFinalize(void)
+....
+
+* *Parameter Description* +
+-
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** Performs the finalization process for Pl Appmem. +
+** If there is any unfreed memory in the Appmem region (`kPlAppLinearMemory`), an error is returned.
+
+[#_PlAppmemFinalize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Allowed
+|Multithreaded Access
+|Allowed
+|Multitask Access
+|Allowed
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+[#_PlAppmemFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery
+|kPlErrInvalidState (Tentative)
+|State error such as double finalization
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (Tentative)
+|Failed to lock/unlock mutex
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlAppmemSetBlock]
+==== PlAppmemSetBlock
+
+* *Function* +
+Sets the number of divisions for the AppMemory region.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlAppmemSetBlock(int32_t div_num)
+....
+
+* *Parameter Description* +
+**[IN] int32_t div_num**:: 
+Number of divisions for the AppMemory region. +
+If 0 or 1 is specified, the region is not divided and operates as a single area. +
+Other values will divide the region accordingly.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** Sets the number of divisions for the AppMemory region. The default is 1. +
+** The size of each division is calculated by dividing the AppMemory region size by the number of divisions. +
+** Returns an error if Appmem region is currently in use (i.e., `PlAppmemMalloc` with `mem_usage = kPlAppLinearMemory` is in use). +
+*** This API must be called before `PlAppmemMalloc` or after all memory has been freed with `PlAppmemFree`.
+
+[#PlAppmemSetBlock_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Allowed
+|Multithreaded Access
+|Allowed
+|Multitask Access
+|Allowed
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+[#PlAppmemSetBlock_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery
+|kPlErrInvalidParam (Tentative)
+|Specified division number exceeds the maximum allowed
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidState (Tentative)
+|Appmem region is currently in use
+|-
+|No impact
+|Not required
+
+|kPlErrLock/kPlErrUnlock (Tentative)
+|Failed to lock/unlock mutex
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlAppmemMalloc]
+==== PlAppmemMalloc
+
+* *Function* +
+Allocates memory from the AppMemory region or the normal heap.
+
+* *Syntax* +
+[source, C]
+....
+PlAppMemory PlAppmemMalloc(PlAppmemUsage mem_usage, uint32_t size)
+....
+
+* *Parameter Description* +
+**[IN] PlAppmemUsage mem_usage**:: 
+Specifies the purpose of the allocated memory. +
+If `kPlAppHeap` is specified, memory is allocated from the normal heap. +
+If `kPlAppLinearMemory` is specified, memory is allocated from the AppMemory region.
+
+**[IN] uint32_t size**:: 
+Size in bytes to allocate. +
+If `size = 0`, NULL is returned. +
+If `size` exceeds the available memory, NULL is returned.
+
+* *Return Value* +
+Pointer to the allocated memory block.
+
+* *Description* +
+** Allocates memory from the AppMemory region or normal heap. +
+** The actual memory region used varies depending on the SoC. See <<#_Component_ESP32_S3, 6.1.>>. +
+** If `kPlAppLinearMemory` is specified: +
+   If the size exceeds the maximum block size, NULL is returned. +
+   If the size is within the maximum block size, a pointer to a full-size AppMemory block is returned regardless of the requested size. +
+** If `kPlAppHeap` is specified, memory of the requested size is allocated from the normal heap.
+
+[#_PlAppmemMalloc_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Allowed
+|Multithreaded Access
+|Allowed
+|Multitask Access
+|Allowed
+|Blocking Behavior
+|This API performs blocking.
+|===
+
+[#PlAppmemMalloc_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery
+|NULL
+|Memory allocation failed
+|-
+|No impact
+|Not required
+|===
+
+[#_PlAppmemRealloc]
+==== PlAppmemRealloc
+
+* *Function* +
+Reallocates memory from the AppMemory region or normal heap.
+
+* *Syntax* +
+[source, C]
+....
+PlAppMemory PlAppmemRealloc(PlAppmemUsage mem_usage, PlAppMemory oldmem, uint32_t size)
+....
+
+* *Parameter Description* +
+**[IN] PlAppmemUsage mem_usage**::  
+Memory usage type when `oldmem` was allocated.
+
+**[IN] PlAppMemory oldmem**::  
+Handle to the memory block to be resized (the value returned from `PlAppmemMalloc`).
+
+**[IN] uint32_t size**::  
+New size of the memory to be reallocated.  
+If `size = 0`, this results in an error.
+
+* *Return Value* +
+Returns a pointer to the memory block on success.  
+Returns `NULL` on failure.
+
+* *Description* +
+** Reallocates memory from the AppMemory region or normal heap.  
+** The usage type of the memory is inherited from `oldmem`.  
+   To change the usage type, reallocate using `PlAppmemMalloc`.  
+** If `mem_usage` and the origin of `oldmem` do not match, returns `NULL`.  
+** If the pointer changes, the internal data is updated accordingly.  
+** Behavior differs depending on `mem_usage`:  
+** When `kPlAppLinearMemory` is specified:  
+   - If the size exceeds the maximum block size, returns an error.  
+   - If within the limit, the original pointer is returned without reallocation (fixed block size).  
+** When `kPlAppHeap` is specified, reallocation is done from the heap.
+
+[#_PlAppmemRealloc_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrancy |Allowed
+|Multithreaded Access |Allowed
+|Multitask Access |Allowed
+|Blocking Behavior |This API performs blocking
+|===
+
+[#_PlAppmemRealloc_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery
+|NULL |Invalid parameters |– |No impact |Not required
+|===
+
+<<<
+
+[#_PlAppmemFree]
+==== PlAppmemFree
+
+* *Function* +
+Frees memory allocated from the AppMemory region or normal heap.
+
+* *Syntax* +
+[source, C]
+....
+void PlAppmemFree(PlAppmemUsage mem_usage, PlAppMemory mem)
+....
+
+* *Parameter Description* +
+**[IN] PlAppmemUsage mem_usage**::  
+Memory usage type when `mem` was allocated.
+
+**[IN] PlAppMemory mem**::  
+Memory handle (value returned from `PlAppmemMalloc`).
+
+* *Return Value* +
+None
+
+* *Description* +
+** Frees memory allocated from the AppMemory region or heap.  
+** If `kPlAppLinearMemory` is specified:  
+   - Frees memory from the AppMemory region.  
+   - If the memory is already mapped, returns without doing anything.  
+   - If inconsistent with the original allocation, returns without doing anything.  
+   - If memory is already freed or invalid, returns without doing anything.  
+** If `kPlAppHeap` is specified, normal heap memory is freed.
+
+[#_PlAppmemFree_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrancy |Allowed
+|Multithreaded Access |Allowed
+|Multitask Access |Allowed
+|Blocking Behavior |This API performs blocking
+|===
+
+<<<
+
+[#_PlAppmemMap]
+==== PlAppmemMap
+
+* *Function* +
+Maps a memory block allocated from the AppMemory region.
+
+* *Syntax* +
+[source, C]
+....
+PlErrCode PlAppmemMap(const void *native_addr, uint32_t size, void **vaddr)
+....
+
+* *Parameter Description* +
+**[IN] const void *native_addr**::  
+Native address in the AppMemory region to be mapped.  
+Specify the handle obtained from `PlAppmemMalloc` with `mem_usage = kPlAppLinearMemory`.  
+Returns an error if `NULL`.
+
+**[IN] uint32_t size**::  
+Size to map.  
+If size exceeds available AppMemory, returns an error.
+
+**[OUT] void **vaddr**::  
+Returns the virtual address corresponding to the mapped memory on success.  
+Returns an error if `NULL` is specified.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values depending on the result.
+
+* *Description* +
+** If memory allocated using `kPlAppHeap` is specified, returns an error.  
+** Maps a memory block in the AppMemory region starting from `native_addr`.
+
+[#PlAppmemMap_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Reentrancy |Allowed
+|Multithreaded Access |Allowed
+|Multitask Access |Allowed
+|Blocking Behavior |This API performs blocking
+|===
+
+[#PlAppmemMap_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery
+|PlErrInvalidState (tentative) |PlAppmemInitialize has not been called |– |No impact |Not required
+|kPlErrCodeNotFound (tentative) |`native_addr` is outside the AppMemory region |– |No impact |Not required
+|kPlErrInvalidParam (tentative) |Size exceeds available memory |– |No impact |Not required
+|kPlErrLock/kPlErrUnlock (tentative) |Failed to lock/unlock mutex |– |No impact |Not required
+|===
+
+<<<
+
+[#_PlAppmemUnmap]
+==== PlAppmemUnmap
+
+* *Function* +
+Unmaps a memory block previously allocated from the AppMemory region.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlAppmemUnmap(void *vaddr)
+....
+
+* *Parameter Description* +
+**[IN] void *vaddr**:: 
+** The virtual address of the mapped region to be unmapped. +
+** If NULL is specified, an error is returned.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values indicating the result of the operation.
+
+* *Description* +
+** Unmaps the memory region mapped to the specified virtual address in AppMemory. +
+** Specify the address obtained by PlAppmemMap.
+
+[#_PlAppmemUnmap_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Property |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Concurrent Calls |Allowed
+|Multi-threaded Calls |Allowed
+|Multi-task Calls |Allowed
+|Blocking Behavior |Blocking
+|===
+
+[#_PlAppmemUnmap_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|PlErrInvalidState (tentative)
+|PlAppmemInitialize has not been called
+|- |No impact |Not required
+|kPlErrLock / kPlErrUnlock (tentative)
+|Failed to lock/unlock mutex
+|- |No impact |Not required
+|===
+
+<<<
+
+[#_PlAppmemPwrite]
+==== PlAppmemPwrite
+
+* *Function* +
+Writes data pointed to by a buffer into the AppMemory region.
+
+* *Prototype* +
+[source, C]
+....
+PlErrCode PlAppmemPwrite(void *native_addr, const char *buf, uint32_t size, uint32_t offset)
+....
+
+* *Parameter Description* +
+**[IN] void *native_addr**:: 
+** Native address of the destination in AppMemory. +
+** Must be a handle obtained via PlAppmemMalloc (mem_usage = kPlAppLinearMemory). +
+** Returns an error if NULL is specified.
+
+**[IN] const char *buf**:: 
+** Pointer to the buffer containing the data to be written.
+
+**[IN] uint32_t size**:: 
+** Number of bytes to write.
+
+**[IN] uint32_t offset**:: 
+** Offset in the destination memory to begin writing.
+
+* *Return Value* +
+Returns one of the <<#_PlErrCode, PlErrCode>> values indicating the result of the operation.
+
+* *Description* +
+** Returns an error if the specified memory was allocated with kPlAppHeap. +
+** Writes `size` bytes from `buf` to `native_addr` in AppMemory.
+
+[#_PlAppmemPwrite_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Property |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Concurrent Calls |Allowed
+|Multi-threaded Calls |Allowed
+|Multi-task Calls |Allowed
+|Blocking Behavior |Blocking
+|===
+
+[#_PlAppmemPwrite_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter State |System State After Error |Recovery Method
+|PlErrInvalidState (tentative)
+|PlAppmemInitialize has not been called
+|- |No impact |Not required
+
+|kPlErrInvalidParam (tentative)
+|Specified size is too large
+|- |No impact |Not required
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Failed to lock/unlock mutex
+|- |No impact |Not required
+|===
+
+[#_PlAppmemIsMapSupport]
+==== PlAppmemIsMapSupport
+
+* *Function* +
+Checks whether the given memory is mappable using PlAppmemMap.
+
+* *Prototype* +
+[source, C]
+....
+bool PlAppmemIsMapSupport(const PlAppMemory mem)
+....
+
+* *Parameter Description* +
+**[IN] const PlAppMemory mem**:: 
+** Memory to be checked. +
+** Returns an error if NULL is specified.
+
+* *Return Value* +
+Returns `true` if the memory is mappable using PlAppmemMap.
+
+* *Description* +
+** Determines if the specified memory can be mapped via PlAppmemMap. +
+*** Returns `true` only for memory obtained by PlAppmemMalloc with `mem_usage == kPlAppLinearMemory`.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Property |Description
+|API Type |Synchronous API
+|Execution Context |Runs in the caller's context
+|Concurrent Calls |Allowed
+|Multi-threaded Calls |Allowed
+|Multi-task Calls |Allowed
+|Blocking Behavior |Blocking
+|===
+
+== Example Usage of API
+=== ESP32-S3
+[#_use_pl_appmem_malloc]
+==== From PlAppmemMalloc to PlAppmemFree
+The following shows the sequence of API calls and the memory map at each stage.
+
+.Sequence and memory map from AppmemMalloc to AppmemFree
+image::./images/appmem_malloc.png[scaledwidth="30%",align="center"]
+
+Next is the sequence diagram and memory map status from SSF (evp) and WAMR.
+
+.Sequence diagram and memory map from startup to AppmemMalloc
+image::./images/appmem_seq_malloc.png[scaledwidth="30%",align="center"]
+
+[#_use_pl_appmem_addr_map]
+==== From PlAppmemMap to PlAppmemUnmap
+The following shows the sequence of API calls and the memory map at each stage.
+
+.Sequence and memory map from AppmemMap to AppmemUnmap
+image::./images/appmem_map.png[scaledwidth="30%",align="center"]
+
+Next is the sequence diagram and memory map status from SSF (evp) and WAMR.
+
+.Sequence diagram and memory map from AppmemMap to AppmemUnmap
+image::./images/appmem_seq_map.png[scaledwidth="30%",align="center"]
+
+<<<
+
+== Notes and Component-specific Information
+[#_Component_ESP32_S3]
+=== Specifications for ESP32-S3
+The memory map is shown below.
+
+.Memory map and address information
+image::./images/memorymap_esp32s3.png[scaledwidth="30%",align="center"]
+
+.Memory configuration
+|====
+|Name |Size
+|Virtual AppMemory region |12 MB
+|Physical AppMemory region |12 MB
+|Maximum number of AppMemory region blocks |8
+|====
+Since the virtual and physical sizes of the AppMemory region are the same, it is always mapped. +
+Therefore, the physical address corresponding to a virtual address is always fixed.
+
+=== Specifications for ESP32
+The memory map is shown below.
+
+.Memory map and address information
+image::./images/memorymap_esp32.png[scaledwidth="30%",align="center"]
+
+.Memory configuration
+|====
+|Name |Size
+|Virtual AppMemory region |2 MB
+|Physical AppMemory region |2 MB
+|Maximum number of AppMemory region blocks |2
+|====
+Since the virtual and physical sizes of the AppMemory region are the same, it is always mapped. +
+Therefore, the physical address corresponding to a virtual address is always fixed.
+
+<<<
+
+== List of Open Source Software Used
+None
+
+<<<
+
+[#_ReferenceDocuments]
+== References
+[width="100%", cols="10%,30%,60%",options="header"]
+|===
+|No. |Document |Link 
+|- |- |-
+|===
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|Initial version
+
+|0.0.2
+|- Global: Inserted half-width spaces around English words for readability +
+- Added "PL" to terminology +
+- Changed OSAL (Osal) to PL (Pl) +
+- Added `PlErrCode` to data types +
+- Moved `PlAppmemInitialize/PlAppmemFinalize` to the top of the API list +
+- Updated error codes for `PlAppmemInitialize` +
+- Updated error codes for `PlAppmemFinalize` +
+- Added error codes to `PlAppmemUnmap` +
+- Added error codes to `PlAppmemMalloc` +
+- Added error codes to `PlAppmemMap` +
+- Added error codes to `PlAppmemUnmap` +
+- Added error codes to `PlAppmemPwrite` +
+- Changed figure labels (*.png) to English
+|===

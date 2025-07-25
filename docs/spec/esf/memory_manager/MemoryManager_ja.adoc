@@ -1,0 +1,3580 @@
+= メモリマネージャー機能仕様書
+:sectnums:
+:sectnumlevels: 5
+:chapter-label:
+:revnumber: 0.0.11
+:toc:
+:toc-title: 目次
+:toclevels: 5
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOSのLargeHeap領域及びWasmHeap領域、DMA領域に対するメモリ操作機能を提供するメモリマネージャーを定義します。 +
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+=== メモリ空間
+メモリ空間としては物理アドレス空間、仮想アドレス空間、WASM内アドレス空間の3種類がある
+
+=== 物理アドレス空間
+命令コード、データが配置されている実際のアドレス空間
+
+=== 仮想アドレス空間
+物理アドレスを別アドレス空間として再配置したもの
+
+=== WASM内アドレス空間
+WASM App自身が持つ、独自のアドレス空間
+
+=== LargeHeap領域
+物理アドレス空間上に確保された大容量データ用Heap領域
+
+=== WasmHeap領域
+WASM Appが持つ自身のHeap領域
+
+=== DMA領域
+DMAによるデータ受信を行うための専用領域
+
+=== WASMモジュール管理情報
+WASMモジュールの実行に必要となる管理情報等が含まれている +
+※WASMモジュールに対するメモリ操作を行う際、このWASMモジュール管理情報に含まれているWASMモジュールインスタンス情報が必要となる
+
+=== AppMemory領域
+Application Memory +
+WASM(AoT)が使用できるメモリ領域
+
+=== メモリ Map アクセス
+LargeHeap領域に対してメモリマップ(仮想アドレス空間へのアドレス割当て)を行いアクセスを行います +
+
+=== メモリ File I/O アクセス
+LargeHeap領域に対してFileIO(Open,Close,Read,Write,Seek)アクセスを行います +
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+メモリマネージャーはLargeHeap領域及びWasmHeap領域から確保したメモリに対するメモリ操作を行うためのハンドルの提供及び、下記メモリ操作機能を行うブロックです。
+
+- メモリマネージャー初期化
+- メモリマネージャー終了
+- メモリ確保
+- メモリ解放
+- マップ
+- アンマップ
+- ファイルオープン
+- ファイルクローズ
+- ファイルシーク
+- ファイルライト
+- ファイルリード
+- ハンドル情報取得
+
+上記とは別にWasm内で使用するメモリ確保/解放を行う機能を提供します。
+
+- メモリ確保
+- メモリサイズ変更
+- メモリ解放
+
+また、環境によりマップ機能に対するサポート/未サポートが異なるため、そのチェック機能を提供します。
+
+- マップ機能サポートチェック
+
+.概要図
+
+全体図挿入予定
+
+<<<
+
+=== コンポーネントの詳細説明
+ここでは、メモリマネージャー機能について説明します。  +
+メモリマネージャー機能のメモリ操作対象としては下記3種類となります
+
+- LargeHeap領域：NativeAppで使用する大容量データ向けHeap領域
+- WasmHeap領域：WasmApp内で使用するHeap領域(WasmApp内アドレス空間を指す)
+- DMA領域：NativeAppにて主にDMA転送先として使用するHeap領域
+
+
+上記メモリ領域に応じたメモリ操作を行うAPIを提供します。提供するAPIは以下のメモリ操作を行う4種類です。
+
+* メモリ操作API
+- メモリ確保(ハンドル取得)：指定された領域から指定サイズ分のメモリ確保を行い、確保したメモリに対するメモリ操作権の取得行う
+- メモリ解放(ハンドル破棄)：確保したメモリの解放を行い、そのメモリに対するメモリ操作権の破棄を行う
+- マップ：確保したメモリを仮想アドレス空間に配置（マッピング）する +
+※メモリ操作ハンドルに任意オフセットを指定使用することで部分マップ指定を行うことが可能(複数指定可能：複数マップ)
+- アンマップ：マップしたメモリを仮想アドレス空間から解除（アンマッピング）する +
+※メモリ確保、メモリ解放は実行時にメモリ操作権の取得、破棄を行う
+
+- ファイルオープン：確保したメモリに対してFile IOアクセスを行うためのファイルオープンを行う +
+※オープン情報(ファイルディスクリプタ)はハンドルに紐づけを行いメモリマネージャー内部で管理
+- ファイルクローズ：ファイルオープンしたメモリに対するファイルクローズを行う +
+- ファイルシーク：ファイルオープンしたメモリに対するファイルポインタの設定を行う +
+- ファイルライト：ファイルオープンしたメモリに対する任意データの書き込みを行う +
+- ファイルリード：ファイルオープンしたメモリに対する任意データの読み出しを行う +
+- ハンドル情報取得：メモリマネージャーで生成したハンドルに紐づく情報取得(領域,サイズ)を行う
+
+.メモリイメージ図(メモリマップトI/Oアクセスのイメージ)
+....
+                 +--------------------+-------------------------------------------------+
+virtual address  |     Static area    |   Dynamic area [W][W][D][D][L][L][ ][ ](*1)     |  
+                 +--------------------+-------------------------------------------------+
+                 :     ↑map           :  ↑map               ↑map            ↑map 
+                 :    *Assign as is   :  [W][W]              [D][D]           [L][L]
+                 :                    :  ↑Allocate(*2)      ↑Allocate(*2)   ↑allocate(*2) 
+                 +--------------------+-------------------+---------------+---------------------+
+physical address |     Normal area    |   Wasm Heap area  |   DMA area    | Large Heap area     |
+                 +--------------------+-------------------+---------------+---------------------+
+
+  *1：不連続アドレスとして確保されたメモリを連続アドレスとして割当てることが可能
+  *2：メモリ操作ハンドルは確保したメモリ毎に取得する
+
+  Normal area ：Normal Heap、Thead Stackなど
+
+  Static area ：Normal areaがそのまま"virtual address"にマップされる
+  Dynamic area：NativeApp、WasmAppにてLarge Heap area、Wasm Heap area、DMA areaからメモリ確保、"virtual address"への
+                マップを動的に行うことでSPI受信、NativeApp、WasmApp間での必要なデータやり取りを行う
+
+  メモリマネージャーでは上記"Dynamic area"に対するメモリ操作のサポートを行います。
+....
+
+.メモリイメージ図(メモリFileI/Oアクセスのイメージ)
+....
+                 +--------------------+----------------------------------------------------------+
+virtual address  |     Static area    |   Dynamic area [FileIO Window] (*1)                      |  
+                 +--------------------+----------------------------------------------------------+
+                    FileIO Operation                      ↑map[An] (step_4)
+                                                                 ↑map[Bn] (step_4)
+                                      +----------------------------------------------------------+
+                     Wtite/Read/Seek[A] (step_3)        [A1][A2][A3][A4]
+                     Wtite/Read/Seek[B] (step_3)        [B1][B2][B3][B4][B5]
+                     Open[A] (step_2)                   [A1][A2][A3][A4]
+                     Open[B] (step_2)                   [B1][B2][B3][B4][B5]
+                     Allocate[A] (step_1)               [A1][A2][  ][A3][  ][  ][A4][  ][  ][  ]
+                     Allocate[B] (step_1)               [  ][  ][B1][  ][B2][B3][  ][B4][B5][  ]
+                 +--------------------+----------------------------------------------------------+
+ hysical address |     Normal area    | Large Heap area [ ][ ][ ][ ][ ][ ][ ][ ][ ][ ]  |
+                 +--------------------+----------------------------------------------------------+
+ 
+  *1：FileI/Oアクセスが有効な環境ではファイルアクセス用に任意サイズの仮想アドレスが確保される
+      ↑この任意サイズの仮想アドレス空間を"FileIO Window"としてデータのリード/ライトを行う
+
+  step_1：LargeHeap領域上に任意サイズのメモリを確保(不連続アドレスで確保されるケースあり)
+
+  step_2：不連続アドレスとして確保されたメモリを連続アドレスとして割当てる
+          (ファイルアクセスを行うためメモリをリニア化する)
+
+  step_3：ファイルアクセスを行うメモリブロック位置を確定、step_4を行った後、該当処理(Wtite/Read/Seek)を行う
+
+  step_4：step_3で確定したメモリブロックを"*1"で用意された"FileIO Window(仮想アドレス空間)"にマップを行う
+
+  ファイルアクセスとしては内部処理としてstep3～4を繰返します
+  ※メモリマネージャー以下のファイルアクセス内部の処理となります
+....
+
+....
+....
+.コンポーネント図(LargeHeap)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph 上位App
+        memory_init( メモリ初期化 )
+        memory_deinit( メモリ終了 )
+    end
+
+    subgraph 上位App
+        lheap( メモリ操作対象：LargeHeap領域 )
+    end
+
+    subgraph PortingLayer
+        PL_LHeap[LargeHeap Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[メモリ確保+ハンドル取得]
+        ESF_Free[メモリ解放+ハンドル破棄]
+        ESF_Map[マップ]
+        ESF_Unmap[アンマップ]
+        ESF_init[メモリ初期化]
+        ESF_deinit[メモリ終了]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+lheap ---> |"メモリ確保+ハンドル取得"| ESF_Alloc
+ESF_Alloc ---> |"LargeHeapメモリ確保()"| PL_LHeap
+ESF_Alloc -.-> |LargeHeap用ハンドル| lheap
+
+lheap ---> |"メモリ解放+ハンドル破棄<br>引数:LargeHeap用ハンドル"| ESF_Free
+ESF_Free ---> |"LargeHeapメモリ解放()"| PL_LHeap
+
+lheap ---> |"マップ<br>引数:LargeHeap用ハンドル"| ESF_Map
+ESF_Map ---> |"LargeHeapメモリマップ()"| PL_LHeap
+lheap ---> |"アンマップ<br>引数:LargeHeap用ハンドル"| ESF_Unmap
+ESF_Unmap ---> |"LargeHeapメモリアンマップ()"| PL_LHeap
+
+memory_init ---> |"メモリ初期化"| ESF_init
+ESF_init ---> |"LargeHeapメモリ初期化()"| PL_LHeap
+
+memory_deinit ---> |"メモリ終了"| ESF_deinit
+ESF_deinit ---> |"LargeHeapメモリ終了()"| PL_LHeap
+
+....
+
+....
+....
+.コンポーネント図(LargeHeap:FileIO)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph 上位App
+        memory_init( メモリ初期化 )
+        memory_deinit( メモリ終了 )
+    end
+
+    subgraph 上位App
+        lheap( メモリ操作対象：LargeHeap領域 )
+    end
+
+    subgraph PortingLayer
+        PL_LHeap[LargeHeap Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[メモリ確保+ハンドル取得]
+        ESF_Free[メモリ解放+ハンドル破棄]
+        ESF_Fopen[オープン]
+        ESF_Fclose[クローズ]
+        ESF_Fseek[シーク]
+        ESF_Fwrite[ライト]
+        ESF_Fread[リード]
+        ESF_init[メモリ初期化]
+        ESF_deinit[メモリ終了]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+lheap ---> |"メモリ確保+ハンドル取得"| ESF_Alloc
+ESF_Alloc ---> |"LargeHeapメモリ確保()"| PL_LHeap
+ESF_Alloc -.-> |LargeHeap用ハンドル| lheap
+
+lheap ---> |"メモリ解放+ハンドル破棄<br>引数:LargeHeap用ハンドル"| ESF_Free
+ESF_Free ---> |"LargeHeapメモリ解放()"| PL_LHeap
+
+lheap ---> |"オープン<br>引数:LargeHeap用ハンドル"| ESF_Fopen
+ESF_Fopen ---> |"LargeHeapファイルオープン()"| PL_LHeap
+
+lheap ---> |"クローズ<br>引数:LargeHeap用ハンドル"| ESF_Fclose
+ESF_Fclose ---> |"LargeHeapファイルクローズ()"| PL_LHeap
+
+lheap ---> |"シーク<br>引数:LargeHeap用ハンドル,シーク情報"| ESF_Fseek
+ESF_Fseek ---> |"LargeHeapファイルシーク()"| PL_LHeap
+
+lheap ---> |"ライト<br>引数:LargeHeap用ハンドル,ライト情報"| ESF_Fwrite
+ESF_Fwrite ---> |"LargeHeapファイルライト()"| PL_LHeap
+
+lheap ---> |"リード<br>引数:LargeHeap用ハンドル,リード情報"| ESF_Fread
+ESF_Fread ---> |"LargeHeapファイルリード()"| PL_LHeap
+
+memory_init ---> |"メモリ初期化"| ESF_init
+ESF_init ---> |"LargeHeapメモリ初期化()"| PL_LHeap
+
+memory_deinit ---> |"メモリ終了"| ESF_deinit
+ESF_deinit ---> |"LargeHeapメモリ終了()"| PL_LHeap
+
+....
+
+....
+....
+.コンポーネント図(WasmHeap)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph 上位App
+        memory_init( メモリ初期化 )
+        memory_deinit( メモリ終了 )
+    end
+
+    subgraph 上位App
+        wheap(メモリ操作対象：WasmHeap領域) 
+    end
+
+    subgraph PortingLayer
+        PL_WHeap[WasmHeap Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[メモリ確保+ハンドル取得]
+        ESF_Free[メモリ解放+ハンドル破棄]
+        ESF_Map[マップ]
+        ESF_Unmap[アンマップ]
+        ESF_WasmMalloc[Wasmメモリ確保]
+        ESF_WasmRealloc[Wasmメモリサイズ変更]
+        ESF_WasmFree[Wasmメモリ解放]
+
+        ESF_init[メモリ初期化]
+        ESF_deinit[メモリ終了]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+wheap ---> |"メモリ確保+ハンドル取得"| ESF_Alloc
+ESF_Alloc ---> |"WASNHeapメモリ確保()"| WAMR
+ESF_Alloc -.-> | WasmHeap用ハンドル| wheap
+
+wheap ---> |"メモリ解放+ハンドル破棄<br>引数:WasmHeap用ハンドル"| ESF_Free
+ESF_Free ---> |"WASNHeapメモリ解放()"| WAMR
+
+wheap ---> |"マップ<br>引数:WasmHeap用ハンドル"| ESF_Map
+ESF_Map ---> |"WASNHeapメモリマップ()"| WAMR
+wheap ---> |"アンマップ<br>引数:WasmHeap用ハンドル"| ESF_Unmap
+ESF_Unmap ---> |"WASNHeapメモリアンマップ()"| WAMR
+
+WAMR ---> ESF_WasmMalloc
+ESF_WasmMalloc ---> |"Wasmメモリ確保()"| PL_WHeap
+WAMR ---> ESF_WasmRealloc
+ESF_WasmRealloc ---> |"Wasmメモリサイズ変更()"| PL_WHeap
+WAMR ---> ESF_WasmFree
+ESF_WasmFree ---> |"Wasmメモリ解放()"| PL_WHeap
+
+memory_init ---> |"メモリ初期化"| ESF_init
+ESF_init ---> |"WasmHeapメモリ初期化()"| PL_WHeap
+
+memory_deinit ---> |"メモリ終了"| ESF_deinit
+ESF_deinit ---> |"WasmHeapメモリ終了()"| PL_WHeap
+
+....
+
+....
+....
+.コンポーネント図(DMA)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph 上位App
+        memory_init( メモリ初期化 )
+        memory_deinit( メモリ終了 )
+    end
+
+    subgraph 上位App
+        dma(メモリ操作対象：DMA領域) 
+    end
+
+    subgraph PortingLayer
+        PL_DMA[DMA memory Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[メモリ確保+ハンドル取得]
+        ESF_Free[メモリ解放+ハンドル破棄]
+        ESF_Map[マップ]
+        ESF_Unmap[アンマップ]
+
+        ESF_init[メモリ初期化]
+        ESF_deinit[メモリ終了]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+dma ---> |"メモリ確保+ハンドル取得"| ESF_Alloc
+ESF_Alloc ---> |"DMAメモリ確保()"| PL_DMA
+ESF_Alloc -.-> |DMA用ハンドル| dma
+
+dma ---> |"メモリ解放+ハンドル破棄<br>引数:DMA用ハンドル"| ESF_Free
+ESF_Free ---> |"DMAメモリ解放()"| PL_DMA
+
+dma ---> |"マップ<br>引数:DMA用ハンドル"| ESF_Map
+ESF_Map ---> |"DMAメモリマップ()"| PL_DMA
+dma ---> |"アンマップ<br>引数:DMA用ハンドル"| ESF_Unmap
+ESF_Unmap ---> |"DMAメモリアンマップ()"| PL_DMA
+
+memory_init ---> |"メモリ初期化"| ESF_init
+ESF_init ---> |"DMAメモリ初期化()"| PL_DMA
+
+memory_deinit ---> |"メモリ終了"| ESF_deinit
+ESF_deinit ---> |"DMAメモリ終了()"| PL_DMA
+
+....
+
+
+==== 依存ブロック
+.依存ブロック
+[width="100%", cols="20%,40%,40%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|PortingLayer
+|下記APIを呼び出しを行う  +
+・LargeHeapメモリ確保API +
+・LargeHeapメモリ解放API +
+・LargeHeapメモリマップAPI +
+・LargeHeapメモリアンマップAPI +
+・LargeHeapメモリファイルオープンAPI +
+・LargeHeapメモリファイルクローズAPI +
+・LargeHeapメモリファイルシークAPI +
+・LargeHeapメモリファイルライトAPI +
+・LargeHeapメモリファイルリードAPI +
+・LargeHeapメモリ有効/無効チェックAPI +
+・LargeHeapメモリ初期化API +
+・LargeHeapメモリ終了API +
+・LargeHeapマップ機能サポートチェックAPI +
+・WasmHeapメモリマップAPI +
+・WasmHeapメモリアンマップAPI +
+・WasmHeapメモリ初期化API +
+・WasmHeapメモリ終了API +
+・WasmHeapマップ機能サポートチェックAPI +
+・DMAメモリ確保API +
+・DMAメモリ解放API +
+・DMAメモリマップAPI +
+・DMAメモリアンマップAPI +
+・DMAメモリ有効/無効チェックAPI +
+・DMAメモリ初期化API +
+・DMAメモリ終了API +
+・DMAマップ機能サポートチェックAPI +
+
+|LargeHeapに対するメモリ操作APIの呼び出しを行い、結果をAppに返す +
+ WasmHeapメモリの確保/解放APIの呼び出しを行い、結果をAppに返す
+
+|wasm_runtime
+|下記APIの呼び出しを行う  +
+・WasmHeapメモリ確保API +
+・WasmHeapメモリ解放API +
+・WasmHeapアドレス変換API +
+・Wasmモジュール情報取得API +
+|WasmHeapに対するメモリ操作APIの呼び出しを行い、結果をAppに返す +
+ WasmApp,WASI内での使用を想定
+
+|WAMR
+|下記APIの呼び出しを行う  +
+・Wasmメモリ確保API +
+・Wasmメモリサイズ変更API +
+・Wasmメモリ解放API +
+|Wasmに対するメモリ操作APIの呼び出しを行い、結果をAppに返す
+
+|===
+
+<<<
+
+[[状態遷移]] 
+=== 状態遷移
+メモリマネージャーとしてはLargeHeap領域、DMA領域に対して確保したメモリ(ハンドル)に対して下記状態の管理を行います。 +
+
+*注意：WasmHeap領域に対してはメモリ確保、解放、マップ、アンマップの機能を提供するのみで状態の管理は行いません。*
+*FileIOはLargeHeap領域に対してのみ有効となります。*
+
+[#_TableStates_aloocate]
+.状態一覧
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+2+^|状態              |説明
+2+^|初期状態 
+                      |メモリ未割当状態。
+.2+^.^|allocate |map  |メモリ確保状態：マップ済 ※部分マップ指定による複数マップ時もこの状態
+                |unmap|メモリ確保状態：マップ未
+|===
+
+[#_TableStates_aloocate2]
+.状態一覧：FileIO
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+2+^|状態              |説明
+2+^|初期状態 
+                      |メモリ未割当状態。
+.2+^.^|allocate |open  | オープン状態：確保したメモリに対するFileIOアクセス可能状態
+                |close | クローズ状態：FileIOアクセス不可状態
+|===
+
+メモリマネージャーでは各APIを呼び出すことで下記に示す状態遷移を行います。 +
+また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_状態遷移図]
+....
+....
+.状態遷移図：マップ機能
+....
+....
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+stateDiagram-v2
+    [*] --> unmap : EsfMemoryManagerAllocate
+    state allocate{
+        unmap --> map : EsfMemoryManagerMap
+        map --> unmap : EsfMemoryManagerUnmap
+        map --> map : EsfMemoryManagerMap<br>EsfMemoryManagerUnmap
+    }
+    unmap --> [*] : EsfMemoryManagerFree
+....
+
+[#_状態遷移図：FileIO]
+....
+....
+.状態遷移図：FileIO
+....
+....
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+stateDiagram-v2
+    [*] --> close : EsfMemoryManagerAllocate
+    state allocate{
+        close --> open : EsfMemoryManagerFopen
+        open --> close : EsfMemoryManagerFclose
+        open --> open : EsfMemoryManagerFseek<br>EsfMemoryManagerFwrite<br>EsfMemoryManagerFread<br>EsfMemoryManagerFpwrite<br>EsfMemoryManagerFpread
+    }
+    close --> [*] : EsfMemoryManagerFree
+....
+EsfMemoryManagerFopenはEsfMemoryManagerAllocateで確保したメモリ領域に対して任意オフセット指定行い複数のファイルとしてオープン、複数のハンドルにてアクセス操作が可能です。 +
+※"メモリハンドル+指定オフセット"を1つのハンドルとして管理します +
+
+....
+....
+
+各状態でのAPI受け付け可否と状態遷移先を<<#_TableStateTransition>>、<<_TableStateTransition_2>>、<<_TableStateTransition_3>>に示します。表中の状態名は、API実行完了後の遷移先状態を示し、すなわちAPI呼び出し可能であることを示します。"×"はAPI受け付け不可を示し、状態遷移は発生しません。 + 
+"×"の場合はエラーを返します。エラーの詳細は <<#_EsfMemoryManagerResult>>を参照してください。
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.3+| 3+^| 状態 
+                                 .2+^.^| 初期状態 2+^| allocate
+                                                     | map        | unmap 
+.4+^.^|API  | EsfMemoryManagerAllocate | unmap    2+^| N/A
+            | EsfMemoryManagerFree     | ×           | ×          | 初期状態
+            | EsfMemoryManagerMap      | ×           | map ※1    | map
+            | EsfMemoryManagerUnmap    | ×           | unmap or map ※2      | ×
+|===
+※1:同一領域に対する複数マッピング +
+※2:同一領域に対する複数マッピング状態での全てのマッピング解除にてunmap状態へ
+
+
+[#_TableStateTransition_2]
+.状態遷移表:FileIO
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.3+| 3+^| 状態 
+                                 .2+^.^| 初期状態 2+^| allocate
+                                                     | open       | close 
+.9+^.^|API  | EsfMemoryManagerAllocate | close    2+^| N/A
+            | EsfMemoryManagerFree     | ×           | ×          | 初期状態
+            | EsfMemoryManagerFopen    | ×           | x          | open ※1
+            | EsfMemoryManagerFclose   | ×           | close      | ×
+            | EsfMemoryManagerFseek    | ×           | open       | ×
+            | EsfMemoryManagerFwrite   | ×           | open       | ×
+            | EsfMemoryManagerFread    | ×           | open       | ×
+            | EsfMemoryManagerFpwrite | ×       | open  ※2  | ×
+            | EsfMemoryManagerFpread  | ×       | open  ※2  | ×
+|===
+※1:同一領域に対する複数オープン可能("メモリハンドル+指定オフセット"を１つのハンドルとして管理) +
+※2:ファイル(メモリ)SEEKポイント保護の観点から"Seek+Write","Seek+Read"でのアクセス、ハンドルに対するブロッキング動作を行います +
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="25%,50%,25%",options="header"]
+|===
+|機能名 |概要  |節番号
+
+|メモリ初期化機能
+|PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域に対する初期化を行う機能。
+|<<#_メモリ初期化機能>>
+
+|メモリ終了機能
+|PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域に対する終了処理を行う機能。
+|<<#_メモリ終了機能>>
+
+|メモリ確保機能
+|指定されたメモリ領域から指定サイズ分のメモリ確保を行い、確保したメモリに対するメモリ操作ハンドル生成を行う機能。
+|<<#_メモリ確保機能>>
+
+|メモリ解放機能
+|取得したメモリ操作ハンドルで保持しているメモリの解放を行い、メモリ操作ハンドルの破棄を行う機能。
+|<<#_メモリ解放機能>>
+
+|メモリマップ機能
+|取得したメモリ操作ハンドルを用いて確保したメモリのマップを行う機能。
+|<<#_メモリマップ機能>>
+
+|メモリアンマップ機能
+|取得したメモリ操作ハンドルを用いてマップしたメモリのアンマップを行う機能。
+|<<#_メモリアンマップ機能>>
+
+|メモリアンマップ機能
+|取得したメモリ操作ハンドルを用いてマップしたメモリのアンマップを行う機能。
+|<<#_メモリアンマップ機能>>
+
+|メモリファイルオープン機能
+|取得したメモリ操作ハンドルを用いて取得メモリに対するファイルアクセスを行うためのファイルディスクリプタ"fd"の取得を行う機能。
+|<<#_メモリファイルオープン機能>>
+
+|メモリファイルクローズ機能
+|メモリファイルオープンで取得したファイルディスクリプタ"fd"の返却を行う機能。
+|<<#_メモリファイルクローズ機能>>
+
+|メモリファイルシーク機能
+|取得したメモリのファイルディスクリプタ"fd"を用いてファイルポインタを任意位置への設定を行う機能。
+|<<#_メモリファイルシーク機能>>
+
+|メモリファイルライト機能
+|取得したメモリのファイルディスクリプタ"fd"を用いてファイルポインタが指す位置へデータの書き込みを行う機能。
+|<<#_メモリファイルライト機能>>
+
+|メモリファイルリード機能
+|取得したメモリのファイルディスクリプタ"fd"を用いてファイルポインタが指す位置からデータの読み出しを行う機能。
+|<<#_メモリファイルリード機能>>
+
+|マップ機能サポートチェック
+|取得したメモリ操作ハンドルを用いて対象領域に対するマップ機能のサポート/未サポートのチェックを行う機能。
+|<<#_マップ機能サポートチェック>>
+
+|ハンドル情報取得機能
+|取得したメモリ操作ハンドルに紐づく対象領域、サイズ情報の取得を行う機能。
+|<<#_ハンドル情報取得機能>>
+
+|===
+
+[#_TableFunction2]
+.機能一覧(Wasm専用)
+[width="100%", cols="25%,50%,25%",options="header"]
+|===
+|機能名 |概要  |節番号
+
+|Wasmメモリ確保機能
+|指定領域から指定サイズ分のメモリ確保を行う機能。
+|<<#_Wasmメモリ確保機能>>
+
+|Wasmメモリサイズ変更機能
+|確保したWasmメモリのサイズ変更を行う機能。
+|<<#_Wasmメモリサイズ変更機能>>
+
+|Wasmメモリ解放機能
+|確保したWasmメモリの解放を行う機能。
+|<<#_Wasmメモリ解放機能>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+
+[#_メモリ初期化機能]
+==== メモリ初期化機能
+* 機能概要
+    ** PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域の初期化を行います。
+    ** 各領域毎に用意されたPLメモリ初期化APIの実行を行います。
+* 前提条件
+    ** -
+* 機能詳細
+    ** EsfMemoryManagerInitialize()により、LargeHeap領域、WasmHeap領域、DMA領域に対する初期化を行う。 +
+    また、AppMemory領域(WasmHeap)に対して引数指定された"分割数(ブロック数)"に従い、領域分割設定を行う。 +
+
+    
+この機能はシステム起動時、メモリマネージャー使用前に実行することを想定しています。 +
+※未初期化状態でメモリマネージャーのメモリ操作API実行時はメモリ未初期化のエラーを返します +
+（<<#_メモリ初期化のシーケンス図>>を参照）
+
+[#_メモリ初期化のシーケンス図]
+.メモリ初期化のシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  heap ->> +ssf_memutility : EsfMemoryManagerInitialize(AppMemory分割数)
+  
+  ssf_memutility ->> +pl : LargeHeap領域初期化
+  note over pl : LargeHeap領域初期化
+  pl -->> -ssf_memutility : エラーコード
+  ssf_memutility ->> +pl : AppMemory(WasmHeap)領域初期化
+  note over pl : AppMemory(WasmHeap)領域初期化
+  pl -->> -ssf_memutility : エラーコード
+  ssf_memutility ->> +pl : AppMemory(WasmHeap)分割数設定
+  note over pl : AppMemory(WasmHeap)ブロック数設定
+  pl -->> -ssf_memutility : エラーコード
+  ssf_memutility ->> +pl : DMA領域初期化
+  note over pl : DMA領域初期化
+  pl -->> -ssf_memutility : エラーコード
+  
+  ssf_memutility -->> -heap : 処理結果OK
+
+....
+※各初期化にてエラーコード(初期化済)が返ってきた場合は無視して初期化処理を進める
+
+[#_メモリ終了機能]
+==== メモリ終了機能
+* 機能概要
+    ** PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域の終了を行います。
+    ** 各領域毎に用意されたPLメモリ終了APIの実行を行います。
+* 前提条件
+    ** MemoryManagerが初期化されていること
+* 機能詳細
+    ** EsfMemoryManagerFinalize()により、LargeHeap領域、WasmHeap領域、DMA領域に対する終了を行う。 +
+
+    
+この機能はシステム起動時、メモリマネージャー使用前に実行することを想定しています。 +
+※未初期化状態でメモリマネージャーのメモリ操作API実行時はメモリ未初期化のエラーを返します +
+（<<#_メモリ終了のシーケンス図>>を参照）
+
+[#_メモリ終了のシーケンス図]
+.メモリ終了のシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFinalize()
+  
+  ssf_memutility ->> +pl : LargeHeap領域終了
+  note over pl : LargeHeap領域終了
+  pl -->> -ssf_memutility : エラーコード
+  ssf_memutility ->> +pl : AppMemory(WasmHeap)領域終了
+  note over pl : AppMemory(WasmHeap)領域終了
+  pl -->> -ssf_memutility : エラーコード
+  ssf_memutility ->> +pl : DMA領域終了
+  note over pl : DMA領域終了
+  pl -->> -ssf_memutility : エラーコード
+  
+  ssf_memutility -->> -heap : 処理結果OK
+
+....
+※各初期化にてエラーコード(終了済)が返ってきた場合は無視して終了処理を進める
+
+
+[#_メモリ確保機能]
+==== メモリ確保機能
+* 機能概要
+    ** 指定サイズのメモリ確保を行います。
+    ** 確保したメモリに対するメモリ操作ハンドルの生成を行います。
+* 前提条件
+    ** MemoryManagerが初期化されていること
+* 機能詳細
+    ** EsfMemoryManagerAllocate()呼び出し時の引数指定された”取得先領域情報"に従い、各領域から指定サイズ分のメモリ確保を行う。 +
+    [取得先領域]
+      - LargeHeap：LargeHeap領域からのメモリ確保 +
+      - DMA：DMA領域からのメモリ確保 +
+      - WasmHeap：WasmHeap領域からのメモリ確保 +
+      ※WasmHeap指定時は別途"WASMモジュール管理情報(exec_env)"が必要
+    ** 確保したメモリに対するメモリ操作ハンドルの生成を行う。 +
+（メモリ操作ハンドルの詳細は<<#_EsfMemoryManagerHandle>>を参照）
+
+    
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+EsfMemoryManagerAllocateを呼び出す際、”WASMモジュール管理情報"を指定することで該当領域に対するメモリ確保を行います。（<<#_メモリ確保のシーケンス図>>を参照）
+
+[#_メモリ確保のシーケンス図]
+.メモリ確保のシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：LargeHeap、WASMモジュール管理情報：NULL、取得サイズ)
+  alt  正常ケース(メモリ確保OK)
+    note over ssf_memutility : "取得先：LargeHeap"から<br>LargeHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +pl : メモリ確保(取得サイズ)
+  note over pl : メモリ確保
+  pl -->> -ssf_memutility : メモリアドレス(LargeHeap)
+    note over ssf_memutility : [LargeHeap用ハンドル]生成<br>以下[メモリ管理情報]生成<br>・領域情報<br>・メモリ情報<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK、LargeHeap用ハンドル[上位7bit：ID=1～127、下位25bit:offset=0]
+  else 異常ケース(メモリ確保NG)
+    note over ssf_memutility : パラメータ異常、メモリ確保NG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG、LargeHeap用ハンドル(NULL)
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：DMA、WASMモジュール管理情報：NULL、取得サイズ)
+  alt  正常ケース(メモリ確保OK)
+    note over ssf_memutility : "取得先：DMA"から<br>DMA領域に対するメモリ確保と認識
+  ssf_memutility ->> +pl : メモリ確保(取得サイズ)
+  note over pl : メモリ確保
+  pl -->> -ssf_memutility : メモリアドレス(DMA)
+    note over ssf_memutility : [DMA用ハンドル]生成<br>以下[メモリ管理情報]生成<br>・領域情報<br>・メモリ情報<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK、DMA用ハンドル[上位7bit：ID=1～127、下位25bit:offset=0]
+  else 異常ケース(メモリ確保NG)
+    note over ssf_memutility : パラメータ異常、メモリ確保NG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG、DMA用ハンドル(NULL)
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：WasmHeap、WASMモジュール管理情報：*exec_env、取得サイズ)
+  alt  正常ケース(メモリ確保OK)
+    note over ssf_memutility : "取得先：WasmHeap"から<br>WasmHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +wamr : メモリ確保(取得サイズ)
+  note over wamr : メモリ確保
+  wamr -->> -ssf_memutility : メモリアドレス(WasmHeap) ※Wasm内アドレス
+    note over ssf_memutility : [WasmHeap用ハンドル]生成<br>※[メモリ管理情報]の生成は行わない
+  ssf_memutility -->> heap : 処理結果OK、WasmHeap用ハンドル[上位7bit：ID=0、下位25bit:offset=Wasmアドレス(Wasmアドレス空間)]
+  else 異常ケース(メモリ確保NG)
+    note over ssf_memutility : パラメータ異常、メモリ確保NG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG、WasmHeap用ハンドル(NULL)
+  end
+
+....
+
+
+[#_メモリ解放機能]
+==== メモリ解放機能
+* 機能概要
+    ** メモリ操作ハンドルで保持しているメモリの解放を行います。
+    ** メモリ操作ハンドルの破棄を行います。
+* 前提条件
+    ** EsfMemoryManagerAllocateによりメモリ操作ハンドルの取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づいた該当領域に対するメモリ管理情報(領域情報、メモリ情報など)に従い、各領域向けメモリ解放を行います。 +
+（メモリ操作ハンドルの詳細は<<#_EsfMemoryManagerHandle>>を参照）
+
+    
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+EsfMemoryManagerFreeを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリ解放を行います。（<<#_メモリ解放のシーケンス図>>を参照）
+
+[#_メモリ解放のシーケンス図]
+.メモリ解放のシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFree(LargeHeap用ハンドル、WASMモジュール管理情報：NULL)
+  alt  正常ケース(メモリ解放OK)
+    note over ssf_memutility : [LargeHeap用ハンドル]に紐づく"メモリ管理情報"の抽出を行う<br>抽出した"メモリ管理情報"を元に該当メモリの解放を行う
+
+    ssf_memutility ->> +pl : メモリ解放(メモリアドレス)
+    note over pl : メモリ解放
+    pl -->> -ssf_memutility : <br>
+    note over ssf_memutility : [LargeHeap用ハンドル]破棄
+    ssf_memutility -->> heap : 処理結果OK
+  else 異常ケース(メモリ解放NG)
+    note over ssf_memutility : パラメータ異常、メモリ解放NG等の異常が発生した場合
+    ssf_memutility -->> -heap : 処理結果NG
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFree(DMA用ハンドル、WASMモジュール管理情報：NULL)
+  alt  正常ケース(メモリ解放OK)
+    note over ssf_memutility :[DMA用ハンドル]に紐づく"メモリ管理情報"の抽出を行う<br>抽出した"メモリ管理情報"を元に該当メモリの解放を行う
+
+    ssf_memutility ->> +pl : メモリ解放(メモリアドレス)
+    note over pl : メモリ解放
+    pl -->> -ssf_memutility : <br>
+    note over ssf_memutility : [DMA用ハンドル]破棄
+    ssf_memutility -->> heap : 処理結果OK
+  else 異常ケース(メモリ解放NG)
+    note over ssf_memutility : パラメータ異常、メモリ解放NG等の異常が発生した場合
+    ssf_memutility -->> -heap : 処理結果NG
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap用ハンドル、WASMモジュール管理情報：*exec_env)
+  alt  正常ケース(メモリ解放OK)
+    note over ssf_memutility :[WasmHeap用ハンドル]に紐づく該当メモリの解放を行う
+
+    ssf_memutility ->> +wamr : メモリ解放(メモリアドレス)
+    note over wamr : メモリ解放
+    wamr -->> -ssf_memutility : <br>
+    note over ssf_memutility : [WasmHeap用ハンドル]破棄
+    ssf_memutility -->> heap : 処理結果OK
+  else 異常ケース(メモリ解放NG)
+    note over ssf_memutility : パラメータ異常、メモリ解放NG等の異常が発生した場合
+    ssf_memutility -->> -heap : 処理結果NG
+  end
+
+....
+
+
+[#_メモリマップ機能]
+==== メモリマップ機能
+* 機能概要
+    ** 指定メモリのマップを行います。
+    *** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドル、ユーザーが独自に用意したメモリ操作ハンドルによる指定が可能です。 +
+    ※ユーザー独自メモリ操作ハンドルによるマップ操作はWasmHeap領域に対してのみ可能です
+    *** EsfMemoryManagerAllocateにより取得したメモリ領域に対してはメモリ操作ハンドル(offset)による、任意オフセット指定、かつ複数マップの指定が可能 +
+    ※任意オフセット指定、複数マップ指定はEsfMemoryManagerAllocateにより取得したメモリ操作ハンドルでのみ可能です
+* 前提条件
+    ** EsfMemoryManagerAllocateによるメモリ確保＋メモリ操作ハンドルの取得、またはWasmHeap領域から任意メモリ確保を行っていること。 +
+* 機能詳細
+    ** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合
+    *** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、確保したメモリの仮想アドレスへのマップを行う。 +
+    *** 上記でマップした仮想アドレスをマップアドレスとして上位へ返す。 +
+    ** ユーザーが独自に用意したメモリ操作ハンドルを使用する場合
+    *** メモリ操作ハンドル指定されたWasmHeap領域アドレスを仮想アドレスへのマップを行う。 +
+    *** 上記でマップした仮想アドレスをマップアドレスとして上位へ返す。 +
+
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+EsfMemoryManagerMapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリマップを行います。（<<#_メモリマップのシーケンス図>>を参照）
+
+[#_メモリマップのシーケンス図]
+.メモリマップのシーケンス図
+EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合 +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(LargeHeap用ハンドル、WASMモジュール管理情報：NULL、サイズ)
+  alt  正常ケース(メモリマップOK)
+    note over ssf_memutility :[LargeHeap用ハンドル]に紐づく"メモリ管理情報"の抽出を行う<br>抽出した"メモリ管理情報"を元に該当メモリのマップを行う
+    opt 該当メモリ領域に対する初回マップ
+      ssf_memutility ->> +pl : メモリマップ()
+      note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+      pl -->> -ssf_memutility : 仮想メモリアドレス
+      note over ssf_memutility : [メモリ管理情報]"メモリ情報"に対して"マップ登録"を設定
+    end
+    note over ssf_memutility : "仮想メモリアドレス"と[LargeHeap用ハンドル]"offset"からマップアドレスを算出<br>"メモリ管理情報"に[LargeHeap用ハンドル]"offset"を登録
+    ssf_memutility -->> heap : 処理結果OK、マップアドレス
+  else 異常ケース(メモリマップNG)
+    note over ssf_memutility : パラメータ異常、メモリマップNG等の異常が発生した場合<br>※[LargeHeap用ハンドル][メモリ管理情報]の更新は行わない
+    ssf_memutility -->> -heap : 処理結果NG、マップアドレス(NULL)
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(DMA用ハンドル、WASMモジュール管理情報：NULL、サイズ)
+  alt  正常ケース(メモリマップOK)
+    note over ssf_memutility :[DMA用ハンドル]に紐づく"メモリ管理情報"の抽出を行う<br>抽出した"メモリ管理情報"を元に該当メモリのマップを行う
+    opt 該当メモリ領域に対する初回マップ
+      ssf_memutility ->> +pl : メモリマップ()
+      note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+      pl -->> -ssf_memutility : 仮想メモリアドレス
+      note over ssf_memutility : [メモリ管理情報]"メモリ情報"に対して"マップ登録"を設定
+    end
+    note over ssf_memutility : "仮想メモリアドレス"と[DMA用ハンドル]"offset"からマップアドレスを算出<br>"メモリ管理情報"に[DMA用ハンドル]"offset"を登録
+    ssf_memutility -->> heap : 処理結果OK、マップアドレス
+  else 異常ケース(メモリマップNG)
+    note over ssf_memutility : パラメータ異常、メモリマップNG等の異常が発生した場合<br>※[DMA用ハンドル][メモリ管理情報]の更新は行わない
+    ssf_memutility -->> -heap : 処理結果NG、マップアドレス(NULL)
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap用ハンドル、WASMモジュール管理情報：*exec_env、サイズ)
+  alt  正常ケース(メモリマップOK)
+    note over ssf_memutility :WasmHeap用ハンドルをメモリアドレスとし<br>WASMモジュール管理情報：*exec_envに基づき該当メモリのマップを行う
+    ssf_memutility ->> +pl : メモリマップ()
+    note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+    pl -->> -ssf_memutility : 仮想メモリアドレス
+    note over ssf_memutility :"仮想メモリアドレス"をマップアドレスと設定
+    ssf_memutility -->> heap : 処理結果OK、マップアドレス
+  else 異常ケース(メモリマップNG)
+    note over ssf_memutility : パラメータ異常
+    ssf_memutility -->> -heap : 処理結果NG、マップアドレス(NULL)
+  end
+
+....
+
+ユーザーが独自に用意したメモリ操作ハンドルを使用する場合 +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(ユーザー独自ハンドル、WASMモジュール管理情報：*exec_env、サイズ)
+  alt  正常ケース(メモリマップOK)
+    note over ssf_memutility :ユーザー独自ハンドルをメモリアドレスとし<br>WASMモジュール管理情報：*exec_envに基づき該当メモリのマップを行う
+    ssf_memutility ->> +pl : メモリマップ()
+    note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+    pl -->> -ssf_memutility : 仮想メモリアドレス
+    note over ssf_memutility :"仮想メモリアドレス"をマップアドレスと設定
+    ssf_memutility -->> heap : 処理結果OK、マップアドレス
+  else 異常ケース(メモリマップNG)
+    note over ssf_memutility : パラメータ異常
+    ssf_memutility -->> -heap : 処理結果NG、マップアドレス(NULL)
+  end
+
+....
+
+
+[#_メモリアンマップ機能]
+==== メモリアンマップ機能
+* 機能概要
+    ** 指定メモリのアンマップを行います。
+    *** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドル、ユーザーが独自に用意したメモリ操作ハンドルによる指定が可能です。 +
+    ※ユーザー独自メモリ操作ハンドルによるマップ操作はWasmHeap領域に対してのみ可能です
+* 前提条件
+    ** EsfMemoryManagerAllocateによりメモリ操作ハンドルの取得及びマップ操作、またはユーザーが独自に確保したメモリに対するマップ操作を行っていること。
+
+* 機能詳細
+    ** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合
+    *** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、仮想アドレスのアンマップを行う。 +
+
+    ** ユーザーが独自に用意したメモリ操作ハンドルを使用する場合
+    *** メモリ操作ハンドル、マップアドレスで指定された仮想アドレスのアンマップを行う。
+
+
+
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+EsfMemoryManagerUnmapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリアンマップを行います。（<<#_メモリアンマップのシーケンス図>>を参照）
+
+[#_メモリアンマップのシーケンス図]
+.メモリアンマップのシーケンス図
+EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合 +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(LargeHeap用ハンドル、マップアドレス：NULL)
+  alt  正常ケース(メモリアンマップOK)
+    note over ssf_memutility :[LargeHeap用ハンドル]に紐づく"メモリ管理情報"の抽出を行う<br>抽出した"メモリ管理情報"を元に該当メモリのアンマップを行う<br>※EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合は<br>"メモリ管理情報"で保持しているマップアドレスによりマップ解除を行う
+    note over ssf_memutility : "メモリ管理情報"から[LargeHeap用ハンドル]"offset"の登録を解除
+    opt 該当メモリ領域内マップ数"0"
+      ssf_memutility ->> +pl : メモリアンマップ()
+      note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+      pl -->> -ssf_memutility : <br>
+      note over ssf_memutility : [メモリ管理情報]"メモリ情報"に対して"マップ解除"を設定
+    end
+    ssf_memutility -->> heap : 処理結果OK、LargeHeap用ハンドル
+  else 異常ケース(メモリアンマップNG)
+    note over ssf_memutility : パラメータ異常、メモリアンマップNG等の異常が発生した場合<br>※[LargeHeap用ハンドル][メモリ管理情報]の更新は行わない
+    ssf_memutility -->> -heap : 処理結果NG、LargeHeap用ハンドル
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(DMA用ハンドル、マップアドレス：NULL)
+  alt  正常ケース(メモリアンマップOK)
+    note over ssf_memutility :[DMA用ハンドル]に紐づく"メモリ管理情報"の抽出を行う<br>抽出した"メモリ管理情報"を元に該当メモリのアンマップを行う<br>※EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合は<br>"メモリ管理情報"で保持しているマップアドレスによりマップ解除を行う
+    note over ssf_memutility : "メモリ管理情報"から[DMA用ハンドル]"offset"の登録を解除
+    opt 該当メモリ領域内マップ数"0"
+      ssf_memutility ->> +pl : メモリアンマップ()
+      note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+      pl -->> -ssf_memutility : <br>
+      note over ssf_memutility : [メモリ管理情報]"メモリ情報"に対して"マップ解除"を設定
+    end
+    ssf_memutility -->> heap : 処理結果OK、DMA用ハンドル
+  else 異常ケース(メモリアンマップNG)
+    note over ssf_memutility : パラメータ異常、メモリアンマップNG等の異常が発生した場合<br>※[DMA用ハンドル][メモリ管理情報]の更新は行わない
+    ssf_memutility -->> -heap : 処理結果NG、DMA用ハンドル
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap用ハンドル、マップアドレス：Map操作時に取得したマップアドレス)
+  alt  正常ケース(メモリアンマップOK)
+    note over ssf_memutility : WasmHeap用ハンドルとマップアドレスからマップ登録を解除
+      ssf_memutility ->> +pl : メモリアンマップ()
+      note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+      pl -->> -ssf_memutility : <br>
+    ssf_memutility -->> heap : 処理結果OK、WasmHeap用ハンドル
+  else 異常ケース(メモリアンマップNG)
+    note over ssf_memutility : パラメータ異常
+    ssf_memutility -->> -heap : 処理結果NG、WasmHeap用ハンドル
+  end
+
+....
+
+ユーザーが独自に用意したメモリ操作ハンドルを使用する場合 +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(ユーザー独自ハンドル、マップアドレス：Map操作時に取得したマップアドレス)
+  alt  正常ケース(メモリアンマップOK)
+    note over ssf_memutility : ユーザー独自ハンドルとマップアドレスからマップ登録を解除
+      ssf_memutility ->> +pl : メモリアンマップ()
+      note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+      pl -->> -ssf_memutility : <br>
+    ssf_memutility -->> heap : 処理結果OK、ユーザー独自ハンドル
+  else 異常ケース(メモリアンマップNG)
+    note over ssf_memutility : パラメータ異常
+    ssf_memutility -->> -heap : 処理結果NG、ユーザー独自ハンドル
+  end
+
+....
+
+[#_メモリファイルオープン機能]
+==== メモリファイルオープン機能
+* 機能概要
+    ** 指定メモリのファイルオープンを行います。
+    *** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを用い、確保したメモリに対するファイルアクセスを行うためのファイルオープンを行う。 +
+    *** EsfMemoryManagerAllocateにより取得したメモリ領域に対してはメモリ操作ハンドル(offset)による、任意オフセット指定、かつ複数オープンの指定が可能 +
+    ※メモリ操作ハンドルによるファイルオープン操作はLargHeap領域に対してのみ可能です +
+* 前提条件
+    ** EsfMemoryManagerAllocateによりLargeHeap領域に対するメモリ操作ハンドルの取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するファイルオープンを行い、ファイルディスクリプタ"fd"の取得を行う。 +
+    ** 取得したファイルディスクリプタ"fd"をメモリ操作ハンドルに紐づけて格納
+
+[#_メモリファイルオープンのシーケンス図]
+.メモリファイルオープンのシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFopen(LargeHeap用ハンドル)
+  alt  正常ケース(オープンOK)
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するメモリファイルオープンと認識
+  ssf_memutility ->> +pl : メモリファイルオープン(ハンドル)
+  note over pl : メモリファイルオープン
+  pl -->> -ssf_memutility : ファイルディスクリプタ"fd"
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・領域情報<br>・メモリ情報<br>・ファイルディスクリプタ"fd"<br>・指定領域情報(オフセット、サイズ)<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK
+  else 異常ケース(オープンNG)
+    note over ssf_memutility : パラメータ異常、オープンNG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG
+  end
+....
+
+
+[#_メモリファイルクローズ機能]
+==== メモリファイルクローズ機能
+* 機能概要
+    ** 指定メモリのファイルクローズを行います。
+    *** メモリファイルオープンにより取得したファイルディスクリプタ"fd"を用い、メモリファイルクローズを行う。 +
+    ※メモリ操作ハンドルによるファイルクローズ操作はLargHeap領域に対してのみ可能です
+* 前提条件
+    ** メモリファイルオープンによりLargeHeap領域に対するファイルディスクリプタ"fd"の取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するファイルクローズを行い、ファイルディスクリプタ"fd"の返却を行う。 +
+
+[#_メモリファイルクローズのシーケンス図]
+.メモリファイルクローズのシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFclose(LargeHeap用ハンドル)
+  alt  正常ケース(クローズOK)
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するメモリファイルクローズと認識
+  ssf_memutility ->> +pl : メモリファイルクローズ(ファイルディスクリプタ"fd")
+  note over pl : メモリファイルクローズ
+  pl -->> -ssf_memutility : ファイルクローズOK
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・領域情報<br>・メモリ情報<br>・ファイルディスクリプタ"NULL"<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK
+  else 異常ケース(クローズNG)
+    note over ssf_memutility : パラメータ異常、クローズNG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG
+  end
+....
+
+[#_メモリファイルシーク機能]
+==== メモリファイルシーク機能
+* 機能概要
+    ** 指定メモリのファイルシークを行います。
+    *** メモリファイルオープンにより取得したファイルディスクリプタ"fd"を用い、メモリファイルシークを行う。 +
+    ※メモリ操作ハンドルによるファイルシーク操作はLargHeap領域に対してのみ可能です
+* 前提条件
+    ** メモリファイルオープンによりLargeHeap領域に対するファイルディスクリプタ"fd"の取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するファイルシークを行い、ファイルディスクリプタ"fd"の位置設定を行う。 +
+
+
+[#_メモリファイルシークのシーケンス図]
+.メモリファイルシークのシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFseek(LargeHeap用ハンドル,シーク量,シーク開始位置)
+  alt  正常ケース(シークOK)
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するメモリファイルシークと認識
+  ssf_memutility ->> +pl : メモリファイルシーク(ファイルディスクリプタ"fd",シーク量,シーク開始位置)
+  note over pl : メモリファイルシーク
+  pl -->> -ssf_memutility : ファイルシークOK,シーク完了位置
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・領域情報<br>・メモリ情報<br>・ファイルディスクリプタ"fd"<br>・ファイルシーク位置←シーク完了位置<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK,シーク完了位置
+  else 異常ケース(シークNG)
+    note over ssf_memutility : パラメータ異常、シークNG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG,シーク完了位置
+  end
+....
+
+
+[#_メモリファイルライト機能]
+==== メモリファイルライト機能
+* 機能概要
+    ** 指定メモリのファイルライトを行います。
+    *** メモリファイルオープンにより取得したファイルディスクリプタ"fd"を用い、メモリファイルライトを行う。 +
+    ※メモリ操作ハンドルによるファイルライト操作はLargHeap領域に対してのみ可能です
+* 前提条件
+    ** メモリファイルオープンによりLargeHeap領域に対するファイルディスクリプタ"fd"の取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリのファイルディスクリプタ"fd"で設定された任意位置に指定データのファイルライトを行う。 +
+    ** EsfMemoryManagerFpwrite時はメモリファイルシークを併せて行う。
+
+[#_メモリファイルライトのシーケンス図]
+.メモリファイルライトのシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFwrite(LargeHeap用ハンドル,書き込みバッファ,書き込みサイズ)
+  alt  正常ケース(ライトOK)
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するメモリファイルライトと認識
+  	opt EsfMemoryManagerFpwrite時
+      ssf_memutility ->> +pl : メモリファイルシーク(ファイルディスクリプタ"fd",シーク量,シーク開始位置)
+      note over pl : メモリファイルシーク
+      pl -->> -ssf_memutility : ファイルシークOK,シーク完了位置
+  	end
+  ssf_memutility ->> +pl : メモリファイルライト(ファイルディスクリプタ"fd",書き込みバッファ,書き込みサイズ)
+  note over pl : メモリファイルライト
+  pl -->> -ssf_memutility : ファイルライトOK,書き込みサイズ
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・領域情報<br>・メモリ情報<br>・ファイルディスクリプタ"fd"<br>・ファイルシーク位置←ファイルシーク位置+書き込みサイズ<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK,書き込みサイズ
+  else 異常ケース(ライトNG)
+    note over ssf_memutility : パラメータ異常、ライトNG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG,書き込みサイズ
+  end
+....
+
+[#_メモリファイルリード機能]
+==== メモリファイルリード機能
+* 機能概要
+    ** 指定メモリのファイルリードを行います。
+    *** メモリファイルオープンにより取得したファイルディスクリプタ"fd"を用い、メモリファイルリードを行う。 +
+    ※メモリ操作ハンドルによるファイルリード操作はLargHeap領域に対してのみ可能です
+* 前提条件
+    ** メモリファイルオープンによりLargeHeap領域に対するファイルディスクリプタ"fd"の取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリのファイルディスクリプタ"fd"で設定された任意位置から指定データのファイルリードを行う。 +
+    ** EsfMemoryManagerFpread時はメモリファイルシークを併せて行う。
+
+[#_メモリファイルリードのシーケンス図]
+.メモリファイルリードのシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFread(LargeHeap用ハンドル,読み出しバッファ,読み出しサイズ)
+  alt  正常ケース(リードOK)
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するメモリファイルリードと認識
+  	opt EsfMemoryManagerFpread時
+      ssf_memutility ->> +pl : メモリファイルシーク(ファイルディスクリプタ"fd",シーク量,シーク開始位置)
+      note over pl : メモリファイルシーク
+      pl -->> -ssf_memutility : ファイルシークOK,シーク完了位置
+  	end
+  ssf_memutility ->> +pl : メモリファイルリード(ファイルディスクリプタ"fd",読み出しバッファ,読み出しサイズ)
+  note over pl : メモリファイルリード
+  pl -->> -ssf_memutility : ファイルリードOK,読み出しサイズ
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・領域情報<br>・メモリ情報<br>・ファイルディスクリプタ"fd"<br>・ファイルシーク位置←ファイルシーク位置+読み出しサイズ<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> heap : 処理結果OK,読み出しサイズ
+  else 異常ケース(リードNG)
+    note over ssf_memutility : パラメータ異常、リードNG等の異常が発生した場合
+  ssf_memutility -->> -heap : 処理結果NG,読み出しサイズ
+  end
+....
+
+
+[#_マップ機能サポートチェック]
+==== マップ機能サポートチェック
+* 機能概要
+    ** 指定メモリに対するMap機能サポートのチェックを行います。
+    *** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを用い、確保したメモリに対するMap機能サポート/未サポートのチャックを行う。 +
+    ※メモリ操作ハンドルによるファイルオープン操作はLargHeap領域に対してのみ可能です
+* 前提条件
+    ** EsfMemoryManagerAllocateによりLargeHeap領域に対するメモリ操作ハンドルの取得を行っていること。
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するMap機能のサポート/未サポートのチェックを行う。 +
+    *** Mapサポートの場合 +
+      メモリマップ機能、メモリアンマップ機能を用いてメモリ操作を行う。
+    *** Map未サポートの場合 +
+      メモリファイルオープン機能、メモリファイルクローズ機能、メモリファイルシーク機能、 +
+      メモリファイルライト機能、メモリファイルリード機能を用いてメモリ操作を行う。
+
+[#_マップ機能サポートチェックのシーケンス図]
+.マップ機能サポートチェックのシーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> ssf_memutility : EsfMemoryManagerIsMapSupport(LargeHeap用ハンドル)
+  alt  Map Support：Map/Unmapによるメモリ操作
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するチェックと認識
+  ssf_memutility ->> +pl : Map機能サポートチェック(LargeHeap用ハンドル)
+  note over pl : Map機能サポートチェック
+  pl -->> -ssf_memutility : Map機能：サポート
+  ssf_memutility -->> heap : Map機能：サポート
+
+  heap ->> ssf_memutility : EsfMemoryManagerMap()
+  ssf_memutility ->> +pl : <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  note over heap : メモリ操作
+
+  heap ->> ssf_memutility : EsfMemoryManagerUnmap()
+  ssf_memutility ->> +pl : <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  else Map Not Support：Fopen,Fclose,Fseek,Fwrite,Freadによるメモリ操作
+    note over ssf_memutility : "LargeHeap用ハンドル"から<br>LargeHeap領域に対するチェックと認識
+  ssf_memutility ->> +pl : Map機能サポートチェック(LargeHeap用ハンドル)
+  note over pl : Map機能サポートチェック
+  pl -->> -ssf_memutility : Map機能：未サポート
+  ssf_memutility -->> heap : Map機能：未サポート
+
+  heap ->> ssf_memutility : EsfMemoryManagerFopen()
+  ssf_memutility ->> +pl :  <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  loop メモリ操作
+    heap ->> ssf_memutility : EsfMemoryManagerFseek(),EsfMemoryManagerFwrite(),EsfMemoryManagerFread()
+    ssf_memutility ->> +pl : <br>
+    pl -->> -ssf_memutility : <br>
+    ssf_memutility -->> heap : <br>
+  end
+
+  heap ->> ssf_memutility : EsfMemoryManagerFclose()
+  ssf_memutility ->> +pl : <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  end
+....
+
+[#_ハンドル情報取得機能]
+==== ハンドル情報取得機能
+* 機能概要
+    ** 指定ハンドルに紐づく対象領域、サイズ情報の取得を行います。
+    *** EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルに紐づく情報として下記情報の取得を行い、ハンドル情報として返します。 +
+      - 対象領域：LargeHeap領域、WasmHeap領域、DMA領域、それ以外の領域 +
+      - サイズ：アロケートで確保したサイズ +
+      ※サイズ情報は対象領域が"LargeHeap領域","DMA領域"の場合のみ返します
+* 前提条件
+    ** MemoryManagerが初期化されていること
+* 機能詳細
+    ** メモリ操作ハンドルに紐づくメモリ管理情報から、該当メモリに対する対象領域、サイズ情報の取得を行う。 +
+    *** LargeHeap領域、DMA領域 +
+      メモリマネージャーで内部管理しているメモリ管理情報より、対象領域、サイズ情報の取得を行う。 +
+    ***  WasmHeap領域 +
+      メモリ操作ハンドル(<<#_EsfMemoryManagerHandle>> EsfMemoryManagerHandle)より
+      上位7bitが"0"かつ下位25bitが"0"以外の場合に対象領域を"wasmHeap領域"とする。
+      ※サイズ情報はなし
+    *** それ以外の領域 +
+      上記LargeHeap領域、DMA領域、WasmHeap領域以外の場合に"それ以外の領域"とする。
+
+[#_ハンドル情報取得機能のシーケンス図]
+.ハンドル情報取得機能のシーケンス図
+ - 省略
+
+
+[#_Wasmメモリ確保機能]
+==== Wasmメモリ確保機能
+* 機能概要
+    ** 指定領域から指定サイズ分のメモリ確保を行います。
+    ** 確保したメモリブロックのポインタを返します。
+* 前提条件
+    ** -
+* 機能詳細
+    ** EsfMemoryManagerWasmMalloc()呼び出し時の引数指定された”確保するメモリの用途"に従い、各領域から指定サイズ分のメモリ確保を行う。 +
+    [確保するメモリの用途] ※下記のいずれかを指定して下さい。 +
+        *** 通常ヒープ領域からのメモリ確保 +
+        *** AppMemory領域からのメモリ確保 +
+    ** 確保したメモリブロックのポインタを返します。 +
+    
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+
+[#_Wasmメモリサイズ変更機能]
+==== Wasmメモリサイズ変更機能
+* 機能概要
+    ** <<#_Wasmメモリ確保機能>>により確保したメモリのサイズ変更を行います。
+    ** サイズ変更したメモリブロックのポインタを返します。
+* 前提条件
+    ** -
+* 機能詳細
+    ** EsfMemoryManagerWasmRealloc()呼び出し時の引数指定されたメモリブロックの確保サイズを指定サイズで確保し直します。 +
+    ** 確保したメモリブロックのポインタを返します。 +
+    
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+
+[#_Wasmメモリ解放機能]
+==== Wasmメモリ解放機能
+* 機能概要
+    ** <<#_Wasmメモリ確保機能>>により確保したメモリの解放を行います。
+* 前提条件
+    ** -
+* 機能詳細
+    ** EsfMemoryManagerWasmFree()呼び出し時の引数指定されたメモリブロックの解放を行います。 +
+    
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
+
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|最大処理時間
+|XXXX ms
+|<<#_最大処理時間>>
+
+|Stack最大使用量
+|512 byte
+|<<#_Stack最大使用量>>
+
+|ヒープメモリ使用量
+|XXXX byte
+|<<#_ヒープメモリ使用量>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+[#_最大処理時間]
+==== 最大処理時間
+設計時点でのT3S3の実測値を<<#_最大処理時間表>>に示す。
+※2024/2/28時点、未計測
+
+[#_最大処理時間表]
+.最大処理時間表
+[width="100%",options="header"]
+|===
+|メモリ操作API |時間
+|LargeHeapメモリ確保
+|XXXX ms
+|LargeHeapメモリ解放
+|XXXX ms
+|LargeHeapメモリマップ
+|XXXX ms
+|LargeHeapメモリアンマップ
+|XXXX ms
+
+|LargeHeapメモリファイルオープン
+|XXXX ms
+|LargeHeapメモリファイルクローズ
+|XXXX ms
+|LargeHeapメモリファイルシーク
+|XXXX ms
+|LargeHeapメモリファイルライト
+|XXXX ms
+|LargeHeapメモリファイルリード
+|XXXX ms
+
+|DMAメモリ確保
+|XXXX ms
+|DMAメモリ解放
+|XXXX ms
+|DMAメモリマップ
+|XXXX ms
+|DMAメモリアンマップ
+|XXXX ms
+
+|WasmHeapメモリ確保
+|XXXX ms
+|WasmHeapメモリ解放
+|XXXX ms
+|WasmHeapメモリマップ
+|XXXX ms
+|WasmHeapメモリアンマップ
+|XXXX ms
+
+|===
+
+
+[#_Stack最大使用量]
+==== Stack最大使用量
+設計時点での目標値は 512byte。
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+メモリ操作ハンドルの取得数に依存します。
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfMemoryManagerResult
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfMemoryManagerResult>>
+
+|EsfMemoryManagerTargetArea
+|メモリ確保先領域を定義する列挙型です。 +
+|<<#_EsfMemoryManagerTargetArea>>
+
+|EsfMemoryManagerMapSupport
+|マップ機能のサポート/未サポートを定義する列挙型です。 +
+|<<#_EsfMemoryManagerMapSupport>>
+
+|EsfMemoryManagerHandle
+|メモリ操作ハンドルを定義する型です。 +
+|<<#_EsfMemoryManagerHandle>>
+
+|EsfMemoryManagerHandleInfo
+|メモリ操作ハンドル情報を定義する型です。 +
+|<<#_EsfMemoryManagerHandleInfo>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfMemoryManagerInitialize
+|EsfMemoryManagerの初期化を行う。
+|<<#_EsfMemoryManagerInitialize>>
+|EsfMemoryManagerFinalize
+|EsfMemoryManagerの終了を行う。
+|<<#_EsfMemoryManagerFinalize>>
+|EsfMemoryManagerAllocate
+|指定領域に対する指定サイズ分メモリ確保を行い、確保したメモリに対するメモリ操作を行うためのハンドルの生成を行う。
+|<<#_EsfMemoryManagerAllocate>>
+|EsfMemoryManagerFree
+|EsfMemoryManagerAllocateで取得したハンドルをもとに指定メモリの解放、ハンドルの破棄を行う。
+|<<#_EsfMemoryManagerFree>>
+|EsfMemoryManagerMap
+|EsfMemoryManagerAllocateで取得したハンドルをもとに確保したメモリのマップを行う。
+|<<#_EsfMemoryManagerMap>>
+|EsfMemoryManagerUnmap
+|EsfMemoryManagerAllocateで取得したハンドルをもとに指定メモリのアンマップを行う。
+|<<#_EsfMemoryManagerUnmap>>
+
+|EsfMemoryManagerFopen
+|EsfMemoryManagerAllocateで取得したハンドルをもとに指定メモリのファイルオープンを行う。
+|<<#_EsfMemoryManagerFopen>>
+|EsfMemoryManagerFclose
+|EsfMemoryManagerFopenでファイルオープンしたメモリのファイルクローズを行う。
+|<<#_EsfMemoryManagerFclose>>
+|EsfMemoryManagerFseek
+|EsfMemoryManagerFopenでファイルオープンしたメモリのファイルポインタ位置設定を行う。
+|<<#_EsfMemoryManagerFseek>>
+|EsfMemoryManagerFwrite
+|EsfMemoryManagerFopenでファイルオープンしたメモリのファイルポインタ位置設定に指定データの書き込みを行う。
+|<<#_EsfMemoryManagerFwrite>>
+|EsfMemoryManagerFpwrite
+|EsfMemoryManagerFopenでファイルオープンしたメモリの指定位置にデータの書き込みを行う。
+|<<#_EsfMemoryManagerFpwrite>>
+|EsfMemoryManagerFread
+|EsfMemoryManagerFreadでファイルオープンしたメモリのファイルポインタ位置設定から指定データの読み出しを行う。
+|<<#_EsfMemoryManagerFread>>
+|EsfMemoryManagerFpread
+|EsfMemoryManagerFopenでファイルオープンしたメモリの指定位置からデータの読み出しを行う。
+|<<#_EsfMemoryManagerFpread>>
+|EsfMemoryManagerIsMapSupport
+|EsfMemoryManagerAllocateで取得したハンドルに対してMap機能をサポートしているかのチェックを行う。
+|<<#_EsfMemoryManagerIsMapSupport>>
+
+|EsfMemoryManagerGetHandleInfo
+|EsfMemoryManagerAllocateで取得したハンドルに紐づく対象領域、サイズ情報の取得を行う。
+|<<#_EsfMemoryManagerGetHandleInfo>>
+
+|===
+
+[#_TableAPI2]
+.API一覧(Wasm専用)
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfMemoryManagerWasmMalloc
+|指定領域に対する指定サイズ分メモリ確保を行い、確保したメモリブロックのポインタを返します。
+|<<#_EsfMemoryManagerWasmAllocate>>
+|EsfMemoryManagerWasmRealloc
+|<<#_EsfMemoryManagerWasmAllocate>>により確保したメモリのサイズ変更を行います。
+|<<#_EsfMemoryManagerWasmReallocate>>
+|EsfMemoryManagerFree
+|EsfMemoryManagerAllocateで取得したメモリの解放を行います。
+|<<#_EsfMemoryManagerFree>>
+|===
+
+<<<
+
+=== データ型定義
+[[EsfMemoryManagerResult]]
+[#_EsfMemoryManagerResult]
+==== EsfMemoryManagerResult
+APIの実行結果を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfMemoryManagerResultSuccess,
+  kEsfMemoryManagerResultParamError,
+  kEsfMemoryManagerResultAllocationError,
+  kEsfMemoryManagerResultMapError,
+  kEsfMemoryManagerResultFileIoError,
+  kEsfMemoryManagerResultNotSupport,
+  kEsfMemoryManagerResultOperationError,
+  kEsfMemoryManagerResultOtherError
+} EsfMemoryManagerResult;
+....
+
+
+* *値* 
++
+[#_EsfMemoryManagerResultの値の説明]
+.EsfMemoryManagerResultの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfMemoryManagerResultSuccess
+|エラーなし
+|kEsfMemoryManagerResultParamError
+|パラメータエラー
+|kEsfMemoryManagerResultAllocationError
+|メモリ確保エラー
+|kEsfMemoryManagerResultMapError
+|メモリマップエラー
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+|===
+
+[[EsfMemoryManagerTargetArea]]
+[#_EsfMemoryManagerTargetArea]
+==== EsfMemoryManagerTargetArea
+メモリ確保先領域を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfMemoryManagerTargetLargeHeap,
+  kEsfMemoryManagerTargetDma,
+  kEsfMemoryManagerTargetWasmHeap,
+  kEsfMemoryManagerTargetOtherHeap
+} EsfMemoryManagerTargetArea;
+....
+
+
+* *値* 
++
+[#_EsfMemoryManagerTargetAreaの値の説明]
+.EsfMemoryManagerTargetAreaの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfMemoryManagerTargetLargeHeap
+|LargeHeap領域
+|kEsfMemoryManagerTargetDma
+|DMA領域
+|kEsfMemoryManagerTargetWasmHeap
+|WasmHeap領域
+|kEsfMemoryManagerTargetOtherHeap
+|上記以外、その他の領域 ※<<#_EsfMemoryManagerHandle>>以外の領域
+
+|===
+
+[[EsfMemoryManagerMapSupport]]
+[#_EsfMemoryManagerMapSupport]
+==== EsfMemoryManagerMapSupport
+マップ機能のサポート/未サポートを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum{
+  kEsfMemoryManagerMapIsSupport,
+  kEsfMemoryManagerMapIsNotSupport
+} EsfMemoryManagerMapSupport;
+....
+
+
+* *値* 
++
+[#_EsfMemoryManagerMapSupportの値の説明]
+.EsfMemoryManagerMapSupportの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfMemoryManagerMapIsSupport
+|マップ機能をサポートします
+|kEsfMemoryManagerMapIsNotSupport
+|マップ機能をサポートしません +
+※FileIO(Open,Close,Read,Write,Seek)アクセスを行います
+
+|===
+
+
+[[EsfMemoryManagerWasmMemoryUsage]]
+[#_EsfMemoryManagerWasmMemoryUsage]
+==== EsfMemoryManagerWasmMemoryUsage
+Wasmメモリ確保時のメモリ用途指定を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum { 
+  kEsfMemoryManagerWasmAllocForRuntime,
+  kEsfMemoryManagerWasmAllocForLinearMemory
+} EsfMemoryManagerWasmMemoryUsage;
+....
+
+* *値* 
++
+[#_EsfMemoryManagerWasmMemoryUsageの値の説明]
+.EsfMemoryManagerWasmMemoryUsageの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfMemoryManagerWasmAllocForRuntime
+|通常ヒープを確保します
+|kEsfMemoryManagerWasmAllocForLinearMemory
+|AppMemory領域からメモリを確保します
+
+|===
+
+
+
+[#_EsfMemoryManagerHandle]
+==== EsfMemoryManagerHandle
+LargeHeap領域、DMA領域、WasmHeap領域に対するメモリ操作ハンドルの定義です。 +
+※メモリ操作ハンドルに紐づくメモリ管理情報は非公開となります(参照：<<#_EsfMemoryManagerHandleについて>>) +
+
+メモリ操作ハンドルには下記2種類があります。 +
+
+- EsfMemoryManagerAllocate()により取得したメモリ操作ハンドル +
+   メモリ確保～解放に至る一連のメモリ操作時に使用します。 +
+   対象API： EsfMemoryManagerAllocate(),EsfMemoryManagerMap(),EsfMemoryManagerUnmap(),EsfMemoryManagerFree() +
+   ※メモリマネージャー側でEsfMemoryManagerAllocate()にて下記"handle_id"に0,1～127の設定を行う +
+
+- ユーザーが独自に用意したメモリ操作ハンドル +
+   ユーザーが独自に確保したメモリ(WasmHeapのみ)に対してマップ/アンマップ操作のみを行う場合に使用します。 +
+   対象API： EsfMemoryManagerMap(),EsfMemoryManagerUnmap() +
+   ※ユーザー側でEsfMemoryManagerMap(),EsfMemoryManagerUnmap()実行時に下記"handle_id"に0の設定を行う +
+
++
+* *書式*
++
+[source, C]
+....
+typedef uint32_t EsfMemoryManagerHandle;
+....
+
+.ハンドル詳細
+....
+  |<------ 7bit ------>|<--------------------------- 25bit -------------------------->|
+  +--------------------+--------------------+--------------------+--------------------+
+  |      handle_id     |                        address_offset                        |
+  +--------------------+--------------------+--------------------+--------------------+
+
+  handle_id     ：0,1~127
+  address_offset：0x0000000~0x1FFFFFF ※32MB
+....
+
+* *EsfMemoryManagerHandle* 
++
+[#_EsfMemoryManagerAllocate()時に設定するEsfMemoryManagerHandleの説明]
+.EsfMemoryManagerAllocate()時に設定するEsfMemoryManagerHandleの説明
+[width="100%", cols="10%,20%,20%,20%,30%",options="header"]
+|===
+|種別|指定領域 |handle_id  |address_offset | 備考 
+.3+^.^|EsfMemoryManagerAllocate()により取得したメモリ操作ハンドル
+|LargeHeap
+|1～127
+|0
+|EsfMemoryManagerAllocate時に左記値を設定、 +
+ハンドルとして返却 +
+ ※メモリマネージャー側で設定
+|DMA
+|1～127
+|0
+|EsfMemoryManagerAllocate時に左記値を設定、 +
+ハンドルとして返却 +
+ ※メモリマネージャー側で設定
+|WasmHeap
+|0 +
+※WasmHeapの場合はメモリ管理を行わないためIDは"0"とする
+|Wasmアドレス(Wasmアドレス空間) 
+|EsfMemoryManagerAllocate時に左記値を設定、 +
+ハンドルとして返却 +
+ ※メモリマネージャー側で設定
+|ユーザーが独自に用意したメモリ操作ハンドル
+|WasmHeap
+|0 +
+※WasmHeapの場合はメモリ管理を行わないためIDは"0"とする
+|Wasmアドレス(Wasmアドレス空間) 
+|ユーザーが左記設定を行いEsfMemoryManagerMap実行 +
+ ※ユーザー側で設定
+
+|===
+
+
+[#_EsfMemoryManagerHandleInfo]
+==== EsfMemoryManagerHandleInfo
+メモリ操作ハンドルに紐づくメモリ管理情報から取得した対象領域、サイズ情報を格納するハンドル情報の定義です。 +
+※メモリ操作ハンドルに紐づくメモリ管理情報は非公開となります(参照：<<#_EsfMemoryManagerHandleについて>>) +
+
+取得を行うハンドル情報として以下の制約があります。 +
+
+- サイズ情報は対象領域が"LargeHeap","DMA"の場合のみ有効となります +
+   "WasmHeap","その他の領域"についてはサイズ"0"を返します 
+- "その他の領域"はメモリマネージャーで管理するハンドル以外であった場合に設定を行います +
+
++
+* *書式*
++
+[source, C]
+....
+struct EsfMemoryManagerHandleInfo {
+  EsfMemoryManagerTargetArea target_area;  // target memory area
+  int32_t allocate_size;                   // allocated memory size
+};
+....
+
+* *値* 
++
+[#_EsfMemoryManagerHandleInfoの値の説明]
+.EsfMemoryManagerHandleInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|target_area
+|ハンドルに紐づく対象領域を設定します。 +
+ LargeHeap,WasmHeap,DMA,その他の領域
+
+|allocate_size
+|アロケートサイズ +
+ 対象領域：LargeHeap,DMAのみ有効値を設定(それ以外は"0"を設定)
+
+|===
+
+[#_EsfMemoryManagerAppMemory]
+==== EsfMemoryManagerAppMemory
+Wasmメモリのメモリアドレス型の定義です。 +
+
+* *書式*
++
+[source, C]
+....
+typedef void* EsfMemoryManagerAppMemory;
+....
+
+
+<<<
+
+=== API定義
+
+[#_EsfMemoryManagerInitialize]
+==== EsfMemoryManagerInitialize
+* *機能* 
++
+メモリマネージャーの初期化を行います +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerInitialize( int32_t app_mem_div_num )**``  
+* *引数の説明* +
+
+**``[IN] int32_t app_mem_div_num``**:: 
+
+AppMemoryの分割数を指定して下さい。 +
+AppMemory領域(``CONFIG_ESP32S3_APP_BLOCK_SIZE``)に対する分割数(ブロック数)を指定します。 +
+※AppMemory領域の1ブロック辺りのサイズ ＝ AppMemory領域のサイズ ÷ ``app_mem_div_num`` となります。(小数点以下は切り捨て) +
+- 0を指定された場合、エラーを返します。
+- ``CONFIG_ESP32S3_APP_BLOCK_SIZE`` ≧ ``app_mem_div_num`` となるように指定して下さい。
+※``CONFIG_ESP32S3_APP_BLOCK_SIZE`` ＜ ``app_mem_div_num`` の場合はエラーを返します +
+
+AppMemory使用のユースケースとして下記で指定して下さい。 +
+  T5向け：任意分割数の指定 +
+  T3P向け：分割数"1"を指定 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerInitializeの戻り値の説明]
+.EsfMemoryManagerInitializeの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ 入力された引数が無効な場合
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+下記初期化、設定を行います。
+** PL Lheapの初期化API実行。
+** PL DMAの初期化API実行。
+** PL DMA領域の分割数設定API実行。
+** PL AppMemoryの初期化API実行。
+** PL AppMemory領域の分割数設定API実行。
+** メモリマネージャー内部管理情報の初期化実行。 +
+
+[#_EsfMemoryManagerFinalize]
+==== EsfMemoryManagerFinalize
+* *機能* 
++
+メモリマネージャーの終了を行います +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFinalize( void )**``  
+* *引数の説明* +
+なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFinalizeの戻り値の説明]
+.EsfMemoryManagerFinalizeの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+下記終了を行います。
+** PL Lheapの終了API実行。
+** PL DMAの終了API実行。
+** PL AppMemoryの終了API実行。
+** メモリマネージャー内部管理情報の後始末実行。 +
+
+
+[#_EsfMemoryManagerAllocate]
+==== EsfMemoryManagerAllocate
+* *機能* 
++
+指定サイズ分のメモリ確保を行い、確保したメモリに対する管理情報、メモリ操作ハンドルの生成を行う。
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerAllocate( EsfMemoryManagerTargetArea target_area, const wasm_exec_env_t *exec_env, int32_t size, EsfMemoryManagerHandle *handle )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerTargetArea target_area``**:: 
+メモリ確保先領域 +
+ メモリ操作ハンドル確保先の領域を指定して下さい。 +
++
+    LargeHeap領域に対するメモリ操作ハンドル取得の場合： kEsfMemoryManagerTargetLargeHeap
+    DMA領域に対するメモリ操作ハンドル取得の場合： kEsfMemoryManagerTargetDma
+    WasmHeapに対するメモリ操作ハンドル取得の場合： kEsfMemoryManagerTargetWasmHeap
+
++
+**``[IN] const wasm_exec_env_t *exec_env``**:: 
+
+WASMモジュール管理情報ポインタ +
++
+ LargeHeap領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+ DMA領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+ WasmHeap領域に対するメモリ操作ハンドル取得の場合：対象WASM AppのWASMモジュール管理情報を指定して下さい。
++
+**``[IN] int32_t size``**:: 
+
+確保するメモリのサイズを指定して下さい。
+
+**``[OUT] EsfMemoryManagerHandle *handle``**::
+
+メモリ操作ハンドルポインタ +
+
+ メモリ確保成功時；指定領域に対するメモリ操作ハンドルを設定します。 +
+ メモリ確保失敗時：NULLを設定します。
+
+* *戻り値* +
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値を設定します。
++
+[#_EsfMemoryManagerAllocateの戻り値の説明]
+.EsfMemoryManagerAllocateの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー
+|kEsfMemoryManagerResultAllocationError
+|メモリ確保エラー
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerTargetArea target_area”に従い下記を実行
+** LargeHeap領域：kEsfMemoryManagerTargetLargeHeapの場合
+*** LargeHeap領域から指定サイズ分のメモリ確保
+*** 内部メモリ管理情報の生成、初期設定を行う +
+**** 領域情報(ハンドルとの紐づけを行うキー:ID,offset) +
+**** 確保したメモリ情報(アドレス、サイズ、マップアドレス等々) +
+*** メモリ操作ハンドルの生成
+**** ハンドル:ID 1～127のいずれかの値を設定
+**** ハンドル:offset "0"を設定
++
+** DMA領域：kEsfMemoryManagerTargetDmaの場合
+*** DMA領域から指定サイズ分のメモリ確保
+*** 内部メモリ管理情報の生成、初期設定を行う +
+**** 領域情報(ハンドルとの紐づけを行うキー:ID,offset) +
+**** 確保したメモリ情報(アドレス、サイズ、マップアドレス等々) +
+*** メモリ操作ハンドルの生成
+**** ハンドル:ID 1～127のいずれかの値を設定
+**** ハンドル:offset "0"を設定
++
+** WasmHeap領域：kEsfMemoryManagerTargetWasmHeapの場合
+*** WasmHeap領域から指定サイズ分のメモリ確保
+*** メモリ操作ハンドルの生成
+**** ハンドル:ID 0を設定
+**** ハンドル:offset 確保したWasmアドレス(Wasmアドレス空間)を設定
++
+** 戻り値として処理結果、メモリ操作ハンドルを返します
+** エラー発生時はメモリ操作ハンドルにNULLを返します 
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+[#_EsfMemoryManagerFree]
+==== EsfMemoryManagerFree
+* *機能* 
++
+メモリ操作ハンドルに紐づくメモリの解放及び、管理情報、メモリ操作ハンドルの破棄を行う。
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFree( EsfMemoryManagerHandle handle, const wasm_exec_env_t *exec_env )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。
++
+**``[IN] const wasm_exec_env_t *exec_env``**:: 
+
+WASMモジュール管理情報ポインタ +
++
+ LargeHeap領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+ DMA領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+ WasmHeap領域に対するメモリ操作ハンドル取得の場合：対象WASM AppのWASMモジュール管理情報を指定して下さい。
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFreeの戻り値の説明]
+.EsfMemoryManagerFreeの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ 入力されたメモリ操作ハンドルが無効な場合
+|kEsfMemoryManagerResultOperationError
+|操作エラー +
+ マップ解除されていない
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に従い下記を実行
+
+** LargeHeap領域、DMA領域に対するメモリ操作ハンドルを使用する場合
+*** 管理情報のチェック
+**** マップ解除されていない場合はエラーを返す
+*** 管理情報に登録されているメモリ領域向けメモリ解放APIを実行
+*** 管理情報、メモリ操作ハンドルの破棄を行う
+
+** WasmHeap領域に対するメモリ操作ハンドルを使用する場合
+*** 該当メモリ領域向けメモリ解放APIを実行
+*** メモリ操作ハンドルの破棄を行う
+
+** 同時動作について
+*** 複数同時動作可能
+
+[#_EsfMemoryManagerMap]
+==== EsfMemoryManagerMap
+* *機能* 
++
+メモリ操作ハンドルで指定されたメモリのマップを行う。 +
+
+* *書式* +
++
+``**EsfMemoryManagerResult EsfMemoryManagerMap( EsfMemoryManagerHandle handle, const wasm_exec_env_t *exec_env, int32_t size, void * *address )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+
+メモリ操作ハンドル +
+EsfMemoryManagerAllocateにより取得したメモリ操作ハンドル、ユーザーが独自に用意したメモリ操作ハンドルによる指定が可能です。
+※ユーザー独自メモリ操作ハンドルによるマップ操作はWasmHeap領域に対してのみ可能です
++
+**``[IN] const wasm_exec_env_t *exec_env``**:: 
+
+WASMモジュール管理情報 +
++
+ LargeHeap領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+ DMA領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+ WasmHeap領域に対するメモリ操作ハンドル取得の場合：対象WASM AppのWASMモジュール管理情報を指定して下さい。
++
+**``[IN] int32_t size``**:: 
+
+マップするメモリのサイズを指定して下さい。 +
+※対象領域が"LargeHeap","DMA"の場合"MAP_ALL_AREA(1)"を指定することでアロケートサイズ分のマップを行います（MemoryMangerGetHandleInfo()によるサイズ取得を推奨）
++
+**``[OUT] void * *address``**::
+
+ マップ成功時：マップ先メモリの先頭アドレス(仮想メモリアドレス)を設定します。 +
+ マップ失敗時：NULLを設定します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerMapの戻り値の説明]
+.EsfMemoryManagerMapの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ 入力されたメモリ操作ハンドルが無効な場合
+|kEsfMemoryManagerResultMapError
+|メモリマップエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー +
+ マップ状態に対するマップ操作
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に対して下記を実行
+** LargeHeap領域、DMA領域に対するメモリ操作ハンドルを使用する場合
+*** メモリ操作ハンドル(offset)にマップを行うアドレスオフセットの指定を行う。(IDはそのまま)
+*** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)を抽出する。
+*** 抽出したメモリ管理情報を元に指定メモリ領域の状態により下記を実施
+**** unmap状態：メモリ操作ハンドルに紐づくメモリ領域をマップ(仮想アドレス)する。仮想アドレス+offsetをマップアドレスとして上位へ返す。
+**** map状態：マップ済の仮想アドレス+offsetを指定マップアドレスとして上位へ返す。
+
+** WasmHeap領域に対するメモリ操作ハンドルを使用する場合
+*** メモリ操作ハンドル(offset)にあらかじめ確保したWasmHeap領域のアドレスの指定を行う。(IDは0:WasmHeap)
+*** メモリ操作ハンドル(offset)で指定されたWasmアドレス(Wasmアドレス空間)のマップ(仮想アドレス)を行い、仮想アドレスをマップアドレスとして上位へ返す。
+
+この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。 EsfMemoryManagerMapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリマップを行います。（メモリマップのシーケンス図を参照）
+
+
+** 同時動作について
+*** 複数同時動作可能
+
+[#_EsfMemoryManagerUnmap]
+==== EsfMemoryManagerUnmap
+* *機能* 
++
+メモリ操作ハンドルで保持しているマップメモリのアンマップを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerUnmap( EsfMemoryManagerHandle handle, void * *address )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+
+メモリ操作ハンドル +
+EsfMemoryManagerAllocateにより取得したメモリ操作ハンドル、ユーザーが独自に用意したメモリ操作ハンドルによる指定が可能です。
+※ユーザー独自メモリ操作ハンドルによるマップ操作はWasmHeap領域に対してのみ可能です
++
+**``[IN/OUT] void * *address``**::
+** LargeHeap領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+** DMA領域に対するメモリ操作ハンドル取得の場合：NULLを指定して下さい。
+** WasmHeap領域に対するメモリ操作ハンドル取得の場合：EsfMemoryManagerMapにより取得したマップアドレスを指定して下さい。アンマップ後、NULLを設定します。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerUnmapの戻り値の説明]
+.EsfMemoryManagerUnmapの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ 入力されたメモリ操作ハンドルが無効な場合
+|kEsfMemoryManagerResultOperationError
+|操作エラー +
+ アンマップ状態に対するアンマップ操作
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に対して下記を実行
+** LargeHeap領域、DMA領域に対するメモリ操作ハンドルを使用する場合 +
+*** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)を抽出する。 +
+*** 抽出したメモリ管理情報を元に指定メモリ領域の状態により下記を実施 +
+**** map状態：マップ済の仮想アドレス+offsetを指定マップアドレスとして上位へ返す。複数マップ状態の場合は全マップを解除したタイミングでマップ済の仮想アドレスのアンマップを行う。 +
+** WasmHeap領域に対するメモリ操作ハンドルを使用する場合 +
+*** メモリ操作ハンドル(offset)、マップアドレスで指定されたマップ済の仮想アドレスをアンマップを行う。 +
+
+** 同時動作について
+*** 複数同時動作可能
+
+[#_EsfMemoryManagerFopen]
+==== EsfMemoryManagerFopen
+* *機能* 
++
+EsfMemoryManagerAllocateで取得したハンドルをもとに指定メモリのファイルオープンを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFopen( EsfMemoryManagerHandle handle )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFopenの戻り値の説明]
+.EsfMemoryManagerFopenの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** メモリ操作ハンドル(offset)にオープンするアドレスオフセットの指定を行う。(IDはそのまま)
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** PlLheapに対してメモリファイルオープンを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** PlLheap：メモリファイルオープンで取得したファイルディスクリプタ"fd"を格納
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果を返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+[#_EsfMemoryManagerFclose]
+==== EsfMemoryManagerFclose
+* *機能* 
++
+|EsfMemoryManagerFopenでファイルオープンしたメモリのファイルクローズを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFclose( EsfMemoryManagerHandle handle )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。 +
+ ※オフセット指定オープン時は指定した"メモリ操作ハンドル＋オフセット"を指定して下さい。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFcloseの戻り値の説明]
+.EsfMemoryManagerFcloseの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルに紐づくファイルディスクリプタ"fd"を取得
+*** 取得したファイルディスクリプタ"fd"をもとにPlLheapに対してメモリファイルクローズを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** LargeHeapハンドルに紐づくファイルディスクリプタ"fd"を"NULL"で更新
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果を返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+[#_EsfMemoryManagerFseek]
+==== EsfMemoryManagerFseek
+* *機能* 
++
+EsfMemoryManagerFopenでファイルオープンしたメモリのファイルシークを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFseek( EsfMemoryManagerHandle handle, off_t offset, int whence, off_t *result_offset )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。
+
++
+**``[IN] off_t offset``**:: 
+シークする量を設定して下さい。
++
+**``[IN] int whence``**:: 
+シーク開始位置を設定して下さい。 +
+ SEEK_SET：ファイルの先頭 +
+ SEEK_CUR：ファイルの現在位置 +
+ SEEK_END：ファイルの終端 +
+
+**``[OUT] off_t *result_offset``**::
+ シーク成功時：シークした後のファイル先頭からの位置を設定します。 +
+ シーク失敗時：現在の位置を設定します。
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFseekの戻り値の説明]
+.EsfMemoryManagerFseekの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”、"シーク量"、"シーク開始位置"に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルに紐づくファイルディスクリプタ"fd"を取得
+*** 取得したファイルディスクリプタ"fd"と引数で指定された"シーク量"、"シーク開始位置"をもとにPlLheapに対してメモリファイルシークを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** LargeHeapハンドルに紐づくファイルディスクリプタ"現在位置"を更新
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果、ファイルディスクリプタ"現在位置"を返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+[#_EsfMemoryManagerFwrite]
+==== EsfMemoryManagerFwrite
+* *機能* 
++
+EsfMemoryManagerFopenでファイルオープンしたメモリのファイルポインタ位置設定に指定データの書き込みを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFwrite( EsfMemoryManagerHandle handle, const void *buf, size_t size, size_t *rsize )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。
++
+**``[IN] const void *buf``**:: 
+書き込みデータを格納したバッファアドレスを指定して下さい。
++
+**``[IN] size_t size``**:: 
+書き込みを行うサイズを指定して下さい。
++
+**``[OUT] size_t *rsize``**::
+ ライト成功時：書き込みを行ったサイズを設定します。 +
+ ライト失敗時："0"を設定します。
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFwriteの戻り値の説明]
+.EsfMemoryManagerFwriteの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”、"書き込みバッファ"、"書き込みサイズ"に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルに紐づくファイルディスクリプタ"fd"を取得
+*** 取得したファイルディスクリプタ"fd"と引数で指定された"書き込みバッファ"、"書き込みサイズ"をもとにPlLheapに対してメモリファイルライトを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** LargeHeapハンドルに紐づくファイルディスクリプタ"現在位置"を更新
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果、書き込みサイズを返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+[#_EsfMemoryManagerFpwrite]
+==== EsfMemoryManagerFpwrite
+* *機能* 
++
+EsfMemoryManagerFopenでファイルオープンしたメモリの指定位置にデータの書き込みを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFpwrite( EsfMemoryManagerHandle handle, const void *buf, size_t size, off_t offset, size_t *rsize )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+メモリ操作ハンドル +
+ EsfMemoryManagerFopen()にて指定したメモリ操作ハンドルを指定して下さい。
++
+**``[IN] const void *buf``**:: 
+書き込みデータを格納したバッファアドレスを指定して下さい。
++
+**``[IN] size_t size``**:: 
+書き込みを行うサイズを指定して下さい。
++
+**``[IN] off_t offset``**:: 
+シークする量を設定して下さい。(handleに紐づくメモリ領域の先頭からの位置)
++
+**``[OUT] size_t *rsize``**::
+ ライト成功時：書き込みを行ったサイズを設定します。 +
+ ライト失敗時："0"を設定します。
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFpwriteの戻り値の説明]
+.EsfMemoryManagerFpwriteの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”、"書き込み位置"、"書き込みバッファ"、"書き込みサイズ"に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルに紐づくファイルディスクリプタ"fd"を取得
+*** 取得したファイルディスクリプタ"fd"と引数で指定された"書き込み位置"、"書き込みバッファ"、"書き込みサイズ"をもとにPlLheapに対してメモリファイルシーク及びライトを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** LargeHeapハンドルに紐づくファイルディスクリプタ"現在位置"を更新
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果、書き込みサイズを返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+[#_EsfMemoryManagerFread]
+==== EsfMemoryManagerFread
+* *機能* 
++
+EsfMemoryManagerFopenでファイルオープンしたメモリのファイルポインタ位置設定から指定データの読み出しを行う。 +
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFread( EsfMemoryManagerHandle handle, void *buf, size_t size, size_t *rsize )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。
++
+**``[OUT] void *buf``**:: 
+読み出しデータを格納するバッファアドレスを指定して下さい。
++
+**``[IN] size_t size``**:: 
+読み出しを行うサイズを指定して下さい。
++
+**``[OUT] size_t *rsize``**::
+ リード成功時：読み出しを行ったサイズを設定します。 +
+ リード失敗時："0"を設定します。
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFreadの戻り値の説明]
+.EsfMemoryManagerFreadの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”、"読み出しバッファ"、"読み出しサイズ"に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルに紐づくファイルディスクリプタ"fd"を取得
+*** 取得したファイルディスクリプタ"fd"と引数で指定された"読み出しバッファ"、"読み出しサイズ"をもとにPlLheapに対してメモリファイルリードを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** LargeHeapハンドルに紐づくファイルディスクリプタ"現在位置"を更新
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果、読み出しサイズを返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+[#_EsfMemoryManagerFpread]
+==== EsfMemoryManagerFpread
+* *機能* 
++
+EsfMemoryManagerFopenでファイルオープンしたメモリの指定位置からからデータの読み出しを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFpread( EsfMemoryManagerHandle handle, void *buf, size_t size, off_t off_t offset, size_t *rsize )**``  
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+メモリ操作ハンドル +
+ EsfMemoryManagerFopen()にて指定したメモリ操作ハンドルを指定して下さい。
++
+**``[OUT] void *buf``**:: 
+読み出しデータを格納するバッファアドレスを指定して下さい。
++
+**``[IN] size_t size``**:: 
+読み出しを行うサイズを指定して下さい。
++
+**``[IN] off_t offset``**:: 
+シークする量を設定して下さい。(handleに紐づくメモリ領域の先頭からの位置)
++
+**``[OUT] size_t *rsize``**::
+ リード成功時：読み出しを行ったサイズを設定します。 +
+ リード失敗時："0"を設定します。
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerFpreadの戻り値の説明]
+.EsfMemoryManagerFpreadの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultFileIoError
+|FileIOエラー
+|kEsfMemoryManagerResultNotSupport
+|未サポートエラー
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”、"読み出し位置"、"読み出しバッファ"、"読み出しサイズ"に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルに紐づくファイルディスクリプタ"fd"を取得
+*** 取得したファイルディスクリプタ"fd"と引数で指定された"読み出し位置"、"読み出しバッファ"、"読み出しサイズ"をもとにPlLheapに対してメモリファイルリードを行う
+*** メモリ操作ハンドル(内部メモリ管理情報)の更新
+**** LargeHeapハンドルに紐づくファイルディスクリプタ"現在位置"を更新
++
+** DMA領域領域向けのhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** WasmHeap領域向けhandleの場合
+*** 処理結果として"kEsfMemoryManagerResultNotSupport"を設定
++
+** 戻り値として処理結果、読み出しサイズを返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+[#_EsfMemoryManagerIsMapSupport]
+==== EsfMemoryManagerIsMapSupport
+* *機能* 
++
+EsfMemoryManagerAllocateで取得したハンドルに対してMap機能をサポートしているかのチェックを行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerIsMapSupport( EsfMemoryManagerHandle handle, EsfMemoryManagerMapSupport *support )**``  
+* *引数の説明* +
+**``[IN] EsfMemoryManagerHandle handle``**:: 
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドルを指定して下さい。
++
+
+**``[OUT] EsfMemoryManagerMapSupport *support``**::
+マップ機能のサポート/未サポート情報を設定します。 +
+** マップ機能サポート時：kEsfMemoryManagerMapIsSupport +
+** マップ機能未サポート時：kEsfMemoryManagerMapIsNotSupport
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+.EsfMemoryManagerIsMapSupportの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+ ハンドルが無効な場合
+|kEsfMemoryManagerResultOperationError
+|操作エラー
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したLargeHeapハンドルをもとにPlLheapに対してMap機能サポートのチェックを行う
++
+** DMA領域領域向けのhandleの場合
+*** 内部メモリ管理情報から、LargeHeapハンドルを取得
+*** 取得したDMAハンドルをもとにPlDmaMemに対してMap機能サポートのチェックを行う
++
+** WasmHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、WasmHeapハンドルを取得
+*** 取得したWasmHeapハンドルをもとにPlAppmemに対してMap機能サポートのチェックを行う
++
+** 戻り値としてMap機能サポート/未サポートを返します
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+[#_EsfMemoryManagerGetHandleInfo]
+==== EsfMemoryManagerGetHandleInfo
+* *機能* 
++
+EsfMemoryManagerAllocateで取得したハンドルに紐づく対象領域、サイズ情報の取得を行う。 +
+
+* *書式* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerGetHandleInfo( uint32_t handle, EsfMemoryManagerHandleInfo *info )**``  
+* *引数の説明* +
+**``[IN] uint32_t handle``**:: 
+メモリ操作ハンドル +
+ EsfMemoryManagerAllocate()にて取得したメモリ操作ハンドル若しくは領域識別を行いたいメモリのハンドルを指定してください。
++
+
+**``[OUT] EsfMemoryManagerHandleInfo *info``**::
+ハンドルに紐づく対象領域、サイズ情報の設定します。 +
+参照<<#_EsfMemoryManagerHandleInfo>> +
++
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
++
+[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+.EsfMemoryManagerIsMapSupportの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kEsfMemoryManagerResultSuccess
+|正常終了
+|kEsfMemoryManagerResultParamError
+|パラメータエラー +
+|kEsfMemoryManagerResultOtherError
+|その他のエラー
+
+|===
+
+* *説明* +
+引数で指定された”EsfMemoryManagerHandle handle”に従い下記を実行
+** LargeHeap領域向けhandleの場合
+*** 内部メモリ管理情報から、アロケートサイズを取得
+*** EsfMemoryManagerHandleInfoへ対象領域"LargeHeap",アロケートサイズの設定を行う
++
+** DMA領域領域向けのhandleの場合
+*** 内部メモリ管理情報から、アロケートサイズを取得
+*** EsfMemoryManagerHandleInfoへ対象領域"Dma",アロケートサイズの設定を行う
++
+** WasmHeap領域向けhandleの場合
+*** EsfMemoryManagerHandleInfoへ対象領域"WasmHeap",アロケートサイズ"0"の設定を行う
++
+** 上記以外のhandleの場合
+*** EsfMemoryManagerHandleInfoへ対象領域"Other",アロケートサイズ"0"の設定を行う
++
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+
+[#_EsfMemoryManagerWasmAllocate]
+==== EsfMemoryManagerWasmAllocate
+* *機能* 
++
+指定領域に対する指定サイズ分メモリ確保を行い、確保したメモリブロックのポインタを返します。
+
+* *書式* +
++
+``** EsfMemoryManagerAppMemory EsfMemoryManagerWasmAllocate( EsfMemoryManagerWasmMemoryUsage usage, int32_t size )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerWasmMemoryUsage usage``**:: 
+
+確保するメモリの用途を指定して下さい。 +
+ kEsfMemoryManagerWasmAllocForRuntime：通常ヒープからメモリ確保を行います。 +
+ kEsfMemoryManagerWasmAllocForLinearMemory：AppMemory領域からメモリ確保を行います。 +
++
+**``[IN] int32_t size``**:: 
+
+確保するメモリのサイズを指定して下さい。
+※0以外を指定して下さい
+
+* *戻り値* +
+ メモリ確保成功時： 確保したメモリブロックのポインタを返します。 +
+ メモリ確保失敗時： NULLを返します。
++
+
+* *説明* +
+引数で指定された”usage”に従い下記を実行
+** ”kEsfMemoryManagerWasmAllocForRuntime”を指定した場合 +
+*** 通常ヒープ領域から指定サイズ分のメモリ確保
+** "kEsfMemoryManagerWasmAllocForLinearMemory"を指定した場合 +
+*** AppMemory領域から指定サイズ分のメモリ確保 +
+** 同時動作について
+*** 複数同時動作可能 +
+
+[#_EsfMemoryManagerWasmReallocate]
+==== EsfMemoryManagerWasmReallocate
+* *機能* 
++
+<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリに対して指定サイズにてメモリ確保し直し、メモリブロックのポインタを返します。
+
+* *書式* +
++
+``** EsfMemoryManagerAppMemory EsfMemoryManagerWasmReallocate( EsfMemoryManagerWasmMemoryUsage usage, const EsfMemoryManagerAppMemory old_memory, int32_t size )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerWasmMemoryUsage usage``**:: 
+
+<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリ用途と同じものを指定して下さい。 +
++
+**``[IN] const EsfMemoryManagerAppMemory old_memory``**:: 
+
+<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリブロックのポインタを指定して下さい。 +
++
+**``[IN] int32_t size``**:: 
+
+再確保したいメモリサイズを指定して下さい。
+※0以外を指定して下さい
++
+* *戻り値* +
+ メモリ確保成功時： 確保したメモリブロックのポインタを返します。 +
+ メモリ確保失敗時： NULLを返します。
++
+
+* *説明* +
+引数で指定された”usage”に従い下記を実行 +
+※”usage”は<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリ用途と同じものを指定
+** ”kEsfMemoryManagerWasmAllocForRuntime”を指定した場合 +
+*** 通常ヒープ領域から指定サイズ分のメモリ再確保
+** "kEsfMemoryManagerWasmAllocForLinearMemory"を指定した場合 +
+*** AppMemory領域から指定サイズ分のメモリ再確保 +
+** 同時動作について
+*** 複数同時動作可能 +
+
+
+[#_EsfMemoryManagerWasmFree]
+==== EsfMemoryManagerWasmFree
+* *機能* 
++
+<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリの解放を行います。
+
+* *書式* +
++
+``** void EsfMemoryManagerWasmFree( EsfMemoryManagerWasmMemoryUsage usage, EsfMemoryManagerAppMemory memory )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfMemoryManagerWasmMemoryUsage usage``**:: 
+
+<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリ用途と同じものを指定して下さい。 +
++
+**``[IN] EsfMemoryManagerAppMemory memory``**:: 
+
+<<#_EsfMemoryManagerWasmAllocate>>、<<#_EsfMemoryManagerWasmReallocate>>で確保したメモリブロックのポインタを指定して下さい。 +
++
+* *戻り値* +
+ なし
++
+
+* *説明* +
+引数で指定された”usage”に従い下記を実行 +
+※”usage”は<<#_EsfMemoryManagerWasmAllocate>>で確保したメモリ用途と同じものを指定
+** ”kEsfMemoryManagerWasmAllocForRuntime”を指定した場合 +
+*** 通常ヒープ領域から確保したメモリ解放
+** "kEsfMemoryManagerWasmAllocForLinearMemory"を指定した場合 +
+*** AppMemory領域から確保したメモリ解放 +
+** 同時動作について
+*** 複数同時動作可能 +
+
+<<<
+
+== API使用時の呼び出し例
+
+メモリ操作ハンドルを用いたメモリ確保/解放、マップ/アンマップ操作の呼び出し例をメモリ領域の組み合わせ毎に示します。
+
+=== LargeHeap領域間でのメモリ操作時の呼び出し例 ※DMA領域も同様
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant lheap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：LargeHeap、WASMモジュール管理情報：指定なし、取得サイズ)
+    note over ssf_memutility : "取得先情報：LargeHeap"から<br>LargeHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +pl : メモリ確保(取得サイズ)
+  note over pl : メモリ確保
+  pl -->> -ssf_memutility : メモリアドレス(LargeHeap)
+    note over ssf_memutility : [メモリ管理情報①]生成<br>以下情報の設定<br>・領域情報(ハンドル紐づけ情報含む)<br>・メモリ情報
+    note over ssf_memutility : [LargeHeap用ハンドル①]生成<br>以下情報の設定<br>・ID=1、offset=0
+  ssf_memutility -->> -lheap : 処理結果OK、LargeHeap用ハンドル①
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：LargeHeap、WASMモジュール管理情報：指定なし、取得サイズ)
+    note over ssf_memutility : "取得先情報：LargeHeap"から<br>LargeHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +pl : メモリ確保(取得サイズ)
+  note over pl : メモリ確保
+  pl -->> -ssf_memutility : メモリアドレス(LargeHeap)
+    note over ssf_memutility : [メモリ管理情報②]生成<br>以下情報の設定<br>・領域情報(ハンドル紐づけ情報含む)<br>・メモリ情報
+    note over ssf_memutility : [LargeHeap用ハンドル②]生成<br>以下情報の設定<br>・ID=2、offset=0
+  ssf_memutility -->> -lheap : 処理結果OK、LargeHeap用ハンドル②
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(LargeHeap用ハンドル①、WASMモジュール管理情報：指定なし、マップサイズ)<br>※LargeHeap用ハンドル①のoffsetに任意オフセット指定を行うことで確保したメモリ領域に対して複数マップを行うことが可能
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリマップと認識<br>[LargeHeap用ハンドル①]に紐づく[メモリ管理情報①]"メモリ情報"を取得
+  ssf_memutility ->> +pl : メモリマップ()
+  note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+  pl -->> -ssf_memutility : 仮想メモリアドレス
+    note over ssf_memutility : [メモリ管理情報①]"メモリ情報"に対して"マップ"を設定
+  ssf_memutility -->> -lheap : 処理結果OK、マップアドレス
+
+  note over lheap : LargeHeap用ハンドル①<br>マップメモリ上にデータ準備
+  
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(LargeHeap用ハンドル②、WASMモジュール管理情報：指定なし、マップサイズ)<br>※LargeHeap用ハンドル②のoffsetに任意オフセット指定を行うことで確保したメモリ領域に対して複数マップを行うことが可能
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリマップと認識<br>[LargeHeap用ハンドル②]に紐づく[メモリ管理情報②]"メモリ情報"を取得
+  ssf_memutility ->> +pl : メモリマップ()
+  note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+  pl -->> -ssf_memutility : 仮想メモリアドレス
+    note over ssf_memutility : [メモリ管理情報②]"メモリ情報"に対して"マップ"を設定
+  ssf_memutility -->> -lheap : 処理結果OK、マップアドレス
+
+  note over lheap : LargeHeap領域① => ②への<br>データ転送＋データ処理
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(LargeHeap用ハンドル①、マップアドレス：指定なし)<br>※複数マップ動作時は該当マップ指定時のLargeHeap用ハンドル①を指定(offset指定を行ったハンドル)
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリアンマップと認識<br>[LargeHeap用ハンドル①]に紐づく[メモリ管理情報]"メモリ情報"を取得
+  ssf_memutility ->> +pl : メモリアンマップ()
+  note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  pl -->> -ssf_memutility : <br>
+    note over ssf_memutility : [メモリ管理情報①]"メモリ情報"に対して"マップ解除"を設定
+  ssf_memutility -->> -lheap : 処理結果OK、LargeHeap用ハンドル①
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(LargeHeap用ハンドル②、マップアドレス：指定なし)<br>※複数マップ動作時は該当マップ指定時のLargeHeap用ハンドル①を指定(offset指定を行ったハンドル)
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリアンマップと認識<br>[LargeHeap用ハンドル②]に紐づく[メモリ管理情報]"メモリ情報"を取得
+  ssf_memutility ->> +pl : メモリアンマップ()
+  note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  pl -->> -ssf_memutility : <br>
+    note over ssf_memutility : [メモリ管理情報②]"メモリ情報"に対して"マップ解除"を設定
+  ssf_memutility -->> -lheap : 処理結果OK、LargeHeap用ハンドル②
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(LargeHeap用ハンドル①、WASMモジュール管理情報：指定なし)
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリ解放と認識<br>[メモリ管理情報①]"メモリ情報"で保持しているメモリの解放を行う
+
+  ssf_memutility ->> +pl : メモリ解放(メモリアドレス)
+  note over pl : メモリ解放
+  pl -->> -ssf_memutility : <br>
+  note over ssf_memutility : [メモリ管理情報①]破棄
+  note over ssf_memutility : [LargeHeap用ハンドル①]破棄
+  ssf_memutility -->> -lheap : 処理結果OK
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(LargeHeap用ハンドル②、WASMモジュール管理情報：指定なし)
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリ解放と認識<br>[メモリ管理情報②]"メモリ情報"で保持しているメモリの解放を行う
+
+  ssf_memutility ->> +pl : メモリ解放(メモリアドレス)
+  note over pl : メモリ解放
+  pl -->> -ssf_memutility : <br>
+  note over ssf_memutility : [メモリ管理情報②]破棄
+  note over ssf_memutility : [LargeHeap用ハンドル②]破棄
+  ssf_memutility -->> -lheap : 処理結果OK
+
+....
+
+=== LargeHeap領域、WasmHeap領域間でのメモリ操作時の呼び出し例 ※DMA領域,WasmHeap領域間も同様
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant lheap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：LargeHeap、WASMモジュール管理情報：指定なし、取得サイズ)
+    note over ssf_memutility : "取得先情報：LargeHeap"から<br>LargeHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +pl : メモリ確保(取得サイズ)
+  note over pl : メモリ確保
+  pl -->> -ssf_memutility : メモリアドレス(LargeHeap)
+    note over ssf_memutility : [メモリ管理情報①]生成<br>以下情報の設定<br>・領域情報(ハンドル紐づけ情報含む)<br>・メモリ情報
+    note over ssf_memutility : [LargeHeap用ハンドル]生成<br>以下情報の設定<br>・ID=1、offset=0
+  ssf_memutility -->> -lheap : 処理結果OK、LargeHeap用ハンドル①
+  
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：WasmHeap、WASMモジュール管理情報：指定あり、取得サイズ)
+    note over ssf_memutility : "取得先情報：WasmHeap"から<br>WasmHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +wamr : メモリ確保(取得サイズ)
+  note over wamr : メモリ確保
+  wamr -->> -ssf_memutility : メモリアドレス(WasmHeap) ※Wasm内アドレス
+    note over ssf_memutility : [WasmHeap用ハンドル]生成<br>以下情報の設定<br>・ID=0、offset=メモリアドレス(WasmHeap) ※Wasm内アドレス
+  ssf_memutility -->> -lheap : 処理結果OK、WasmHeap用ハンドル
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(LargeHeap用ハンドル、WASMモジュール管理情報：指定なし、マップサイズ)<br>※LargeHeap用ハンドルのoffsetに任意オフセット指定を行うことで確保したメモリ領域に対して複数マップを行うことが可能
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリマップと認識<br>[LargeHeap用ハンドル]に紐づく[メモリ管理情報①]"メモリ情報"を取得
+  ssf_memutility ->> +pl : メモリマップ()
+  note over pl : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+  pl -->> -ssf_memutility : 仮想メモリアドレス
+    note over ssf_memutility : [メモリ管理情報①]"メモリ情報"に対して"マップ"を設定
+  ssf_memutility -->> -lheap : 処理結果OK、マップアドレス
+
+  note over lheap : LargeHeap用ハンドル<br>マップメモリ上にデータ準備
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap用ハンドル、WASMモジュール管理情報：指定あり、マップサイズ)
+    note over ssf_memutility : WasmHeap用ハンドルから該当メモリアドレスを取得
+  ssf_memutility ->> +wamr : メモリマップ()
+  note over wamr : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+  wamr -->> -ssf_memutility : 仮想メモリアドレス(マップアドレス)
+  ssf_memutility -->> -lheap : 処理結果OK、マップアドレス
+
+  note over lheap,wamr : LargeHeap領域 => WasmHeap領域への<br>データ転送＋データ処理
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(LargeHeap用ハンドル、マップアドレス：指定なし)<br>※複数マップ動作時は該当マップ指定時のLargeHeap用ハンドルを指定(offset指定を行ったハンドル)
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリアンマップと認識<br>[LargeHeap用ハンドル]に紐づく[メモリ管理情報①]"メモリ情報"を取得
+  ssf_memutility ->> +pl : メモリアンマップ()
+  note over pl : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  pl -->> -ssf_memutility : <br>
+    note over ssf_memutility : [メモリ管理情報①]"メモリ情報"に対して"マップ解除"を設定
+  ssf_memutility -->> -lheap : 処理結果OK、LargeHeap用ハンドル
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap用ハンドル、マップアドレス：指定あり)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリアンマップと認識<br>マップアドレスで指定されたマップの解除を行う
+  ssf_memutility ->> +wamr : メモリアンマップ()
+  note over wamr : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  wamr -->> -ssf_memutility : <br>
+  ssf_memutility -->> -lheap : 処理結果OK、WasmHeap用ハンドル
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(LargeHeap用ハンドル、WASMモジュール管理情報：指定なし)
+    note over ssf_memutility : LargeHeap用ハンドルから<br>LargeHeap領域に対するメモリ解放と認識<br>[メモリ管理情報①]"メモリ情報"で保持しているメモリの解放を行う
+
+  ssf_memutility ->> +pl : メモリ解放(メモリアドレス)
+  note over pl : メモリ解放
+  pl -->> -ssf_memutility : <br>
+  note over ssf_memutility : [メモリ管理情報①]破棄
+  note over ssf_memutility : [LargeHeap用ハンドル]破棄
+  ssf_memutility -->> -lheap : 処理結果OK
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap用ハンドル、WASMモジュール管理情報：指定あり)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリ解放と認識<br>WasmHeap用ハンドルで指定されたメモリの解放を行う
+
+  ssf_memutility ->> +wamr : メモリ解放(メモリアドレス)
+  note over wamr : メモリ解放
+  wamr -->> -ssf_memutility : <br>
+  note over ssf_memutility : [メモリ管理情報②]破棄
+  note over ssf_memutility : [WasmHeap用ハンドル]破棄
+  ssf_memutility -->> -lheap : 処理結果OK
+
+....
+
+=== WasmHeap領域間でのメモリ操作時の呼び出し例(非推奨)
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant wheap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant wamr as WAMR
+
+opt 環境によってはマップ/アンマップ機能が不要となる場合があり<br>その場合システム全体のパフォーマンス低下を招く可能性があります<br>(WasmHeap領域のみを使用する場合はWAMRのメモリ操作APIを使用することを推奨します)
+  wheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：WasmHeap、WASMモジュール管理情報：指定あり、取得サイズ)
+    note over ssf_memutility : "WASMモジュール管理情報：指定あり"から<br>WasmHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +wamr : メモリ確保(取得サイズ)
+  note over wamr : メモリ確保
+  wamr -->> -ssf_memutility : メモリアドレス(WasmHeap) ※Wasm内アドレス
+    note over ssf_memutility : [WasmHeap用ハンドル①]生成<br>以下情報の設定<br>・ID=1、offset=メモリアドレス(WasmHeap) ※Wasm内アドレス
+  ssf_memutility -->> -wheap : 処理結果OK、WasmHeap用ハンドル①
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：WasmHeap、WASMモジュール管理情報：指定あり、取得サイズ)
+    note over ssf_memutility : "WASMモジュール管理情報：指定あり"から<br>WasmHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +wamr : メモリ確保(取得サイズ)
+  note over wamr : メモリ確保
+  wamr -->> -ssf_memutility : メモリアドレス(WasmHeap) ※Wasm内アドレス
+    note over ssf_memutility : [WasmHeap用ハンドル②]生成<br>以下情報の設定<br>・ID=2、offset=メモリアドレス(WasmHeap) ※Wasm内アドレス
+  ssf_memutility -->> -wheap : 処理結果OK、WasmHeap用ハンドル②
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap用ハンドル①、WASMモジュール管理情報：指定あり、マップサイズ)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリマップと認識<br>[WasmHeap用ハンドル①]から該当メモリアドレスを取得
+  ssf_memutility ->> +wamr : メモリマップ()
+  note over wamr : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+  wamr -->> -ssf_memutility : 仮想メモリアドレス(マップアドレス)
+  ssf_memutility -->> -wheap : 処理結果OK、マップアドレス
+
+  note over wheap : WasmHeap用ハンドル①<br>マップメモリ上にデータ準備
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap用ハンドル②、WASMモジュール管理情報：指定あり、マップサイズ)<br>※WasmHeap用ハンドル②のoffsetに任意オフセット指定を行うことで確保したメモリ領域に対して複数マップを行うことが可能
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリマップと認識<br>[WasmHeap用ハンドル②]から該当メモリアドレスを取得
+  ssf_memutility ->> +wamr : メモリマップ()
+  note over wamr : メモリマップ<br>メモリアドレス⇒仮想メモリアドレス
+  wamr -->> -ssf_memutility : 仮想メモリアドレス(マップアドレス)
+  ssf_memutility -->> -wheap : 処理結果OK、マップアドレス
+
+  note over wheap : WasmHeap領域① => ②への<br>データ転送＋データ処理
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap用ハンドル①、マップアドレス：指定あり)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリアンマップと認識<br>マップアドレスで指定されたマップの解除を行う
+  ssf_memutility ->> +wamr : メモリアンマップ()
+  note over wamr : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  wamr -->> -ssf_memutility : <br>
+    note over ssf_memutility : [メモリ管理情報①]"メモリ情報"に対して"マップ解除"を設定
+  ssf_memutility -->> -wheap : 処理結果OK、WasmHeap用ハンドル①
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap用ハンドル②、マップアドレス：指定あり)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリアンマップと認識<br>マップアドレスで指定されたマップの解除を行う
+  ssf_memutility ->> +wamr : メモリアンマップ()
+  note over wamr : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  wamr -->> -ssf_memutility : <br>
+    note over ssf_memutility : [メモリ管理情報②]"メモリ情報"に対して"マップ解除"を設定
+  ssf_memutility -->> -wheap : 処理結果OK、WasmHeap用ハンドル②
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap用ハンドル①、WASMモジュール管理情報：指定あり)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリ解放と認識<br>WasmHeap用ハンドルで指定されたメモリの解放を行う
+
+  ssf_memutility ->> +wamr : メモリ解放(メモリアドレス)
+  note over wamr : メモリ解放
+  wamr -->> -ssf_memutility : <br>
+  note over ssf_memutility : [WasmHeap用ハンドル①]破棄
+  ssf_memutility -->> -wheap : 処理結果OK
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap用ハンドル②、WASMモジュール管理情報：指定あり)
+    note over ssf_memutility : WasmHeap用ハンドルから<br>WasmHeap領域に対するメモリ解放と認識<br>WasmHeap用ハンドルで指定されたメモリの解放を行う
+
+  ssf_memutility ->> +wamr : メモリ解放(メモリアドレス)
+  note over wamr : メモリ解放
+  wamr -->> -ssf_memutility : <br>
+  note over ssf_memutility : [WasmHeap用ハンドル②]破棄
+  ssf_memutility -->> -wheap : 処理結果OK
+
+end
+
+....
+
+=== WasmHeap領域に対するユーザー独自ハンドルを用いてのマップ/アンマップ操作の呼び出し例
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant wheap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant wamr as WAMR
+
+  note over wheap : 上位App側で独自にメモリ確保を行う
+  wheap ->> +wamr : メモリ確保(取得サイズ)
+  note over wamr : メモリ確保
+  wamr -->> -wheap : メモリアドレス(WasmHeap) ※Wasm内アドレス
+
+  note over wheap : 上位App側で"ユーザー独自ハンドル"の準備(生成)<br>以下情報の設定<br>・ID=0、offset=メモリアドレス(WasmHeap) ※Wasm内アドレス
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerMap(ユーザー独自ハンドル、WASMモジュール管理情報：指定あり、マップサイズ)<br>※ユーザー独自ハンドルのoffsetに設定された"メモリアドレス(WasmHeap)"に対してマップを行う
+    note over ssf_memutility : ユーザー独自ハンドルから<br>WasmHeap領域に対するメモリマップと認識<br>[ユーザー独自ハンドル]から"メモリアドレス(WasmHeap)"を取得
+  ssf_memutility ->> +wamr : メモリマップ()
+  note over wamr : メモリマップ<br>メモリアドレス(WasmHeap)⇒仮想メモリアドレス
+  wamr -->> -ssf_memutility : 仮想メモリアドレス
+  ssf_memutility -->> -wheap : 処理結果OK、マップアドレス(仮想メモリアドレス)
+
+  note over wheap : マップアドレスを用いたメモリ操作
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerUnmap(ユーザー独自ハンドル、マップアドレス：仮想メモリアドレス)<br>※ユーザー独自ハンドルはマップ操作時に使用したものと同一のものを指定、<br>マップアドレスはマップ操作時に取得したマップアドレス(仮想アドレス)を指定
+    note over ssf_memutility : ユーザー独自ハンドルから<br>WasmHeap領域に対するメモリアンマップと認識<br>マップアドレス(仮想メモリアドレス)を取得
+  ssf_memutility ->> +wamr : メモリアンマップ()
+  note over wamr : メモリアンマップ<br>仮想メモリアドレスマップ解除
+  wamr -->> -ssf_memutility : <br>
+  ssf_memutility -->> -wheap : 処理結果OK、ユーザー独自ハンドル
+
+  note over wheap : 上位App側で独自にメモリ解放を行う
+  wheap ->> +wamr : メモリ解放(メモリアドレス)<br>※メモリ確保時に取得したメモリアドレス(WasmHeap)を指定
+  note over wamr : メモリ解放
+  wamr -->> -wheap : 処理OK
+
+....
+
+=== LargeHeap領域に対するFileIO操作の呼び出し例
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant lheap as 上位App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(取得先：LargeHeap、WASMモジュール管理情報：指定なし、取得サイズ)
+    note over ssf_memutility : "取得先情報：LargeHeap"から<br>LargeHeap領域に対するメモリ確保と認識
+  ssf_memutility ->> +pl : メモリ確保(取得サイズ)
+  note over pl : メモリ確保
+  pl -->> -ssf_memutility : メモリアドレス(LargeHeap)
+    note over ssf_memutility : [メモリ管理情報①]生成<br>以下情報の設定<br>・領域情報(ハンドル紐づけ情報含む)<br>・メモリ情報
+    note over ssf_memutility : [LargeHeap用ハンドル]生成<br>以下情報の設定<br>・ID=1、offset=0<br>・ファイルディスクリプタ"NULL"<br>・ファイル現在位置"0"
+  ssf_memutility -->> -lheap : 処理結果OK、メモリハンドル：LargeHeap用ハンドル
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerIsMapSupport(メモリハンドル：LargeHeap用ハンドル)
+    note over ssf_memutility : "メモリハンドル"から<br>LargeHeap領域に対するMap機能サポートチェックと認識
+  ssf_memutility ->> +pl : PlLheapに対してMap機能サポートチェック(LargeHeap用ハンドル)
+  note over pl : Map機能サポートチェック
+  pl -->> -ssf_memutility : Map機能サポート結果(true：Map機能サポート、fales:Map機能未サポート)
+  ssf_memutility -->> -lheap : Map機能サポート結果(true：Map機能サポート、fales:Map機能未サポート)
+
+alt Map機能サポート：Map/Unmapによるメモリ操作
+  
+    note over lheap,pl : <br>Map機能サポート時のメモリ操作は 5.1～5.4 を参照下さい<br>
+    
+else Map機能未サポート：Fopen,Fclose,Fseek,Fwrite,Freadによるメモリ操作
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFopen(メモリハンドル：LargeHeap用ハンドル)
+    note over ssf_memutility : メモリハンドルから<br>LargeHeap領域に対するメモリファイルオープンと認識
+  ssf_memutility ->> +pl : メモリファイルオープン(LargeHeap用ハンドル)
+  note over pl : メモリファイルオープン
+  pl -->> -ssf_memutility : ファイルディスクリプタ"fd"
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・ファイルディスクリプタ"fd"<br>※[ハンドル]と[メモリ管理情報]を紐づけて管理する
+  ssf_memutility -->> lheap : 処理結果OK
+
+  loop メモリ操作
+    lheap ->> +ssf_memutility : EsfMemoryManagerFseek(メモリハンドル：LargeHeap用ハンドル,..),<br>EsfMemoryManagerFwrite(メモリハンドル：LargeHeap用ハンドル,..),<br>EsfMemoryManagerFread(メモリハンドル：LargeHeap用ハンドル,..)
+    note over ssf_memutility : メモリハンドルから<br>LargeHeap領域に対するメモリファイルクローズと認識<br>[LargeHeap用ハンドル]に紐づく[メモリ管理情報]から<br>・ファイルディスクリプタ"fd"を取得
+    ssf_memutility ->> +pl : PlLheapに対してseek(),write(),read()を行う
+    pl -->> -ssf_memutility : seek(),write(),read()の実行
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・ファイル現在位置
+    ssf_memutility -->> -lheap :  処理結果OK、ファイル位置、書き込みサイズ、読み出しサイズ
+  end
+    
+  lheap ->> +ssf_memutility : EsfMemoryManagerFclose(メモリハンドル：LargeHeap用ハンドル)
+    note over ssf_memutility : メモリハンドルから<br>LargeHeap領域に対するメモリファイルクローズと認識<br>[LargeHeap用ハンドル]に紐づく[メモリ管理情報]から<br>・ファイルディスクリプタ"fd"を取得
+  ssf_memutility ->> +pl : メモリファイルクローズ(ファイルディスクリプタ"fd")
+  note over pl : メモリファイルクローズ
+  pl -->> -ssf_memutility : ファイルクローズOK
+    note over ssf_memutility : [LargeHeap用ハンドル]更新<br>以下[メモリ管理情報]<br>・ファイルディスクリプタ"NULL"<br>・ファイル現在位置"0"
+  ssf_memutility -->> -lheap : 処理結果OK
+
+end
+
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+メモリ操作ハンドルはLargeHeap領域、DMA領域、WasmHeap領域に対するメモリ操作(確保/解放、マップ/アンマップ)を提供します。
+
+* LargeHeap領域、DMA領域、WasmHeap領域に対するメモリ確保(メモリ操作ハンドル取得数)についは全領域合わせて最大127個までとなります。
+
+=== 想定されるメモリ領域の組み合わせ
+メモリマネージャーを用いてメモリ操作を行う、LargeHeap領域、DMA領域、WasmHeap領域の組み合わせは以下の通り。 +
+
+.想定されるメモリ領域の組み合わせ
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|データ参照元 |データ更新先 |メモリ操作の推奨/非推奨
+|LargeHeap領域
+|LargeHeap領域
+|推奨：全てのAPIの使用問題なし
+
+|LargeHeap領域
+|DMA領域
+|推奨：全てのAPIの使用問題なし
+
+|LargeHeap領域
+|WasmHeap領域
+|推奨：全てのAPIの使用問題なし
+
+|DMA領域
+|LargeHeap領域
+|推奨：全てのAPIの使用問題なし
+
+|DMA領域
+|DMA領域
+|推奨：全てのAPIの使用問題なし
+
+|DMA領域
+|WasmHeap領域
+|推奨：全てのAPIの使用問題なし
+
+|WasmHeap領域
+|LargeHeap領域
+|推奨：全てのAPIの使用問題なし
+
+|WasmHeap領域
+|DMA領域
+|推奨：全てのAPIの使用問題なし
+
+|WasmHeap領域
+|WasmHeap領域
+|非推奨：全てのAPIの使用は可能であるが、マップ/アンマップ機能については環境によっては不要となる場合があり※1
+
+|===
+※1：不要なマップ/アンマップを行うことになるためシステム全体のパフォーマンス低下を招く可能性があります(WasmHeap領域のみを使用する場合はWAMRのメモリ操作APIを使用することを推奨します)
+
+
+<<<
+
+== 使用しているOSSの一覧
+
+特になし
+
+<<<
+
+== Addpendix
+[#_EsfMemoryManagerHandleについて]
+=== EsfMemoryManagerHandleについて
+EsfMemoryManagerHandleに紐づくメモリ管理情報はユーザーに対して詳細は非公開となります。ここではメモリマネージャー内で管理しているメモリ管理情報の概要を記載します。
+※あくまでもイメージです
+
+[underline]#EsfMemoryManagerHandleに紐づくメモリ管理情報#
+
+* 領域情報(LargeHeap領域,DMA領域、WasmHeap領域毎の情報) +
+  ※EsfMemoryManagerHandle内のID情報もここに含まれる +
+* 確保したメモリ情報(アドレス、サイズ、マップアドレス等々) +
+  ※複数マップ時の個別マップ情報もここで管理する +
+* ファイルアクセス情報(ファイルディスクリプタ、ファイル現在位置) +
+  ※FileIOアクセス可能時のファイルアクセス情報として管理する +
+
+[underline]#各メモリ操作に対するメモリ管理情報の参照/更新#
+[#_メモリ操作APIとメモリ管理情報の関係]
+.メモリ操作APIとメモリ管理情報の関係
+[width="100%", cols="20%,20%,20%,20%,20%,20%",options="header"]
+|===
+|EsfMemoryManagerHandle  |メモリ確保|メモリ解放|マップ|アンマップ|FileIOアクセス
+|領域情報
+|領域情報報の初期化
+|操作対象領域の取得
+|操作対象領域の取得
+|操作対象領域の取得
+|操作対象領域の取得
+|メモリ情報(アドレス、サイズ、マップアドレス等々)
+|確保したメモリアドレスを保持
+|解放するメモリアドレスを取得
+|マップを行うアドレスを取得 +
+ マップ後のアドレスを保持
+|アンマップを行うアドレスを取得
+|－
+|ファイルアクセス情報(ファイルディスクリプタ、ファイル現在位置)
+|ファイルアクセス情報の初期化
+|ファイルアクセス情報の取得
+|－
+|－
+|ファイルアクセス情報の更新
+|===
+
+<<<
+
+== 参考文献
+
+特になし
+
+<<<
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|初版リリース
+|v0.0.2
+|「3.2. コンポーネントの詳細説明」コンポーネント図修正 +
+「3.3. 状態遷移」deallocate状態を削除 +
+「3.5.1. メモリ確保機能」メモリ確保のシーケンス図修正 +
+「3.5.2. メモリ解放機能」メモリ解放のシーケンス図修正 +
+「3.5.3. メモリマップ機能」メモリマップのシーケンス図修正 +
+「3.5.4. メモリアンマップ機能」メモリアンマップのシーケンス図修正 +
+「5. API使用時の呼び出し例」を下記3ケースで追記 +
+　"5.1. LargeHeap領域間でのメモリ操作時の呼び出し例" +
+　"5.2. LargeHeap領域、WasmHeap領域間でのメモリ操作時の呼び出し例" +
+　"5.3. WasmHeap領域間でのメモリ操作時の呼び出し例(非推奨)" +
+「6.2. 想定されるメモリ領域の組み合わせ」追記 +
+|v0.0.3
+|SSF⇒ESF名称変更 +
+ メモリユーティリティ⇒メモリマネージャー名称変更
+|v0.0.4
+|Wasm用メモリ確保/解放APIの追加 +
+「3.1. コンポーネントの概要」機能追加 +
+「3.2. コンポーネントの詳細説明」コンポーネント図修正 +
+「3.2.1. 依存ブロック」機能追加 +
+「3.4. コンポーネントの機能一覧」Table 5. 機能一覧(Wasm専用)追加 +
+「3.5.5. Wasmメモリ確保機能」「3.5.6. Wasmメモリサイズ変更機能」
+「3.5.7. Wasmメモリ解放機能」追加
+「4.1.2. API一覧」Table 10. API一覧(Wasm専用)追加 +
+「4.2.2. EsfMemoryManagerWasmMemoryUsage」 データ型追加 +
+「4.3.5. EsfMemoryManagerWasmAllocate」「4.3.6. EsfMemoryManagerWasmReallocate」
+「4.3.7. EsfMemoryManagerWasmFree」追加
+|v0.0.5
+|「メモリ操作ハンドル再定義」"ハンドル==メモリ管理情報"を"ハンドル"+"メモリ管理情報"へ分離 +
+「領域追加」"DMA領域"に対するメモリ確保、解放、マップ、アンマップ機能追加 +
+「部分マップ(複数マップ)機能追加」"任意オフセット指定"による部分マップ(複数マップ)の機能の追加 +
+「任意WasmHeapメモリに対するマップ/アンマップ機能追加」メモリマネージャー以外で確保されたWasmHeapメモリに対するマップ/アンマップ機能の追加 
+|v0.0.6
+|OSALメモリからPortingLayerメモリへ変更
+|v0.0.7
+|FileIO関連機能の追加 +
+ハンドル情報取得機能の追加
+|v0.0.8
+|4.3.1. EsfMemoryManagerInitialize +
+ AppMemoryの分割数について下記を追記 +
+    T5向け：任意分割数の指定 +
+    T3P向け：分割数"1"を指定
+|v0.0.8.1
+|VsCodeプレビューにてmermaidにて記載された図の表示対応
+|v0.0.9
+|4.3.11. EsfMemoryManagerFread 誤記修正 +
+ 書式 const void *buf ⇒ void *buf +
+ 引数の説明 [IN] void *buf ⇒ [OUT] void *buf
+|v0.0.10
+|部分オープン(複数オープン)機能追加 +
+ "任意オフセット指定"による部分オープン(複数オープン)の機能の追加 +
+「3.5.7. メモリファイルオープン機能」 +
+「3.5.10. メモリファイルライト機能」 +
+「3.5.11. メモリファイルリード機能」 +
+「4.3.11. EsfMemoryManagerFpwrite」 +
+「4.3.13. EsfMemoryManagerFpread」
+|v0.0.11
+|4.3.9. EsfMemoryManagerFseek 機能説明の誤記を修正
+|===

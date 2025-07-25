@@ -1,0 +1,1050 @@
+= HAL Driver
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.2
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書では AITRIOS HAL の impl レイヤーの一つである、HAL Driver の仕様について記載します。 +
+HAL Driver の目的は、カメラ毎に処理が大きく異なる HAL コンフィグレーションだけでは吸収できない関数実装レベルの基板差分を吸収することです。 +
+例えば、FW の OTA 更新時の処理などはチップ依存処理が多く、専用のドライバ ファイルを作成して HAL Driver 経由で処理を実行することで他のモジュールへの影響を最小限にしつつ、拡張性も高くすることができます。
+
+TIP: 本モジュールは HAL 内部でのみ使用される想定です。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|HAL
+|Hardware Abstract Layer. カメラ差分を吸収する層
+
+|PL
+|Porting Layer. カメラ/ OS 差分を吸収する層
+
+|I/F
+|Interface. インターフェース
+
+|ドライバ ファイル、Driver impl
+|HAL Driver I/F に対する本体部分
+|===
+
+<<<
+
+== コンポーネントの説明
+
+HAL Driver の目的は、カメラ毎に処理が大きく異なる、HAL コンフィグレーションだけでは吸収できない関数実装レベルの基板差分を吸収することです。 +
+HAL Driver は、HAL Driver I/F、HAL Driver ファイルを用意して、ドライバを登録することで実装されます。
+
+=== コンポーネントの概要
+
+以下に本ブロックを中心としたソフトウェア構成図を示します。
+
+.概要図
+image::./images/driver_layer.png[scaledwidth="100%",align="center"]
+
+.詳細図
+image::./images/driver_layer_seq.png[scaledwidth="100%",align="center"] 
+
+<<<
+
+=== コンポーネントの詳細説明
+
+HAL Driver の使用シーケンス例を以下に示します。 +
+HalDriverInitialize を実行後、他の HAL モジュールは HAL Driver API を使用して各種 Driver 機能を使うことができます。
+
+[#_button_seq]
+.シーケンス概要
+image::./images/driver_seq.png[scaledwidth="100%",align="center"]
+
+==== 依存ブロック（HAL 内部向け）
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |リンク
+|HAL IOExp
+|HAL Driver に対する implement で、IOExpander を制御するために使用されます。
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/ioexp/hal_ioexp_ja.adoc
+|===
+
+=== 状態遷移
+HAL の取り得る状態を <<#_TableStates>> に示します。
+
+[#_TableStates]
+.状態一覧
+[width="100%", cols="20%,80%",options="header"]
+|===
+|状態 |説明 
+
+|HAL_DRIVER_READY
+|HAL Driver 未初期化
+
+|HAL_DRIVER_RUNNING
+|HAL Driver 初期化済み
+
+|DRIVER_CLOSE
+|Driver 未オープン。HAL_DRIVER_RUNNING のサブ状態です。
+
+|DRIVER_OPEN
+|Driver オープン済み。HAL_DRIVER_RUNNING のサブ状態です。
+|===
+
+HALでは <<#_FigureState>> に示す状態遷移を行います。 +
+また、各 API でエラーが発生した場合には状態遷移は起こりません。 +
+
+[#_FigureState]
+.状態遷移図
+image::./images/driver_state.png[scaledwidth="100%",align="center"]
+
+各状態での API 受け付け可否と状態遷移先を <<#_TableStateTransition>> に示します。表中の状態名は、API 実行完了後の遷移先状態を示し、すなわち API 呼び出し可能であることを示します。 +
+× は API 受け付け不可を示し、ここでの API 呼び出しはエラーを返し状態遷移は起きません。エラーの詳細は <<#_HalErrCode、HalErrCode 一覧>> を参照してください。 
+
+[#_TableStateTransition]
+.状態遷移表
+[width="100%", cols="10%,20%,20%,20%,20%"]
+|===
+2.3+| 3+|状態 
+.2+|HAL_DRIVER_READY
+2+|HAL_DRIVER_RUNNING
+|DRIVER_CLOSE
+|DRIVER_OPEN
+.20+|API 名
+
+|``**HalDriverInitialize**``
+|HAL_DRIVER_RUNNING
+|×
+|×
+
+|``**HalFinalize**``
+|×
+|HAL_DRIVER_READY
+|HAL_DRIVER_READY
+
+|``**HalDriverOpen**``
+|×
+|DRIVER_OPEN
+|×
+
+|``**HalDriverClose**``
+|×
+|×
+|DRIVER_CLOSE
+
+|``**HalDriverRead**``
+|×
+|×
+|DRIVER_OPEN
+|``**HalDriverWrite**``
+|×
+|×
+|DRIVER_OPEN
+|``**HalDriverIoctl**``
+|×
+|×
+|DRIVER_OPEN
+|``**HalDriverAddDriver**``
+|×
+|DRIVER_CLOSE
+|DRIVER_OPEN
+|===
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>> に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|ドライバの Open/Close
+|HAL Driver API を使用するためのハンドラを Open/Close します。
+|<<#_Function1>>
+
+|Read/Write 機能
+|ドライバの Read/Write 機能を使用できます。サポート有無、実際の動作はドライバ ファイルに依存します。
+|<<#_Function2>>
+
+|Ioctl 機能
+|Read/Write 以外の複雑なドライバ機能を使用できます。サポート有無、引数の仕様、実際の動作はドライバ ファイルに依存します。
+|<<#_Function3>>
+
+|新規ドライバの登録
+|他の HAL モジュールへの影響を最小限に HAL ドライバを追加することができます。
+|<<#_Function4>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_Function1]
+==== ドライバの Open/Close
+機能概要::
+HAL Driver API を使用するためのハンドラを Open/Close します。
+前提条件::
+HalDriverInitialize が実行済みであること。
+機能詳細::
+詳細は <<#_HalDriverOpen, HalDriverOpen>>、<<#_HalDriverClose, HalDriverClose>> を参照してください。
+詳細挙動::
+HAL Driver API を使用するためのハンドラを Open/Close します。
+エラー時の挙動、復帰方法::
+Open/Close ハンドラが登録されているかを確認してください。
+検討事項::
+なし
+
+[#_Function2]
+==== Read/Write 機能
+機能概要::
+ドライバの Read/Write 機能を使用できます。サポート有無、実際の動作はドライバ ファイルに依存します。
+前提条件::
+HalDriverOpen でハンドラを取得済みであること
+機能詳細::
+詳細は <<#_HalDriverRead, HalDriverRead>>、<<#_HalDriverWrite, HalDriverWrite>> を参照してください。
+詳細挙動::
+登録された Read/Write ハンドラを呼び出します。
+エラー時の挙動、復帰方法::
+Read/Write ハンドラが登録されているかを確認してください。
+検討事項::
+なし。
+
+[#_Function3]
+==== Ioctl 機能
+機能概要::
+Read/Write 以外の複雑なドライバ機能を使用できます。サポート有無、引数の仕様、実際の動作はドライバ ファイルに依存します。
+前提条件::
+HalDriverOpen でハンドラを取得済みであること
+機能詳細::
+詳細は <<#_HalDriverIoctl, HalDriverIoctl>> を参照してください。
+詳細挙動::
+登録された Ioctl ハンドラを呼び出します。
+エラー時の挙動、復帰方法::
+Ioctl ハンドラが登録されているかを確認してください。
+検討事項::
+なし。
+
+[#_Function4]
+==== 新規ドライバの登録
+機能概要::
+他の HAL モジュールへの影響を最小限に HAL ドライバを追加することができます。
+前提条件::
+なし
+機能詳細::
+
+新規のドライバを登録・利用したい時、大まかに以下 3 つの作業が必要になります。
+
+1. HAL Driver 本体ファイルを新規作成
+2. HAL Driver I/F のソースに、新規ドライバのヘッダ ファイルの include と ops に関する実装を 1 行追加
+3. ドライバを HAL Driver に登録
+
+以下に各番号の詳細作業を記します。
+
+詳細挙動::
+
+* 1. HAL Driver 本体ファイルを新規作成
+** 以下の通り、ヘッダ ファイルとソース ファイルを新規作成します。
+** Ioctl の引数 void *arg の仕様については、ドライバ側で決定されます。
+*** 同じ種類のデバイスであれば使いまわしができる、ある程度汎用的な構造体を準備することをお勧めします。
+**** 各デバイスの .c ソース ファイルごとに構造体を定義するのではなく、
+IOExpander 系の struct、long cmd を hal_driver_ioexp.h として定義し、それを各デバイスの .c ソースから include するなど
+
+[source, C]
+.pcal6416aev.h
+....
+HalErrCode Pcal6416AevOpen(uint32_t device_id);
+HalErrCode Pcal6416AevClose(uint32_t device_id);
+HalErrCode Pcal6416AevIoctl(void *arg_, uint32_t cmd);
+
+struct HalDriverOps pcal6416aev_ops = {
+  .open = Pcal6416AevOpen,
+  .close = Pcal6416AevClose,
+  .read = NULL,
+  .write = NULL,
+  .ioctl = Pcal6416AevIoctl,
+};
+....
+
+[source, C]
+.pcal6416aev.c
+....
+HalErrCode Pcal6416AevOpen(uint32_t device_id) {
+  return 0;  // 必要があればセットアップ処理などを行う
+}
+
+HalErrCode Pcal6416AevClose(uint32_t device_id) {
+  return 0;  // 必要があれば Close 処理を行う
+}
+
+HalErrCode Pcal6416AevIoctl(void *arg_, uint32_t cmd) {
+  struct ioexp_ioctl_arg *io_arg = (struct ioexp_ioctl_arg*)arg;
+  switch (cmd) {
+  case IOCTL_CMD_SETVAL:
+    int phy_port = io_arg.phy_port;
+    int val = io_arg.setval;
+    // HalI2cWriteRegister***
+    break;
+  }
+  return 0;
+}
+....
+
+* 2. HAL Driver I/F のソースに、新規ドライバのヘッダ ファイルの include と ops に関する実装を 1 行追加
+** 以下の通り、HAL Driver I/F のソースファイルを編集します。
+
+[source, C]
+.hal_driver.c
+....
+#include "pcal6416aev.h"
+#include "pcal6408ahkx.h"  // ★追加
+
+struct hal_driver_info {
+  uint32_t device_id;
+  char dev_name[32];
+  struct HalDriverOps* ops;
+};
+
+....
+
+* 3. ドライバを Hal Driver に登録
+** HalDriverAddDriver API を使用して、ドライバを登録します。
+** device_id は他のデバイスと被らないようにします。（通常、連番にしてください）
+** name の値が HAL Driver I/F から対応するドライバ ファイルを検索する際に使用されます。
+
+<<<
+
+エラー時の挙動、復帰方法::
+デバイス ID の重複など、登録内容を確認してください。
+検討事項::
+なし。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>> に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack 最大使用量
+|HAL Driver が使用する最大スタック サイズ
+|<<#__stack, 3.7.1.>>
+
+|通常ヒープ最大使用量
+|HAL Driver が使用する最大ヒープ サイズ
+|<<#_heap, 3.7.2>>
+
+|static データ最大使用量
+|HAL Driver が使用する最大 static データ サイズ
+|<<#_static, 3.7.3>>
+
+|パフォーマンス
+|HAL Driver が提供する機能のパフォーマンス
+|<<#_paformance, 3.7.4>>
+|===
+
+=== コンポーネントの非機能要件説明
+==== Stack 最大使用量
+[#_stack]
+1024 バイト
+
+==== ヒープ最大使用量
+[#_heap]
+オープンするドライバ ハンドラ 1 つにつき、128 バイト +
+使用するドライバ 1 つにつき、128 バイト
+
+* *例) T5 の場合* +
+** オープンするドライバ ハンドラ：最大 32 個 (ioexp_id の最大個数) +
+32 × 128 バイト =  4096 バイト+
+** 使用するドライバ：2 +
+2 × 128 バイト = 256 バイト
+
+[#_static]
+==== static データ最大使用量
+256 バイト
+
+[#_paformance]
+==== パフォーマンス
+1 ミリ秒未満
+
+<<<
+
+== API 仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>> にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|enum HalErrCode
+|API の実行結果を定義する列挙型です。
+|<<#_HalErrCode, 4.2.1.>>
+
+|HalDriverHandle
+|HAL Driver API を使用するためのハンドラです。
+|<<#_HalDriverHandle, 4.2.2.>>
+|===
+
+==== API 一覧
+<<#_TablePublicAPI>> に API の一覧を示します。
+
+[#_TablePublicAPI]
+.上位アプリから直接使用可能な API 一覧
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API 名 |概要 |節番号
+|HalDriverInitialize
+|本モジュールの初期化処理を行います。
+|<<#_HalDriverInitialize, 4.3.1.>>
+
+|HalDriverFinalize
+|本モジュールの終了処理を行います。
+|<<#_HalDriverFinalize, 4.3.2.>>
+
+|HalDriverOpen
+|HAL Driver API を使用するためのハンドラを Open します。
+|<<#_HalDriverOpen, 4.3.3.>>
+
+|HalDriverClose
+|HAL Driver API を使用するためのハンドラを Close します。
+|<<#_HalDriverClose, 4.3.4.>>
+
+|HalDriverRead
+|ドライバの Read 処理を実行します。サポート有無・処理の内容は各ドライバで異なります。
+|<<#_HalDriverRead, 4.3.5.>>
+
+|HalDriverWrite
+|ドライバの Write 処理を実行します。サポート有無・処理の内容は各ドライバで異なります。
+|<<#_HalDriverWrite, 4.3.6.>>
+
+|HalDriverIoctl
+|HalDriverRead/Write API では実行できない複雑な処理を実行します。サポート有無・処理の内容は各ドライバで異なります。
+|<<#_HalDriverIoctl, 4.3.7.>>
+
+|HalDriverAddDriver
+|ドライバを追加します。
+|<<#_HalDriverAddDriver, 4.3.8.>>
+|===
+
+<<<
+
+=== データ型定義
+[#_HalErrCode]
+==== HalErrCode
+API の実行結果を定義する列挙型です。
+(T.B.D.)
+
+
+[#_HalDriverHandle]
+==== HalDriverHandle
+HAL Driver API を使用するためのハンドラです。
+
+* *書式*
+[source, C]
+....
+typedef uint32_t HalDriverHandle;
+....
+
+=== 各APIの説明
+
+
+[#_HalDriverInitialize]
+==== HalDriverInitialize
+* *機能* +
+HAL Driver に関する初期化処理を行います。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverInitialize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL Driver に関する初期化処理を行います。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで HalDriverInitialize または HalDriverFinalize が動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrLock/kHalErrUnlock (仮)
+|排他処理に問題が発生した
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+
+[#_HalDriverFinalize]
+==== HalDriverFinalize
+* *機能* +
+HAL Driver に関する終了処理を行います。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverFinalize(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL Driver に関する終了処理を行います。
+
+[#_HalDriverFinalize_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+すでに他のコンテキストで HalDriverInitialize または HalDriverFinalize が動作中の場合、完了を待ってから実行されます。
+|===
+
+[#_HalDriverFinalize_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrLock/kHalErrUnlock (仮)
+|排他処理に問題が発生した
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+
+[#_HalDriverOpen]
+==== HalDriverOpen
+
+* *機能* +
+HAL Driver API を使用するためのハンドラを Open します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverOpen(uint32_t device_id, void *arg, HalDriverHandle *handle)
+....
+
+* *引数の説明* +
+**[IN] uint32_t device_id**:: 
+ドライバを使用したいデバイスの ID。
+
+**[IN/OUT] void *arg**:: 
+Open 時にドライバ本体へ渡したいデータ。ドライバ本体の仕様を参照してください。
+
+**[OUT] HalDriverHandle *handle**:: 
+ハンドラ。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL Driver API を使用するためのハンドラを Open します。
+** 本 API は HalDriverInitialize の実行後に使用可能です。
+** 本 API 中で対象のドライバの Open API が実行され、成功した場合ハンドラがセットされます。
+** Open 済みの device_id が指定された場合でも本 API は成功します。（マルチ オープン対応可）
+*** HAL ドライバ本体の実装者は open、close が複数回呼ばれてもデバイスが安全に動作するように実装してください。（最初の open だけ・最後の close だけデバイスに関する処理を実行など）
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。HAL 内部のリストへのアクセス部分は排他されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalDriverInitialize が実行されていない
+|-
+|影響なし
+|不要
+|kHalErrInvalidParam (仮)
+|パラメータ エラー
+|-
+|影響なし
+|不要
+|kHalErrNotFound (仮)
+|指定したデバイス ID が見つからない
+|-
+|影響なし
+|不要
+|kHalErrNoSupported (仮)
+|指定したデバイスはオープンできない
+|-
+|影響なし
+|不要
+|kHalErrLock/kHalErrUnlock (仮)
+|排他処理に問題が発生した
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalDriverClose]
+==== HalDriverClose
+* *機能* +
+HAL Driver API を使用するためのハンドラを Close します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverClose(HalDriverHandle handle)
+....
+
+* *引数の説明* +
+**[IN] HalDriverHandle handle**:: 
+ハンドラ。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HAL Driver API を使用するためのハンドラを Close します。
+** 本 API は HalDriverInitialize の実行後に使用可能です。
+** Open されていないハンドルが指定された場合、本 API は失敗します。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。HAL 内部のリストへのアクセス部分は排他されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalDriverInitialize が実行されていない
+|-
+|影響なし
+|不要
+|kHalErrInvalidParam (仮)
+|パラメータ エラー
+|-
+|影響なし
+|不要
+|kHalErrNoSupported (仮)
+|指定したデバイスはクローズできない
+|-
+|影響なし
+|不要
+|kHalErrLock/kHalErrUnlock (仮)
+|排他処理に問題が発生した
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalDriverRead]
+==== HalDriverRead
+* *機能* +
+ドライバの Read 処理を実行します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverRead(HalDriverHandle handle, void *buf, uint32_t size, uint32_t *read_size)
+....
+
+* *引数の説明* +
+**[IN] HalDriverHandle handle**:: 
+ハンドラ。
+
+**[OUT] void *buf**:: 
+Read 結果の宛先バッファ アドレス。
+
+**[IN] uint32_t size**:: 
+Read したいバイト数。
+
+**[OUT] uint32_t *read_size**:: 
+実際にReadしたバイト数。
+
+* *戻り値* +
+実行結果に応じて HalErrCode　のいずれかの値が返ります。
+
+* *説明* +
+** ドライバの Read 処理を実行します。
+** サポート有無・処理の内容は各ドライバで異なります。
+** 本 API は HalDriverInitialize の実行後に使用可能です。
+** handle には HalDriverOpen で取得したハンドラを指定してください。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。HAL 内部のリストへのアクセス部分は排他されます。 +
+同じハンドルが HalDriverRead または HalDriverWrite または HalDriverIoctl を実行中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalDriverInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータ エラー
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_HalDriverWrite]
+==== HalDriverWrite
+* *機能* +
+ドライバの Write 処理を実行します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverWrite(HalDriverHandle handle, const void *buf, uint32_t size, uint32_t *written_size)
+....
+
+* *引数の説明* +
+**[IN] HalDriverHandle handle**:: 
+ハンドラ。
+
+**[IN] const void *buf**:: 
+書き込み対象のバッファ アドレス。
+
+**[IN] const uint32_t size**:: 
+書き込みバイト数。
+
+**[IN] uint32_t *written_size**:: 
+実際に書き込んだバイト数。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** ドライバの Write 処理を実行します。
+** サポート有無・処理の内容は各ドライバで異なります。
+** 本 API は HalDriverInitialize の実行後に使用可能です。
+** handle には HalDriverOpen で取得したハンドラを指定してください。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。HAL 内部のリストへのアクセス部分は排他されます。 +
+同じハンドルが HalDriverRead、HalDriverWrite または HalDriverIoctl を実行中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalDriverInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータ エラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_HalDriverIoctl]
+==== HalDriverIoctl
+* *機能* +
+HalDriverRead/Write API では実行できない複雑な処理を実行します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverIoctl(HalDriverHandle handle, void *arg, uint32_t cmd)
+....
+
+* *引数の説明* +
+**[IN] HalDriverHandle handle**:: 
+ハンドラ。
+
+**[IN/OUT] void *arg**:: 
+処理用の引数。仕様は各ドライバで異なります。
+
+**[IN] uint32_t cmd**:: 
+処理用の引数。仕様は各ドライバで異なります。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** HalDriverRead/Write API では実行できない複雑な処理を実行します。
+** サポート有無・処理の内容は各ドライバで異なります。
+** 本 API は HalDriverInitialize の実行後に使用可能です。
+
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。HAL 内部のリストへのアクセス部分は排他されます。 +
+同じハンドルが HalDriverRead、HalDriverWrite または HalDriverIoctl を実行中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalDriverInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータ エラー
+|-
+|影響なし
+|不要
+
+|===
+
+<<<
+
+[#_HalDriverAddDriver]
+==== HalDriverAddDriver
+* *機能* +
+ドライバ を登録します。
+
+* *書式* +
+[source, C]
+....
+HalErrCode HalDriverAddDriver(uint32_t device_id, const char *name, const struct HalDriverOps *ops);
+....
+
+* *引数の説明* +
+**[IN] uint32_t device_id**:: 
+ドライバを使用したいデバイスの ID。
+
+**[IN] const char *name**:: 
+ドライバ名。
+
+**[IN] const struct HalDriverOps *ops:: 
+ドライバ操作テーブルのアドレス。 +
+<<#_Function4, 新規ドライバの登録>> で追加した HalDriverOps のアドレスを指定してください。
+
+* *戻り値* +
+実行結果に応じて HalErrCode のいずれかの値が返ります。
+
+* *説明* +
+** ドライバ を登録します。
+** 登録済みのデバイス ID が入力された場合は、エラーを返します。
+** 本 API は HalDriverInitialize の実行後に使用可能です。
+
+[#_HalDriverAddDriver_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API 内部でブロッキングするか
+|ブロッキングする。
+HAL 内部のリストへのアクセス部分は排他されます。
+|===
+
+[#_HalDriverAddDriver_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|kHalErrInvalidState (仮)
+|HalDriverInitialize が実行されていない
+|-
+|影響なし
+|不要
+
+|kHalErrInvalidParam (仮)
+|パラメータ エラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+
+
+== API 使用時の呼び出し例
+=== Ioctl までの一例
+.Ioctl(例)
+image::./images/driver_example.png[scaledwidth="100%",align="center"]
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+== 使用している OSS の一覧
+なし
+
+<<<
+
+== 参考文献
+なし
+
+<<<
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|初版
+
+|0.0.2
+|- HAL config を HAL コンフィグレーションと表現変更 +
+- 用語 : OSAL の記述を削除し、PL を追記 +
+- HalInitialize/HalFinalize を HalDriverInitialize/HalDriverFinalize に変更 +
+- Figure 2. 詳細図を全面変更 +
+- 依存ブロック : HAL Config を削除し、HAL IOExp を追加 +
+- HAL_READY/HAL_RUNNING を HAL_DRIVER_READY/HAL_DRIVER_RUNNING に変更 +
+- hal_overview.adoc の記述を HalErrCode 一覧 (T.B.D.) に変更 +
+- Osal_I2CWrite を HalI2cWriteRegister に変更 +
+- 4.3. 各 API の説明 : HalDriverInitialize/HalDriverFinalize を Public 関数に変更し、API 一覧の並びも変更 +
+- HalErrorCode を HalErrCode に変更 +
+- 排他処理のエラーコードを kHalErrInternal から kHalErrLock/kHalErrUnlock に変更 +
+- HalDriverClose API の AP バイナリ アップデートの記述を削除 +
+- 図 (*.png) を英語表記に変更
+
+|===

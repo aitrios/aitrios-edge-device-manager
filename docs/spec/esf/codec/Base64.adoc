@@ -1,0 +1,1284 @@
+= AITRIOS Base64 Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.4
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document defines the Base64 functionality of the Codec module, which is an internal module of ESF in AITRIOS.  
+It applies to version XX of T3S3.
+
+<<<
+
+== Terminology
+      [Pending] Module names such as ESF and internal modules of ESF (e.g., Codec), which appear in the functional specification description, will be replaced with standardized terms once they are finalized.
+
+=== ESF
+ESF (AITRIOS Edge Software Framework) +
+
+* A layer that provides AITRIOS-standard APIs executable from various applications.  
+* It is fundamentally unaffected by changes to OS, chip, etc.  
+* As it forms the core of application functionality, it is managed by SSS.  
+* By modularizing in blocks, the impact of changes such as sensor replacements is minimized.
+
+=== Codec
+An internal module of ESF. +  
+It provides the following functionalities using general-purpose external libraries:
+
+** JPEG  
+** QR code reading  
+** Base64
+
+=== Base64
+Base64 (Base64 Data Encoding) is an encoding method that converts data into a Base64 string. +  
+It primarily supports the following two functionalities:
+
+* Standard Base64 encoding. +  
+https://datatracker.ietf.org/doc/html/rfc4648#section-4[Reference: RFC4648 Section 4. Base 64 Encoding]
+
+* Base64 encoding adapted for strings usable in URLs or filenames (URL-safe or file-safe). +  
+https://datatracker.ietf.org/doc/html/rfc4648#section-5[Reference: RFC4648 Section 5. Base 64 Encoding with URL and Filename Safe Alphabet]
+
+<<<
+
+[#_ComponentExp]
+== Component Description
+=== Component Overview
+Base64 is one of the encoding methods used to convert various character encodings (multibyte strings) or binary data into text format. +  
+The text format used is ASCII. +  
+It is mainly used for transmitting data to applications or programs that can handle only text formats. +  
+Base64 replaces 64 types of 6-bit data (ranging from 0 to 63) with characters within the 7-bit range. +  
+The following diagram illustrates an example of Base64 encoding and decoding:
+
+* Encoding the UTF-8 string "test" into the Base64 string "dGVzdA==" using Base64 encoding  
+* Decoding the Base64 string "dGVzdA==" back into the UTF-8 string "test" using Base64 decoding
+
+.Overview Diagram  
+image::./images/Base64_1.png[scaledwidth="100%",align="center"]
+
+[#_Component0]
+==== Component Processing (Base64 Encoding Rules)
+The Base64 used in this document follows the standard Base64 character set. +  
+For Base64 characters and encoding rules, refer to:  
+https://datatracker.ietf.org/doc/html/rfc4648#section-4[RFC4648 Table 1: The Base 64 Alphabet] +
+
+In URL-safe or filename-safe Base64, characters suitable for use in URLs and filenames are used. +  
+Specifically, the characters `-` and `_` are used in place of `+` and `/` in standard Base64. +  
+For URL-safe or filename-safe Base64 characters and encoding rules, refer to: +  
+https://datatracker.ietf.org/doc/html/rfc4648#section-5[RFC4648 Table 2: The "URL and Filename safe" Base 64 Alphabet] +  
+Note: In version XXX, URL-safe or filename-safe Base64 is not supported.
+
+[#_Component1]
+==== Component Processing (Base64 Encoding)
+[#_Component1_1]
+===== Basic Base64 Encoding Process
+Base64 encoding handles data in 24-bit blocks. +  
+Each 24-bit block is divided into four 6-bit segments. +  
+These four 6-bit values are then converted into four ASCII characters based on <<#_Component0, RFC4648 Base64 Encoding Rules>>. +
+
+[#_Component1_2]
+===== About Padding Characters
+When encoding data that is not a multiple of 3 bytes, the resulting Base64 output may contain fewer than 4 characters. +  
+In such cases, padding characters (`=` symbols) are added so that the result is always 4 characters long.
+
+[#_Component1_3]
+===== When Splitting Data for Base64 Encoding
+When handling large data by splitting it into smaller chunks for Base64 encoding, each chunk should be a multiple of 3 bytes. +  
+If data is split at lengths not divisible by 3, padding may be added to the end of each chunk, which can result in incorrect decoding.
+
+<<<
+
+=== Detailed Component Description
+The following diagrams show example data flows for performing Base64 encoding and decoding in an application.
+
+* Base64 Encoding  
+  ** Retrieve the size of the Base64-encoded string  
+  ** Retrieve the Base64-encoded string
+
+.Data Flow Diagram (Base64 Encoding)  
+image::./images/Base64_2.png[scaledwidth="100%",align="center"]
+
+* Base64 Decoding  
+  ** Retrieve the size of the decoded data  
+  ** Retrieve the decoded data
+
+.Data Flow Diagram (Base64 Decoding)  
+image::./images/Base64_3.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== State Transitions
+There are no state transitions in Base64.
+
+<<<
+
+=== List of Component Functions
+A list of functions is provided in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|Function Name |Description |Section
+|Base64 Encoding Process  
+|Performs Base64 encoding.  
+|<<#_Function1, 3.5.1>>
+
+|Base64 Decoding Process  
+|Performs Base64 decoding.  
+|<<#_Function2, 3.5.2>>
+
+|Base64 Encoding Process +  
+(URL-safe or Filename-safe)  
+|Performs Base64 encoding adapted for use in URLs or filenames. +  
+(Not supported in version XX)  
+|<<#_Function3, 3.5.3>>
+
+|Base64 Decoding Process +  
+(URL-safe or Filename-safe)  
+|Performs Base64 decoding adapted for use in URLs or filenames. +  
+(Not supported in version XX)  
+|<<#_Function4, 3.5.4>>
+
+|Base64 Encoded String Size Calculation  
+|Calculates the size of the Base64-encoded string.  
+|<<#_Function5, 3.5.5>>
+
+|Base64 Decoded Data Size Calculation  
+|Calculates the size of the decoded data from a Base64 string.  
+|<<#_Function6, 3.5.6>>
+
+|Base64 Encoding Process +  
+(FileIO-supported)  
+|Performs Base64 encoding using MemoryManager FileIO handle, supporting input from and output to Lheap areas.  
+|<<#_Function7, 3.5.7>>
+
+|Base64 Encoding Process +  
+(Using LargeHeap Area)  
+|Performs Base64 encoding using the LargeHeap area of MemoryManager, supporting input from and output to Lheap areas.  
+|<<#_Function8, 3.5.8>>
+|===
+
+<<<
+
+=== Component Function Descriptions
+[#_Function1]
+==== Base64 Encoding Process
+* Function Overview +  
+  Performs Base64 encoding.  
+* Prerequisites +  
+  None.  
+* Function Details  
+    ** Detailed Behavior +  
+       Converts the input data to a Base64-encoded string.  
+    ** Behavior on Error and Recovery +  
+       Encoding is not performed in case of error. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function2]
+==== Base64 Decoding Process
+* Function Overview +  
+  Performs Base64 decoding.  
+* Prerequisites +  
+  None.  
+* Function Details  
+    ** Detailed Behavior +  
+       Converts a Base64 string back into the original data.  
+    ** Behavior on Error and Recovery +  
+       As partially decoded data may exist in case of error, do not reference the decoding result. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function3]
+==== Base64 Encoding Process (URL-safe or Filename-safe)
+* Function Overview +  
+  Performs Base64 encoding adapted for URL-safe or filename-safe characters. (Not supported in version XX)  
+* Prerequisites +  
+  None.  
+* Function Details  
+    ** Detailed Behavior +  
+       Performs Base64 encoding using characters allowed in URLs or filenames.  
+    ** Behavior on Error and Recovery +  
+       Encoding is not performed in case of error. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function4]
+==== Base64 Decoding Process (URL-safe or Filename-safe)
+* Function Overview +  
+  Performs Base64 decoding adapted for URL-safe or filename-safe characters. (Not supported in version XX)  
+* Prerequisites +  
+  None.  
+* Function Details  
+    ** Detailed Behavior +  
+       Performs Base64 decoding using characters allowed in URLs or filenames.  
+    ** Behavior on Error and Recovery +  
+       As partially decoded data may exist in case of error, do not reference the decoding result. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function5]
+==== Base64 Encoded String Size Calculation
+* Function Overview +  
+  Calculates the size of the Base64-encoded string.  
+* Prerequisites +  
+  None.  
+* Function Details  
+    ** Detailed Behavior +  
+       Calculates the size of the Base64-encoded string based on the size of the input data.  
+    ** Behavior on Error and Recovery +  
+       Calculation is not performed in case of error. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function6]
+==== Base64 Decoded Data Size Calculation
+* Function Overview +  
+  Calculates the size of the decoded data from a Base64 string.  
+* Prerequisites +  
+  None.  
+* Function Details  
+    ** Detailed Behavior +  
+       Calculates the size of the original data from the size of the Base64-encoded input.  
+    ** Behavior on Error and Recovery +  
+       Calculation is not performed in case of error. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function7]
+==== Base64 Encoding Process (FileIO-supported)
+* Function Overview +  
+  Performs Base64 encoding with support for input from Lheap and output to Lheap using a MemoryManager FileIO handle.  
+* Prerequisites +  
+  A device that supports FileIO and Lheap must be used.  
+* Function Details  
+    ** Detailed Behavior +  
+       Performs Base64 encoding with input from and output to Lheap areas using FileIO access. +  
+       MemoryManager features are used for FileIO access.  
+    ** Behavior on Error and Recovery +  
+       If an error occurs during split encoding, a partial encoded result may be written to the destination FileIO. +  
+       No recovery is needed as there is no impact on system state.
+
+[#_Function8]
+==== Base64 Encoding Process (Using LargeHeap Area)
+* Function Overview +  
+  Performs Base64 encoding using the LargeHeap area of MemoryManager.  
+* Prerequisites +  
+  A device that supports Lheap must be used.  
+* Function Details  
+    ** Detailed Behavior +  
+       The Base64 encoding process is performed using different procedures depending on whether Map support is available.  
+       *** With Map Support +  
+        Performs Base64 encoding using MemoryManager’s Map access, with input from and output to Lheap areas.  
+       *** Without Map Support +  
+        Performs Base64 encoding using MemoryManager’s FileIO access, with input from and output to Lheap areas.  
+    ** Behavior on Error and Recovery +  
+       In the case of no Map support, if an error occurs during split encoding, a partial encoded result may be written to the destination FileIO. +  
+       No recovery is needed as there is no impact on system state.
+
+<<<
+
+=== Non-Functional Requirements of the Component
+
+<<#_TableNonFunction>> shows a list of non-functional requirements.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Item Name |Description |Section
+|Maximum Stack Usage  
+|Indicates the maximum size of the stack area used.  
+|<<#_NonFunction1, 3.7.1>>
+
+|Maximum Heap Usage  
+|Indicates the maximum size of the heap area used.  
+|<<#_NonFunction2, 3.7.2>>
+
+|Maximum Static Memory Usage  
+|Indicates the maximum size of statically allocated memory.  
+|<<#_NonFunction3, 3.7.3>>
+
+|Number of Threads Used  
+|Indicates the number of threads used.  
+|<<#_NonFunction4, 3.7.4>>
+|===
+
+<<<
+
+=== Non-Functional Requirements Description
+
+[#_NonFunction1]
+==== Maximum Stack Usage
+Uses 512 bytes of stack.
+
+[#_NonFunction2]
+==== Maximum Heap Usage
+Uses up to 7 Kbytes of heap memory.
+
+[#_NonFunction3]
+==== Maximum Static Memory Usage
+Uses 65 bytes of static memory.
+
+[#_NonFunction4]
+==== Number of Threads Used
+No threads are used.
+
+<<<
+
+== API Specifications
+=== Definition List
+==== Data Type List
+A list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+|EsfCodecBase64ResultEnum  
+|Enumeration that defines the result of Base64 API operations.  
+|<<#_SampleEnum>>
+
+|ESF_BASE64_MAX_SIZE  
+|Definition of the maximum input size used in Base64.  
+|<<#_SampleDefineBase64MaxSize>>
+|===
+
+==== API List
+A list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|API Name |Description |Section
+
+|EsfCodecBase64Encode  
+|Performs Base64 encoding.  
+|<<#_SampleFunction1, 4.3.1>>
+
+|EsfCodecBase64Decode  
+|Performs Base64 decoding.  
+|<<#_SampleFunction2, 4.3.2>>
+
+|EsfCodecBase64UrlEncode  
+|Performs Base64 encoding adapted for URL-safe or filename-safe use. +  
+(Not supported in version XX)  
+|<<#_SampleFunction3, 4.3.3>>
+
+|EsfCodecBase64UrlDecode  
+|Performs Base64 decoding adapted for URL-safe or filename-safe use. +  
+(Not supported in version XX)  
+|<<#_SampleFunction4, 4.3.4>>
+
+|EsfCodecBase64GetEncodeSize  
+|Retrieves the size of the Base64-encoded string.  
+|<<#_SampleFunction5, 4.3.5>>
+
+|EsfCodecBase64GetDecodeSize  
+|Retrieves the size of the data decoded from a Base64 string.  
+|<<#_SampleFunction6, 4.3.6>>
+
+|EsfCodecBase64EncodeFileIO  
+|Performs Base64 encoding using FileIO access.  
+|<<#_SampleFunction7, 4.3.7>>
+
+|EsfCodecBase64EncodeHandle  
+|Performs Base64 encoding using the LargeHeap area of the MemoryManager.  
+|<<#_SampleFunction8, 4.3.8>>
+|===
+
+<<<
+
+=== Data Type Definitions
+[#_SampleEnum]
+==== EsfCodecBase64ResultEnum
+This is an enumeration that defines the result codes for Base64 API operations.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+    kEsfCodecBase64ResultSuccess = 0,
+    kEsfCodecBase64ResultNullParam,
+    kEsfCodecBase64ResultOutOfRange,
+    kEsfCodecBase64ResultExceedsOutBuffer,
+    kEsfCodecBase64ResultIllegalInSize,
+    kEsfCodecBase64ResultIllegalInData,
+    kEsfCodecBase64ResultInternalError,
+    kEsfCodecBase64ResultExternalError,
+    kEsfCodecBase64NotSupported
+} EsfCodecBase64ResultEnum;
+....
+
+* *Values*
+
+      [Pending] Mapping will be done after AITRIOS common error codes are finalized.
+
+[#_TableReturnValue]
+.Description of EsfCodecBase64ResultEnum Values
+[width="100%", cols="33%,50%,17%",options="header"]
+|===
+|Member Name |Description |AITRIOS Common Error Code
+|kEsfCodecBase64ResultSuccess  
+|Success.  
+|#xxx
+
+|kEsfCodecBase64ResultNullParam  
+|The parameter is a NULL pointer.  
+|#xxx
+
+|kEsfCodecBase64ResultOutOfRange  
+|The specified value is out of range.  
+|#xxx
+
+|kEsfCodecBase64ResultExceedsOutBuffer  
+|The output result exceeds the size of the specified output buffer.  
+|#xxx
+
+|kEsfCodecBase64ResultIllegalInSize  
+|The specified input size is invalid for processing.  
+|#xxx
+
+|kEsfCodecBase64ResultIllegalInData  
+|The specified input data is invalid for processing.  
+|#xxx
+
+|kEsfCodecBase64ResultInternalError  
+|An internal processing error has occurred.  
+|#xxx
+
+|kEsfCodecBase64ResultExternalError  
+|An external processing error has occurred.  
+|#xxx
+
+|kEsfCodecBase64NotSupported  
+|This API is not supported on this device.  
+|#xxx
+|===
+
+[#_SampleDefineBase64MaxSize]
+==== ESF_BASE64_MAX_SIZE
+Defines the maximum input size for Base64. +  
+If there is a mismatch between the maximum value of the `size_t` type used in Base64 and the maximum value of the `unsigned int` type used in the OSS, the maximum value of `unsigned int` is adopted. +  
+Additionally, since the OSS used here multiplies the input size by 3 internally, to prevent overflow, the adopted maximum value is divided by 3 to determine the maximum input size for Base64.
+
+* *Format*
+
+[source, C]
+....
+#if SIZE_MAX > UINT_MAX
+#define ESF_BASE64_MAX_SIZE (UINT_MAX / 3)
+#else
+#define ESF_BASE64_MAX_SIZE (SIZE_MAX / 3)
+#endif
+....
+
+<<<
+
+=== API Definitions
+
+[#_SampleFunction1]
+==== EsfCodecBase64Encode
+
+* *Function* +
++  
+Performs Base64 encoding.
+
+
+* *Format* +  
++
+``** EsfCodecBase64ResultEnum EsfCodecBase64Encode( const uint8_t* in, size_t in_size, char* out, size_t* out_size )**``
+
+* *Parameter Descriptions* +
++
+**``[IN] const uint8_t* in``**::  
+Buffer containing the input data to be Base64-encoded. Must not be NULL.
+
+**``[IN] size_t in_size``**::  
+Size (in bytes) of the input data to be Base64-encoded. +  
+** Must be an integer value between 1 and the maximum allowed value: +  
+“(((ESF_BASE64_MAX_SIZE - 1) / 4) * 4 + 1 - 1) * 3 / 4” +  
+See <<#_SampleFunction6_1, Maximum value for Base64 decoded data size>> for details.
+** The specified size must not cause the encoded result to exceed the output buffer size. + 
+Specify a value less than or equal to “([IN] ``**out_size**`` - 1 (null terminator)) * 3 / 4”.
+**``[OUT] char* out``**::  
+Buffer to store the Base64-encoded result. Must not be NULL. +  
+See the description for [IN] ``**out_size**`` for buffer size considerations.
+
+**``[IN, OUT] size_t* out_size``**::  
+** [IN] The size (in bytes) of the ``**out**`` buffer. Must not be NULL. +  
+        *** Must be an integer value between 1 and ESF_BASE64_MAX_SIZE.  
+        *** Must be large enough to store the encoded result. + 
+        Refer to <<#_SampleFunction5, EsfCodecBase64GetEncodeSize>>, or calculate it as “(``**in_size**`` * 4 / 3) + 1 (null terminator)”.  
+** [OUT] Will be set to the size (in bytes) of the resulting Base64-encoded string including the null terminator.
+
+* *Return Value* +
++  
+Returns one of the values defined in <<#_TableReturnValue, EsfCodecBase64ResultEnum>> based on execution result.
+
+* *Description* +  
+Reads up to ``**in_size**`` bytes of input data from ``**in**`` and encodes it into Base64 format. +  
+The result is stored in the output buffer ``**out**`` with a size of [IN] ``**out_size**``, and a null terminator ('\0') is added. +  
+[OUT] ``**out_size**`` will be set to the size of the resulting encoded string, including the terminator. +  
+If the function returns any value other than `kEsfCodecBase64ResultSuccess`, the contents of ``**out**`` and ``**out_size**`` are not modified.
+
+NOTE: For split encoding of data, refer to <<#_Component1_3, When Splitting Data for Base64 Encoding>>.
+
+** Operational Information  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Does not perform blocking internally.  
+*** Returns `kEsfCodecBase64ResultSuccess` upon success.
+
+** Common Error Behavior  
+*** Behavior on Error +  
+    Encoding is not performed.  
+*** State of OUT Parameters on Error +  
+    ``**out**`` and ``**out_size**`` are not modified since encoding is not performed.
+
+** Individual Error Conditions
+
+[#_ErrorTable1]
+.Error List
+[width="100%", cols="10%,61%,30%",options="header"]
+|===
+|Return Value on Error |Description |Error Condition (e.g., preconditions)
+|kEsfCodecBase64ResultNullParam  
+|Cannot execute Base64 encoding because input buffer was not set.  
+|``**in**`` is NULL.
+
+|kEsfCodecBase64ResultNullParam  
+|Cannot store Base64 result because output buffer was not set.  
+|``**out**`` is NULL.
+
+|kEsfCodecBase64ResultOutOfRange  
+|Input size is out of allowed range for Base64 encoding.  
+|``**in_size**`` is less than 1 or exceeds the maximum.
+
+|kEsfCodecBase64ResultOutOfRange  
+|Output buffer size is out of allowed range.  
+|[IN] ``**out_size**`` is less than or equal to 0.
+
+|kEsfCodecBase64ResultExceedsOutBuffer  
+|The specified input size would cause the encoded result to exceed the output buffer.  
+|``**in_size**`` exceeds “([IN] ``**out_size**`` - 1 (null terminator)) * 3 / 4”.
+|===
+
+
+[#_SampleFunction2]
+==== EsfCodecBase64Decode
+* *Function* +
++  
+Performs Base64 decoding.
+
+* *Format* +
++  
+``** EsfCodecBase64ResultEnum EsfCodecBase64Decode( const char* in, size_t in_size, uint8_t* out, size_t* out_size )**``
+
+* *Parameter Descriptions* +
++
+**``[IN] const char* in``**::  
+Buffer containing the Base64-encoded input data. Must not be NULL.
+
+**``[IN] size_t in_size``**::  
+Size (in bytes) of the Base64-encoded input data. The null terminator is not included in this size. +  
+** Must be an integer between 4 and the maximum value “(ESF_BASE64_MAX_SIZE / 4) * 4”. +  
+See <<#_SampleFunction5_1, Maximum value for Base64 encoded string size>> for reference.  
+** The specified size must not cause the decoded result to exceed the output buffer size. +  
+Must be less than or equal to “[IN] ``**out_size**`` * 4 / 3”.  
+** Must be a multiple of 4.
+
+**``[OUT] uint8_t* out``**::  
+Buffer to store the decoded output data. Must not be NULL. +  
+See the description for [IN] ``**out_size**`` for buffer size considerations.
+
+**``[IN, OUT] size_t* out_size``**::  
+** [IN] The size (in bytes) of the ``**out**`` buffer. Must not be NULL. +  
+        *** Must be an integer between 1 and ESF_BASE64_MAX_SIZE.  
+        *** Must be large enough to store the decoded result. +  
+        Refer to <<#_SampleFunction6, EsfCodecBase64GetDecodeSize>>,  
+        or calculate as “``**in_size**`` * 3 / 4”.  
+** [OUT] Will be set to the size (in bytes) of the decoded data.
+
+* *Return Value* + 
++ 
+Returns one of the values defined in <<#_TableReturnValue, EsfCodecBase64ResultEnum>> based on execution result.
+
+
+* *Description* +  
+Reads up to ``**in_size**`` bytes from the Base64-encoded input buffer ``**in```` and performs decoding. +  
+The decoded result is stored in the output buffer ``**out**``, which has a size of [IN] ``**out_size**`` bytes. +  
+[OUT] ``**out_size**`` will be set to the size (in bytes) of the decoded result. +
+
+** Operational Information  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Does not perform blocking internally.  
+*** Returns `kEsfCodecBase64ResultSuccess` upon success.
+
+** Common Error Behavior  
+*** Behavior on Error +  
+    The decoded result may be partially written. Do not reference the result on error.  
+*** State of OUT Parameters on Error +  
+    Partial results may be written to ``**out**`` and ``**out_size**``.
+
+** Individual Error Conditions
+
+[#_ErrorTable2]
+.Error List
+[width="100%", cols="10%,61%,30%",options="header"]
+|===
+|Return Value on Error |Description |Error Condition (e.g., preconditions)
+|kEsfCodecBase64ResultNullParam  
+|Cannot perform Base64 decoding because the input buffer was not specified.  
+|``**in**`` is NULL.
+
+|kEsfCodecBase64ResultNullParam  
+|Cannot store Base64-decoded data because the output buffer was not specified.  
+|``**out**`` is NULL.
+
+|kEsfCodecBase64ResultOutOfRange  
+|Input data size is out of the allowed range.  
+|``**in_size**`` is less than 4 or exceeds the maximum.
+
+|kEsfCodecBase64ResultOutOfRange  
+|Output buffer size is out of the allowed range.  
+|[IN] ``**out_size**`` is less than or equal to 0.
+
+|kEsfCodecBase64ResultExceedsOutBuffer  
+|The specified input size would result in decoded output that exceeds the output buffer.  
+|``**in_size**`` exceeds “[IN] ``**out_size**`` * 4 / 3”.
+
+|kEsfCodecBase64ResultIllegalInSize  
+|The input size is not a multiple of 4.  
+|``**in_size**`` is not divisible by 4.
+
+|kEsfCodecBase64ResultIllegalInData  
+|The N-th input character is not a valid Base64 character.  
+|``**in**``[N] contains an invalid character for Base64.
+|===
+
+
+[#_SampleFunction3]
+==== EsfCodecBase64UrlEncode
+* *Function* + 
++ 
+Performs Base64 encoding adapted for URL-safe or filename-safe usage.  (Not supported in version XX)
+
+
+
+
+* *Format* +
++  
+``** EsfCodecBase64ResultEnum EsfCodecBase64UrlEncode( const uint8_t* in, size_t in_size, char* out, size_t* out_size )**``
+
+* *Parameter Descriptions* +
++
+**``[IN] const uint8_t* in``**::  
+Buffer containing the input data to be Base64-encoded. Must not be NULL.
+
+**``[IN] size_t in_size``**::  
+Size (in bytes) of the input data. +  
+** Must be a value that does not cause the encoded result to exceed the output buffer.
+
+**``[OUT] char* out``**::  
+Buffer to store the Base64-encoded result. Must not be NULL. +  
+Refer to the [IN] ``**out_size**`` parameter for buffer sizing. +
+
+**``[IN, OUT] size_t* out_size``**::  
+** [IN] Size (in bytes) of the ``**out**`` buffer. +  
+        *** Must be an integer between 1 and ESF_BASE64_MAX_SIZE.  
+        *** Must be large enough to store the encoded result.  
+** [OUT] Will be set to the size (in bytes) of the resulting Base64-encoded string, including the null terminator.
+
+
+* *Return Value* +
++  
+Returns one of the values defined in <<#_TableReturnValue, EsfCodecBase64ResultEnum>> based on execution result.
+
+* *Description* +  
+Not supported in version XX.
+
+NOTE: For split encoding of data, refer to <<#_Component1_3, When Splitting Data for Base64 Encoding>>.
+
+[#_SampleFunction4]
+==== EsfCodecBase64UrlDecode
+
+* *Function* +
++  
+Performs Base64 decoding adapted for URL-safe or filename-safe usage. (Not supported in version XX)
+
+* *Format* +
++  
+``** EsfCodecBase64ResultEnum EsfCodecBase64UrlDecode( const char* in, size_t in_size, uint8_t* out, size_t* out_size )**``
+
+* *Parameter Descriptions* +
++
+**``[IN] const char* in``**::  
+Buffer containing the Base64-encoded input data. Must not be NULL.
+
+**``[IN] size_t in_size``**::  
+Size (in bytes) of the Base64 input data. The null terminator is not included in this size. +  
+** Must be a value that does not cause the decoded result to exceed the output buffer.
+
+**``[OUT] uint8_t* out``**::  
+Buffer to store the decoded result. Must not be NULL. +  
+Refer to the [IN] ``**out_size**`` parameter for buffer sizing.
+
+**``[IN, OUT] size_t* out_size``**::  
+** [IN] Size (in bytes) of the ``**out**`` buffer. +  
+        *** Must be an integer between 1 and ESF_BASE64_MAX_SIZE.  
+        *** Must be large enough to store the decoded result.  
+** [OUT] Will be set to the size (in bytes) of the decoded result.
+
+
+* *Return Value* +
++  
+Returns one of the values defined in <<#_TableReturnValue, EsfCodecBase64ResultEnum>> based on execution result.
+
+* *Description* +  
+Not supported in version XX.
+
+
+[#_SampleFunction5]
+==== EsfCodecBase64GetEncodeSize
+* *Function* +
++  
+Retrieves the size of the Base64-encoded string.
+
+* *Format* +
++  
+``** size_t EsfCodecBase64GetEncodeSize( size_t in_size )**``
+
+* *Parameter Description* +  
++
+**``[IN] size_t in_size``**::  
+The size (in bytes) of the input data to be Base64-encoded. +  
+** Must be an integer between 1 and the maximum value: + 
+“(((ESF_BASE64_MAX_SIZE - 1) / 4) * 4 + 1 - 1) * 3 / 4” + 
+See <<#_SampleFunction6_1, Maximum value for Base64 decoded data size>> for details.
+
+* *Return Value* +  
++
+Returns the size of the Base64-encoded string.  
+If the input size is out of range, returns 0.
+
+* *Description* +  
+Specifies the value of ``**in_size**`` (in bytes), and calculates the size of the resulting Base64-encoded string. +  
+The return value includes the null terminator. +
+
+[#_SampleFunction5_1]
+** About the Maximum Size of a Base64-Encoded String +  
+The maximum allowed value for a Base64-encoded string size is an integer from 1 to ESF_BASE64_MAX_SIZE that is a multiple of 4 plus a null terminator. +  
+The formula is as follows: +  
+
+  Maximum Base64 encoded string size = ((ESF_BASE64_MAX_SIZE - 1) / 4) * 4 + 1 (null terminator)
+
+** Operational Information  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Does not perform blocking internally.  
+*** Returns the Base64-encoded string size.
+
+** Common Error Behavior  
+*** On error +  
+    Does not perform the size calculation.
+
+[#_ErrorTable5]
+.Error List
+[width="100%", cols="10%,61%,30%",options="header"]
+|===
+|Return Value |Error Description |Condition (e.g., preconditions)
+|0  
+|Cannot calculate the encoded string size because the input size is out of range.  
+|``**in_size**`` is less than 1 or exceeds the maximum allowed size.  
+|===
+
+
+[#_SampleFunction6]
+==== EsfCodecBase64GetDecodeSize
+* *Function* +
++  
+Retrieves the size of the decoded data from a Base64 string.
+
+* *Format* +
++  
+``** size_t EsfCodecBase64GetDecodeSize( size_t in_size )**``
+
+* *Parameter Description* +  
++
+**``[IN] size_t in_size``**::  
+The size (in bytes) of the Base64-encoded input string. The null terminator is not included. +  
+** Must be an integer between 2 and ESF_BASE64_MAX_SIZE.
+
+* *Return Value* +
++  
+Returns the size (in bytes) of the decoded data.  
+If the input size is out of range, returns 0.
+
+* *Description* +  
+Specifies the value of ``**in_size**`` and calculates the corresponding decoded data size.  
+The result is returned as the return value. +
+[#_SampleFunction6_1]
+** This API cannot calculate the exact decoded data size +  
+In Base64 decoding, padding characters are excluded from the final decoded result. +  
+However, since this API cannot determine the number of padding characters, it does not exclude them in the calculation. +  
+Therefore, the actual decoded data size may be 1 or 2 bytes smaller than the value returned by this API. +  
+To get the exact size, use the [OUT] ``**out_size**`` value from <<#_SampleFunction2, Base64 decoding>>.
+
+** About the Maximum Size of Decoded Data +  
+The maximum decoded data size is calculated by subtracting the null terminator from the maximum Base64-encoded string size and converting it with a factor of 3/4. +  
+See <<#_SampleFunction5_1, Maximum value for Base64-encoded string size>> for details. +  
+The formula is as follows: +  
+
+  Maximum decoded data size = (Max encoded string size - 1) * 3 / 4  
+
+  Maximum decoded data size = (((ESF_BASE64_MAX_SIZE - 1) / 4) * 4 + 1 - 1) * 3 / 4
+
+** Operational Information  
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Does not perform blocking internally.  
+*** Returns the decoded data size.
+
+** Common Error Behavior  
+*** On error +  
+    Does not perform size calculation.
+
+** Individual Error Conditions
+
+[#_ErrorTable6]
+.Error List
+[width="100%", cols="10%,61%,30%",options="header"]
+|===
+|Return Value |Error Description |Condition (e.g., preconditions)
+|0  
+|Cannot calculate the decoded data size because the input size is out of range.  
+|``**in_size**`` is less than 2 or exceeds the maximum allowed size.  
+|===
+
+[#_SampleFunction7]
+==== EsfCodecBase64EncodeFileIO
+* *Function* +
++  
+Performs Base64 encoding using FileIO access.
+
+
+* *Format* +
++  
+``** EsfCodecBase64ResultEnum EsfCodecBase64EncodeFileIO(
+    EsfMemoryManagerHandle in_handle, size_t in_size,
+    EsfMemoryManagerHandle out_handle, size_t* out_size)**``
+
+* *Parameter Descriptions* +
++
+**``[IN] EsfMemoryManagerHandle in_handle``**::  
+FileIO handle of the MemoryManager where the input data for Base64 encoding is stored.
+
+**``[IN] size_t in_size``**::  
+Size (in bytes) of the input data to be Base64-encoded. +  
+** Must be an integer between 1 and the maximum value: + 
+“(((ESF_BASE64_MAX_SIZE - 1) / 4) * 4 + 1 - 1) * 3 / 4”. + 
+See <<#_SampleFunction6_1, Maximum value for Base64 decoded data size>> for reference. + 
+** Must be a size that does not cause the encoded result to exceed the output buffer: +  
+less than or equal to “([IN] ``**out_size**`` - 1 (null terminator)) * 3 / 4”.
+
+**``[OUT] EsfMemoryManagerHandle out_handle``**::  
+FileIO handle of the MemoryManager where the Base64-encoded result will be stored. +
+
+**``[IN, OUT] size_t* out_size``**::  
+** [IN] The size (in bytes) of the output buffer. Must not be NULL. +  
+        *** Must be an integer between 1 and ESF_BASE64_MAX_SIZE.  
+        *** Must be large enough to store the encoded result. + 
+        Refer to <<#_SampleFunction5, EsfCodecBase64GetEncodeSize>>,  
+        or calculate as “(``**in_size**`` * 4 / 3) + 1 (null terminator)”.
+
+  
+** [OUT] Will be set to the size (in bytes) of the resulting Base64-encoded string including the null terminator.
+
+NOTE: The `in_handle` and `out_handle` must be open and seeked beforehand.  
+Base64 accesses these handles exactly up to the specified size. + 
+The `in_handle` and `out_handle` must refer to different handles.
+
+* *Return Value* + 
++ 
+Returns one of the values defined in <<#_TableReturnValue, EsfCodecBase64ResultEnum>> based on execution result.
+
+* *Description* +  
+Reads up to ``**in_size**`` bytes from the input FileIO handle ``**in_handle```` and performs Base64 encoding. + 
+The result is written to the output FileIO handle ``**out_handle```` and terminated with a null character ('\0').  
+[OUT] ``**out_size**`` will be set to the size of the encoded string including the terminator.
+
+** Operational Information  
+*** Not thread-safe: this API cannot be executed concurrently.  
+*** Returns `kEsfCodecBase64ResultSuccess` on success.  
+*** FileIO handle seek position after encoding +  
+The seek positions of both handles may be changed as a result of read/write operations.
+
+** Common Error Behavior  
+*** Behavior on error +  
+    Encoding is not performed.  
+*** State of OUT Parameters on error +  
+    If an error occurs during split encoding, a partial result may be written to ``**out_handle**``.  
+    ``**out_size**`` is not updated.  
+*** FileIO handle seek position on error +  
+    The seek positions of ``**in_handle**`` and ``**out_handle**`` are undefined after an error.
+
+
+
+** Individual Error Conditions
+
+[#_ErrorTable7]
+.Error List
+[width="100%", cols="10%,61%,30%",options="header"]
+|===
+|Return Value |Error Description |Error Condition (e.g., preconditions)
+|kEsfCodecBase64ResultNullParam  
+|Cannot perform encoding because the pointer to store the encoded string size was not specified.  
+|``**out_size**`` is NULL.
+
+|kEsfCodecBase64ResultOutOfRange  
+|Input size is out of the allowed range for Base64 encoding.  
+|``**in_size**`` is less than 1 or exceeds the maximum.
+
+|kEsfCodecBase64ResultOutOfRange  
+|Output buffer size is out of the allowed range.  
+|[IN] ``**out_size**`` is less than or equal to 0.
+
+|kEsfCodecBase64ResultExceedsOutBuffer  
+|The input size would cause the encoded result to exceed the output buffer size.  
+|``**in_size**`` exceeds “([IN] ``**out_size**`` - 1) * 3 / 4”.
+
+|kEsfCodecBase64ResultExternalError  
+|Encoding failed due to an external error.  
+|MemoryManager failure, system call failure, standard library failure, or mutual exclusion error occurred.
+
+|kEsfCodecBase64NotSupported  
+|This API is not supported on the current device.  
+|The device does not support FileIO.
+|===
+
+[#_SampleFunction8]
+==== EsfCodecBase64EncodeHandle
+
+* *Function* +
++  
+Performs Base64 encoding using the LargeHeap area of the MemoryManager.
+
+* *Format* + 
++ 
+``** EsfCodecBase64ResultEnum EsfCodecBase64EncodeHandle(
+    EsfMemoryManagerHandle in_handle, size_t in_size,
+    EsfMemoryManagerHandle out_handle, size_t* out_size)**``
+
+* *Parameter Descriptions* +
++
+**``[IN] EsfMemoryManagerHandle in_handle``**::  
+MemoryManager handle storing the input data for Base64 encoding. +  
+Specify a handle associated with the LargeHeap area.
+
+**``[IN] size_t in_size``**::  
+Size (in bytes) of the data to be Base64-encoded. +  
+** Must be an integer between 1 and the maximum value: +
+“(((ESF_BASE64_MAX_SIZE - 1) / 4) * 4 + 1 - 1) * 3 / 4”. + 
+See <<#_SampleFunction6_1, Maximum value for Base64 decoded data size>> for reference. + 
+** Must not exceed the maximum allowed for the output buffer: “([IN] ``**out_size**`` - 1 (null terminator)) * 3 / 4”.
+
+**``[OUT] EsfMemoryManagerHandle out_handle``**::  
+MemoryManager handle where the Base64-encoded result will be stored. +
+
+**``[IN, OUT] size_t* out_size``**::  
+** [IN] Size (in bytes) of the ``**out**`` buffer. Must not be NULL. +  
+        *** Must be an integer between 1 and ESF_BASE64_MAX_SIZE.  
+        *** Must be large enough to store the encoded result. +  
+        Refer to <<#_SampleFunction5, EsfCodecBase64GetEncodeSize>> or calculate as “(``**in_size**`` * 4 / 3) + 1 (null terminator)”. 
+
+ 
+** [OUT] Will be set to the size (in bytes) of the resulting Base64-encoded string, including the null terminator.
+
+NOTE: `in_handle` and `out_handle` must be different handles. +  
+Base64 will access each handle up to the specified size as-is.
+
+* *Return Value* +
++  
+Returns one of the values defined in <<#_TableReturnValue, EsfCodecBase64ResultEnum>> based on execution result.
+
+* *Description* +  
+Reads up to ``**in_size**`` bytes from the input MemoryManager handle ``**in_handle```, performs Base64 encoding, and writes the result to the output MemoryManager handle ``**out_handle```, appending a null terminator ('\0').   
+[OUT] ``**out_size**`` will be set to the size of the resulting encoded string including the terminator.
+
+** Operational Information  
+*** Returns `kEsfCodecBase64ResultSuccess` on success.  
+*** If Map access is not supported, handles will be returned in the closed state after processing.
+
+** Common Error Behavior  
+*** On error +  
+    Encoding is not performed.  
+*** State of OUT Parameters on error +  
+    If an error occurs during split encoding (when Map access is not supported), partial data may be written to ``**out_handle```.  
+    ``**out_size**`` is not modified.
+
+** Individual Error Conditions
+
+[#_ErrorTable8]
+.Error List
+[width="100%", cols="10%,61%,30%",options="header"]
+|===
+|Return Value |Error Description |Condition (e.g., preconditions)
+|kEsfCodecBase64ResultNullParam  
+|The pointer to store the result string size was not specified.  
+|``**out_size**`` is NULL.
+
+|kEsfCodecBase64ResultOutOfRange  
+|The input size is out of the allowable range for Base64 encoding.  
+|``**in_size**`` is less than 1 or exceeds the maximum.
+
+|kEsfCodecBase64ResultOutOfRange  
+|The output buffer size is out of range.  
+|[IN] ``**out_size**`` is less than or equal to 0.
+
+|kEsfCodecBase64ResultExceedsOutBuffer  
+|The specified input size would cause the output to exceed the output buffer size.  
+|``**in_size**`` exceeds “([IN] ``**out_size**`` - 1) * 3 / 4”.
+
+|kEsfCodecBase64ResultExternalError  
+|Encoding failed due to an external error.  
+|A failure occurred in the MemoryManager, system call, standard library, or mutual exclusion logic.
+
+|kEsfCodecBase64NotSupported  
+|This API is not supported on this device.  
+|Either ``**in_handle**`` or ``**out_handle**`` refers to a DMA or WasmHeap memory area.
+|===
+
+
+<<<
+
+== Example API Usage
+
+The following are usage examples for each API.
+
+.Base64 Encoding
+====
+
+[source, C]
+----
+// Parameters for Base64 encoding
+uint8_t in[3] = {0x61, 0x62, 0x63}; // Data to be Base64-encoded. In this example, a 3-byte input is provided.
+size_t in_size = sizeof(in); // Size (in bytes) of the input data. This example sets the value to 3.
+char* out = NULL; // Pointer to the buffer for the Base64-encoded result
+size_t out_size = 0; // Size of the Base64-encoded result. Initially set to 0.
+EsfCodecBase64ResultEnum base64_result = kEsfCodecBase64ResultOutOfRange; // Result of the Base64 API execution. Any initial value may be used.
+
+// Get the size of the Base64-encoded string
+out_size = EsfCodecBase64GetEncodeSize(in_size, &out_size);
+if (out_size > 0) {
+    // Process for successful result
+    // Expected result: out_size = 5 (4 bytes of encoded string + 1 byte for null terminator)
+} else {
+    // Process for error
+    // Since no value is set for out_size in case of error, it remains 0
+}
+
+// Allocate buffer for Base64-encoded result
+out = malloc(out_size); // Allocate memory for the output buffer based on out_size
+if (out != NULL) {
+    // Process for successful allocation
+} else {
+    // Handle allocation failure
+}
+
+base64_result = EsfCodecBase64Encode(in, in_size, out, &out_size);
+if (base64_result == kEsfCodecBase64ResultSuccess) {
+    // Process for successful encoding
+    // Expected result: out[out_size] = {Y, W, J, j, \0}
+    // out_size = 5 (4 bytes encoded string + 1 byte null terminator)
+} else {
+    // Handle error
+    // The buffer `out` will remain unchanged from its post-malloc state
+    // out_size will remain as the result of EsfCodecBase64GetEncodeSize (5 in this example)
+}
+----
+====
+
+.Base64 Decoding
+====
+
+[source, C]
+----
+// Parameters for Base64 decoding
+char in[] = "YWJj"; // Data to be Base64-decoded. In this example, 4 characters are specified.
+size_t in_size = strlen(in); // Length (in bytes) of the Base64 string. This example sets the value to 4.
+int8_t* out = NULL; // Pointer to the buffer for the Base64-decoded result
+size_t out_size = 0; // Size of the Base64-decoded result. Initially set to 0.
+EsfCodecBase64ResultEnum base64_result = kEsfCodecBase64ResultOutOfRange; // Result of the Base64 API execution. Any initial value may be used.
+
+// Get the size of the decoded data
+out_size = EsfCodecBase64GetEncodeSize(in_size, &out_size);
+if (out_size > 0) {
+    // Process for successful result
+    // Expected result: out_size = 3 (3 bytes decoded result)
+} else {
+    // Process for error
+    // Since no value is set for out_size in case of error, it remains 0
+}
+
+// Allocate buffer for Base64-decoded result
+out = malloc(out_size); // Allocate memory for the output buffer based on out_size
+if (out != NULL) {
+    // Process for successful allocation
+} else {
+    // Handle allocation failure
+}
+
+base64_result = EsfCodecBase64Decode(in, in_size, out, &out_size);
+if (base64_result == kEsfCodecBase64ResultSuccess) {
+    // Process for successful decoding
+    // Expected result: out[out_size] = {0x61, 0x62, 0x63}
+    // out_size = 3 (decoded result size)
+} else {
+    // Handle error
+    // Partial decode results may be present in `out` and `out_size`
+}
+----
+====
+
+<<<
+
+== Special Notes and Component-Specific Descriptions
+
+=== Output Pointer Specification
+For each API, specify memory accessible from the Native API for output pointers. +  
+When used from a WASM application, specify mapped Lheap, mapped AoT memory, or the stack.
+
+=== Non-Standard Extensions
+This module uses the following non-standard extensions: +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|Extension |Description |Purpose
+|**``##\\__VA_ARGS__``**  
+|A GCC-specific non-standard extension of **``\\__VA_ARGS__``**. +  
+This extension allows handling of macros with no arguments in variable-length argument lists.  
+|Used in macros for switching log output targets.
+
+|===
+
+<<<
+
+== List of OSS Used
+
+====
+* OSS
+** https://github.com/joedf/base64.c
+====
+
+<<<
+
+== References
+This section lists the documents and sites referenced in this document.
+
+====
+* RFC4648 (RFC related to Base64)
+** https://datatracker.ietf.org/doc/html/rfc4648
+====
+
+<<<
+
+== Revision History
+
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes
+
+|0.1.0  
+|Initial release
+
+|0.1.1  
+|Feedback from detailed design
+
+* General  
+    ** Typo corrections
+
+* API Specification  
+    ** Added **``SSF_BASE64_MAX_SIZE``** definition for maximum input size
+
+* Data Type Definition  
+    ** Removed **``kSsfCodecBase64ResultNotSupport``** from **``SsfCodecBase64ResultEnum``** following decision not to implement unsupported APIs
+
+* API Definition  
+    ** Added notes for non-nullable parameters  
+    ** Replaced `SIZE_MAX` with `SSF_BASE64_MAX_SIZE` in maximum size descriptions  
+    ** Removed statements indicating return of `kSsfCodecBase64ResultNotSupport` for: + 
+        - **``SsfCodecBase64UrlEncode``** + 
+        - **``SsfCodecBase64UrlDecode``**  
+    ** Changed APIs to return size values directly: + 
+        - **``SsfCodecBase64GetEncodeSize``** + 
+        - **``SsfCodecBase64GetDecodeSize``**
+
+* API Usage Examples  
+    ** Updated examples to reflect API changes: + 
+        - **``SsfCodecBase64GetEncodeSize``** + 
+        - **``SsfCodecBase64GetDecodeSize``**
+
+* Special Notes  
+    ** Added section on output pointer specification  
+    ** Added section on non-standard extensions
+
+|0.1.2  
+|Naming updates
+
+* General  
+  ** Renamed SSF to ESF
+
+|0.1.3  
+|Added FileIO-compatible encoding API
+
+* Function List and Descriptions  
+  ** Added "Base64 Encoding (FileIO-supported)"
+
+* Maximum Heap Usage  
+  ** Added 7KB for "Base64 Encoding (FileIO-supported)"
+
+* Data Type Definition  
+  ** Added the following to **``EsfCodecBase64ResultEnum``**: + 
+    - `kEsfCodecBase64ResultInternalError` + 
+    - `kEsfCodecBase64ResultExternalError` + 
+    - `kEsfCodecBase64NotSupported`
+
+* API List and Definitions  
+  ** Added **``EsfCodecBase64EncodeFileIO``**
+
+|0.1.4  
+|Added unified API for EsfCodecBase64Encode and EsfCodecBase64EncodeFileIO
+
+* Function List and Descriptions  
+  ** Added API to eliminate need to distinguish FileIO usage
+
+* API List and Definitions  
+  ** Added **``EsfCodecBase64EncodeHandle``**
+
+* Minor Fixes  
+  ** Corrected the link to `EsfCodecBase64EncodeFileIO` in the API list
+
+|===

@@ -1,0 +1,4506 @@
+= AITRIOS JSON Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.6
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This specification describes the Parser JSON module, which provides functionality for creating and parsing JSON. +
+As a prerequisite, this module is assumed to be called only from native code and not from WASM.
+
+<<<
+
+== Terminology
+Will be replaced once common terminology is finalized. +
+
+=== ESF
+ESF (AITRIOS Edge Software Framework) +
+
+* A layer that provides APIs conforming to AITRIOS standards, which can be called from various applications.
+* Fundamentally unaffected by changes to the OS, chip, etc.
+* Managed by SSS as it forms the core functionality of applications.
+* Structured in separate blocks to minimize impact when replacing components such as sensors.
+
+=== JSON
+JSON (JavaScript Object Notation) +
+
+* A lightweight, text-based format for data exchange. +
+* By using JSON as an intermediary, data exchange between different programming languages is made possible.
+* Supported by a variety of languages such as JavaScript, C++, Python, and PHP.
+
+=== parse
+* Refers to the process of analyzing data described in a certain format or grammar and converting it into a set of data structures that can be handled by a program.
+* In this document, the parse process refers to deserialization, which converts a string into a JSON Value.
+
+<<<
+
+== Component Description
+=== Component Overview
+
+As shown in <<#_Software>>, this module provides JSON creation and parsing functions for applications, and serves as a wrapper that calls open-source JSON libraries. +
+
+[#_Software]
+.Component Diagram
+[{mermaid_block}]
+----
+graph TB;
+
+system[App]
+
+subgraph ESF
+  subgraph parser
+    subgraph json[JSON]
+      oss[JSON OSS]
+    end
+  end
+  hal[[HAL]]
+end
+
+system --> |serialize/deserialize| json
+json  --> |malloc/free| hal
+----
+
+<<<
+
+=== Detailed Component Description
+
+Each function is managed by the handle module, and the respective functions can be executed by calling the appropriate API as needed.
+
+[#_SoftwareDetail]
+.Detailed Diagram
+[{mermaid_block}]
+----
+graph TB;
+
+app[App]
+
+subgraph JSON
+direction TB
+    func[Function Modules]
+    handle[(Handle)]
+    OSS[OSS]
+end
+
+app --> |Function Call|func --> |malloc/free Memory Access|handle
+func --> |Calls|OSS
+----
+
+<<<
+
+=== State Transitions
+
+There are no state transitions.
+
+<<<
+
+=== List of Component Functions
+
+<<#_TableFunction>> shows the list of available functions.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section Number
+|Handle Function
+|Provides functions to acquire and release handles for this software block.
+|<<#_Function1>>
+
+|Structuring Function
+|Provides JSON serialization and deserialization functions.
+|<<#_Function2>>
+
+|Object Function
+|Provides functions for JSON object-type structures.
+|<<#_Function3>>
+
+|Array Function
+|Provides functions for JSON array-type structures.
+|<<#_Function4>>
+
+|String Function
+|Provides functions for JSON string types.
+|<<#_Function5>>
+
+|Number Function
+|Provides functions for JSON numeric types (integers and reals).
+|<<#_Function6>>
+
+|Boolean Function
+|Provides functions for JSON boolean types.
+|<<#_Function7>>
+
+|Null Function
+|Provides functions for JSON null types.
+|<<#_Function8>>
+
+|JSON Value Function
+|Provides functions related to JSON values.
+|<<#_Function9>>
+|===
+
+<<<
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== Handle Function
+* Function Overview +
+Provides functions to acquire and release handles. +
+
+* Prerequisites +
+There are no prerequisites.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs: +
+    **** Memory allocation +
+    **** Memory release +
+
+    *** By performing memory allocation and release in the handle module, other modules do not need to manage memory themselves. +
+
+    ** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#hundleapi>>
+
+[#_Function2]
+==== Structuring Function
+* Function Overview +
+Provides JSON serialization and deserialization functions.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior +
+    *** This module includes the following APIs: +
+    **** Serialization function that converts JSON Value to string +
+    **** Deserialization function that converts string to JSON Value +
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#structuringapi>>
+
+[#_Function3]
+==== Object Function
+* Function Overview +
+Provides functions for JSON object-type structures.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs: +
+    **** Create an empty Object Value +
+    **** Retrieve JSON Value from Object Value by key +
+    **** Set JSON Value in Object Value by key +
+    **** Delete JSON Value from Object Value by key +
+    **** Initialize a JSON Value as an empty Object Value +
+    **** Get the number of elements in an Object Value +
+    **** Get key and value from Object Value by index +
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#objectapi>>
+
+[#_Function4]
+==== Array Function
+* Function Overview +
+Provides functions for JSON array-type structures.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs: +
+    **** Create an empty Array Value +
+    **** Retrieve JSON Value from Array Value by index +
+    **** Append a JSON Value to the end of an Array Value +
+    **** Replace JSON Value in Array Value by index +
+    **** Delete JSON Value from Array Value by index +
+    **** Initialize a JSON Value as an empty Array Value +
+    **** Get the number of elements in an Array Value +
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#arrayapi>>
+
+[#_Function5]
+==== String Function
+* Function Overview +
+Provides functions for JSON string types.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs: +
+    **** Create a String Value +
+    **** Retrieve string (without escape processing) from String Value +
+    **** Set string (without escape processing) in JSON Value +
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#stringapi>>
+
+[#_Function6]
+==== Number Function
+* Function Overview +
+Provides functions for JSON numeric types (integers and reals).
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs: +
+    **** Create a Number Value using an integer or real number +
+    **** Retrieve integer or real number from Number Value +
+    **** Set integer or real number in JSON Value +
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#numberapi>>
+
+[#_Function7]
+==== Boolean Function
+* Function Overview +
+Provides functions for JSON boolean types.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs:
+    **** Create a Boolean Value
+    **** Retrieve boolean value from Boolean Value
+    **** Set boolean value in JSON Value
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#booleanapi>>
+
+[#_Function8]
+==== Null Function
+* Function Overview +
+Provides functions for JSON null types.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs:
+    **** Create a Null Value
+    **** Set Null in JSON Value
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#nullapi>>
+
+[#_Function9]
+==== JSON Value Function
+* Function Overview +
+Provides functions related to JSON Values.
+
+* Prerequisites +
+A handle must be acquired beforehand.
+
+* Function Details
+    ** Detailed Behavior
+    *** This module includes the following APIs:
+    **** Copy a JSON Value
+    **** Get the type of a JSON Value
+
+** For behavior in case of errors and recovery methods, refer to the detailed API descriptions: <<#jsonvalueapi>>
+
+<<<
+
+=== List of Non-Functional Requirements
+
+<<#_TableNonFunction>> shows the list of non-functional requirements.
+
+Target performance and memory usage are described as reference values.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="20%,10%,50%,10%",options="header"]
+|===
+|Item |Value |Description |Section Number
+|Continuous Execution Time
+|1 ms or less
+|Maximum processing time required.
+|<<#_NonFunction1>>
+
+|Stack Memory Usage
+|2 KB
+|Maximum stack memory size used.
+|<<#_NonFunction2>>
+
+|Heap Memory Usage
+|16 KB
+|Maximum heap memory size used.
+|<<#_NonFunction3>>
+
+|Number of Threads Used
+|Not used
+|Number of threads used.
+|<<#_NonFunction4>>
+
+|Static Memory Usage
+|128 bytes
+|Maximum static memory size used.
+|<<#_NonFunction5>>
+|===
+
+<<<
+
+=== Description of Non-Functional Requirements
+
+[#_NonFunction1]
+==== Continuous Execution Time
+Although it depends on the data size, the processing time is generally expected to be 1 ms or less.
+
+[#_NonFunction2]
+==== Stack Memory Usage
+Up to 2 KB of stack memory is used.
+
+[#_NonFunction3]
+==== Heap Memory Usage
+Up to 16 KB of heap memory is used.
+
+[#_NonFunction4]
+==== Number of Threads Used
+No threads are used.
+
+[#_NonFunction5]
+==== Static Memory Usage
+Up to 128 bytes of static memory is used.
+
+<<<
+
+== API Specification
+=== Definition List
+==== Kconfig
+
+[#_TableKconfig]
+.Kconfig List
+[width="100%", cols="30%,25%,45%a",options="header"]
+|===
+|Config Name |Default Value |Description
+
+|EXTERNAL_CODEC_JSON_BUFFER_SIZE
+|4096
+|Specifies the buffer size of the normal heap memory allocated when using a handle from the Memory Manager.
+
+|EXTERNAL_CODEC_JSON_MEM_HANDLE_MAX
+|3
+|Specifies the maximum number of Memory Manager handles that can be held per handle in the JSON module. +
+
+|EXTERNAL_JSON_UTILITY_LOG_ENABLE
+|y
+|Enables the Utility Log.
+
+|===
+
+<<<
+
+==== Data Type List
+
+<<#_TableDataType>> shows the list of data types.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,60%,10%",options="header"]
+|===
+|Data Type Name |Description |Section Number
+|EsfJsonValueType
+|Enumeration representing JSON data types.
+|<<#_EsfJsonValueType>>
+
+|EsfJsonErrorCode
+|Enumeration representing error codes for this module.
+|<<#_EsfJsonErrorCode>>
+
+|EsfJsonHandle
+|Operation handle for the JSON module. +
+As the internal type of the handle may change, users should treat it transparently.
+|<<#_EsfJsonHandle>>
+
+|EsfJsonValue
+|Handle used to access each deserialized JSON data element. +
+As the internal type of the handle may change, users should treat it transparently.
+|<<#_EsfJsonValue>>
+
+|===
+
+==== API List
+
+<<#_TableAPI>> shows the list of APIs.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="20%,60%,10%",options="header"]
+|===
+|API Name |Description |Section Number
+// Handle Functions
+2+|Handle Functions
+|<<#hundleapi>>
+
+^|EsfJsonOpen
+|Obtains a handle for the JSON module.
+|<<#EsfJsonOpen>>
+
+^|EsfJsonClose
+|Releases the handle of the JSON module.
+|<<#EsfJsonClose>>
+
+// Structuring Functions
+2+|Structuring Functions
+|<<#structuringapi>>
+
+^|EsfJsonSerialize
+|Converts a JSON Value to a string.
+|<<#EsfJsonSerialize>>
+
+^|EsfJsonSerializeFree
+|Frees the string generated by the EsfJsonSerialize function.
+|<<#EsfJsonSerializeFree>>
+
+^|EsfJsonDeserialize
+|Converts a string to a JSON Value.
+|<<#EsfJsonDeserialize>>
+
+^|EsfJsonSerializeSizeGet
+|Retrieves the length of the string resulting from converting a JSON Value.
+|<<#EsfJsonSerializeSizeGet>>
+
+^|EsfJsonSerializeFileIO
+|Converts a JSON Value to a string and writes it to a File I/O-compatible Memory Manager handle.
+|<<#EsfJsonSerializeFileIO>>
+
+^|EsfJsonSerializeIncludesFileIO
+|Determines whether the JSON Value includes a File I/O-compatible Memory Manager handle during serialization.
+|<<#EsfJsonSerializeIncludesFileIO>>
+
+^|EsfJsonSerializeHandle
+|Converts a JSON Value to a string and writes it to a Memory Manager handle (LargeHeap area).
+|<<#EsfJsonSerializeHandle>>
+
+^|EsfJsonSerializeIncludesHandle
+|Determines whether the JSON Value includes a Memory Manager handle (LargeHeap area) during serialization.
+|<<#EsfJsonSerializeIncludesHandle>>
+
+// Object Functions
+2+|Object Functions
+|<<#objectapi>>
+
+^|EsfJsonObjectInit
+|Creates an empty Object Value.
+|<<#EsfJsonObjectInit>>
+
+^|EsfJsonObjectGet
+|Retrieves a JSON Value from an Object Value using a specified key.
+|<<#EsfJsonObjectGet>>
+
+^|EsfJsonObjectSet
+|Sets a JSON Value in an Object Value using a specified key.
+|<<#EsfJsonObjectSet>>
+
+^|EsfJsonObjectRemove
+|Deletes a JSON Value from an Object Value using a specified key.
+|<<#EsfJsonObjectRemove>>
+
+^|EsfJsonObjectClear
+|Initializes a JSON Value as an empty Object Value.
+|<<#EsfJsonObjectClear>>
+
+^|EsfJsonObjectCount
+|Retrieves the number of elements in an Object Value.
+|<<#EsfJsonObjectCount>>
+
+^|EsfJsonObjectGetAt
+|Retrieves a key and value from an Object Value by index.
+|<<#EsfJsonObjectGetAt>>
+
+// Array Functions
+2+|Array Functions
+|<<#arrayapi>>
+
+^|EsfJsonArrayInit
+|Creates an empty Array Value.
+|<<#EsfJsonArrayInit>>
+
+^|EsfJsonArrayGet
+|Retrieves a JSON Value from an Array Value by index.
+|<<#EsfJsonArrayGet>>
+
+^|EsfJsonArrayAppend
+|Appends a JSON Value to the end of an Array Value.
+|<<#EsfJsonArrayAppend>>
+
+^|EsfJsonArrayReplace
+|Replaces a JSON Value in an Array Value by index.
+|<<#EsfJsonArrayReplace>>
+
+^|EsfJsonArrayRemove
+|Deletes a JSON Value from an Array Value by index.
+|<<#EsfJsonArrayRemove>>
+
+^|EsfJsonArrayClear
+|Initializes a JSON Value as an empty Array Value.
+|<<#EsfJsonArrayClear>>
+
+^|EsfJsonArrayCount
+|Retrieves the number of elements in an Array Value.
+|<<#EsfJsonArrayCount>>
+
+// String Functions
+2+|String Functions
+|<<#stringapi>>
+
+^|EsfJsonStringInit
+|Creates a String Value.
+|<<#EsfJsonStringInit>>
+
+^|EsfJsonStringInitFileIO
+|Creates a String Value associated with a File I/O-compatible Memory Manager handle.
+|<<#EsfJsonStringInitFileIO>>
+
+^|EsfJsonStringInitHandle
+|Creates a String Value associated with a Memory Manager handle (LargeHeap area).
+|<<#EsfJsonStringInitHandle>>
+
+^|EsfJsonStringGet
+|Retrieves a string (without escape processing) from a String Value.
+|<<#EsfJsonStringGet>>
+
+^|EsfJsonStringSet
+|Sets a string (without escape processing) in a JSON Value.
+|<<#EsfJsonStringSet>>
+
+^|EsfJsonStringSetFileIO
+|Rewrites the File I/O-compatible Memory Manager handle set by EsfJsonStringInitFileIO.
+|<<#EsfJsonStringSetFileIO>>
+
+^|EsfJsonStringSetHandle
+|Rewrites the Memory Manager handle (LargeHeap area) set by EsfJsonStringInitHandle.
+|<<#EsfJsonStringSetHandle>>
+
+// Number Functions
+2+|Number Functions
+|<<#numberapi>>
+
+^|EsfJsonIntegerInit
+|Creates a Number Value using an integer.
+|<<#EsfJsonIntegerInit>>
+
+^|EsfJsonRealInit
+|Creates a Number Value using a real number.
+|<<#EsfJsonRealInit>>
+
+^|EsfJsonIntegerGet
+|Retrieves an integer from a Number Value.
+|<<#EsfJsonIntegerGet>>
+
+^|EsfJsonRealGet
+|Retrieves a real number from a Number Value.
+|<<#EsfJsonRealGet>>
+
+^|EsfJsonIntegerSet
+|Sets an integer in a JSON Value.
+|<<#EsfJsonIntegerSet>>
+
+^|EsfJsonRealSet
+|Sets a real number in a JSON Value.
+|<<#EsfJsonRealSet>>
+
+// Boolean Functions
+2+|Boolean Functions
+|<<#booleanapi>>
+
+^|EsfJsonBooleanInit
+|Creates a Boolean Value.
+|<<#EsfJsonBooleanInit>>
+
+^|EsfJsonBooleanGet
+|Retrieves a boolean value from a Boolean Value.
+|<<#EsfJsonBooleanGet>>
+
+^|EsfJsonBooleanSet
+|Sets a boolean value in a JSON Value.
+|<<#EsfJsonBooleanSet>>
+
+// Null Functions
+2+|Null Functions
+|<<#nullapi>>
+
+^|EsfJsonNullInit
+|Creates a Null Value.
+|<<#EsfJsonNullInit>>
+
+^|EsfJsonNullSet
+|Sets a Null in a JSON Value.
+|<<#EsfJsonNullSet>>
+
+// JSON Value Functions
+2+|JSON Value Functions
+|<<#jsonvalueapi>>
+
+^|EsfJsonValueCopy
+|Copies a JSON Value.
+|<<#EsfJsonValueCopy>>
+
+^|EsfJsonValueTypeGet
+|Retrieves the type of a JSON Value.
+|<<#EsfJsonValueTypeGet>>
+|===
+
+<<<
+
+=== Data Type Definitions
+
+[#_EsfJsonValueType]
+==== EsfJsonValueType
+Enumeration representing JSON data types. +
+Used for identifying JSON data types and for type checking when using each API.
+
+* *Format*
+
+[source, C]
+....
+typedef enum EsfJsonValueType {
+    kEsfJsonValueTypeObject,
+    kEsfJsonValueTypeArray,
+    kEsfJsonValueTypeString,
+    kEsfJsonValueTypeNumber,
+    kEsfJsonValueTypeBoolean,
+    kEsfJsonValueTypeNull,
+} EsfJsonValueType;
+....
+
+* *Values*
+
+[#_Table_EsfJsonValueType]
+.Description of EsfJsonValueType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kEsfJsonValueTypeObject
+|Object
+
+|kEsfJsonValueTypeArray
+|Array
+
+|kEsfJsonValueTypeString
+|String
+
+|kEsfJsonValueTypeNumber
+|Number
+
+|kEsfJsonValueTypeBoolean
+|Boolean
+
+|kEsfJsonValueTypeNull
+|Null
+|===
+
+[#_EsfJsonErrorCode]
+==== EsfJsonErrorCode
+Error code used to identify the type of error. +
+This is used as the return value of this module.
+
+* *Format*
+
+[source, C]
+....
+typedef enum EsfJsonErrorCode {
+    kEsfJsonSuccess,
+    kEsfJsonInternalError,  
+    kEsfJsonInvalidArgument,
+    kEsfJsonHandleError,
+    kEsfJsonValueTypeError,
+    kEsfJsonValueNotFound,
+    kEsfJsonValueLimit,
+    kEsfJsonOutOfMemory,
+    kEsfJsonParentAlreadyExists,
+    kEsfJsonIndexExceed,
+    kEsfJsonValueDuplicated
+} EsfJsonErrorCode;
+....
+
+* *Values*
+
+[#_Table_EsfJsonErrorCode]
+.Description of EsfJsonErrorCode Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kEsfJsonSuccess
+|Used to indicate success.
+
+|kEsfJsonInternalError
+|Error code when an internal error occurs.
+
+|kEsfJsonInvalidArgument
+|Error code related to invalid arguments.
+
+|kEsfJsonHandleError
+|Error code for handle acquisition failure.
+
+|kEsfJsonValueTypeError
+|Error code for JSON type mismatch.
+
+|kEsfJsonValueNotFound
+|Error code when the JSON Value is not found.
+
+|kEsfJsonValueLimit 
+|Error code when the number of JSON Values for a handle exceeds the limit.
+
+|kEsfJsonOutOfMemory
+|Error code when memory allocation fails.
+
+|kEsfJsonParentAlreadyExists
+|Error code when a parent already exists.
+
+|kEsfJsonIndexExceed
+|Error code when accessing beyond the number of elements in a structure or array.
+
+|kEsfJsonValueDuplicated
+|Error code when: +
+・Setting a JSON Value in an Object Value +
+・Appending a JSON Value to an Array Value +
+・Replacing a JSON Value in an Array Value +
+and the parent and value are the same, or the parent is included in the value's JSON data structure.
+
+|===
+
+[#_EsfJsonHandle]
+==== EsfJsonHandle
+Operation handle for the JSON module. +
+Used to manage JSON data in each API. +
+As the internal type of the handle may change, users should treat it transparently.
+
+* *Format*
+
+[source, C]
+....
+typedef struct EsfJsonHandleImpl EsfJsonHandleImpl;
+
+typedef EsfJsonHandleImpl *EsfJsonHandle;
+....
+
+[#_EsfJsonValue]
+==== EsfJsonValue
+Handle used to access each deserialized JSON data element. +
+Used as a management ID associated with JSON data. +
+As the internal type of the handle may change, users should treat it transparently.
+
+* *Format*
+
+[source, C]
+....
+typedef int32_t EsfJsonValue;
+....
+
+=== API Definitions
+
+[#hundleapi]
+==== Handle Function APIs
+This API group provides functions related to handles for this software block.
+
+[#EsfJsonOpen]
+===== EsfJsonOpen
+* *Function* 
++
+Obtains a handle for the JSON API.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonOpen(EsfJsonHandle* handle)**``  
+
+* *Parameter Description* +
++
+**``[IN] None``**:: 
+There is no IN parameter.
+
+**``[OUT] EsfJsonHandle* handle``**:: 
+Handle for the JSON API.
+
+* *Return Value* +
+[#_TableEsfJsonOpenReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+|===
+
+* *Description* +
+** Allocates memory and returns the allocated handle in **``handle``**. +
+
+* Behavior in Case of Error and Recovery Method +
+
+[#_TableError]
+.Error Description
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Return Value|Error Condition|Recovery Method
+3+| Argument Error
+|kEsfJsonInvalidArgument
+|handle is NULL
+|Check the argument and try again.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check the available memory on the user side.
+|===
+
+[#EsfJsonClose]
+===== EsfJsonClose
+* *Function* 
++
+Releases the handle of the JSON API.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonClose(EsfJsonHandle handle)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[OUT] None``**:: 
+There is no OUT parameter.
+
+* *Return Value* +
+[#_TableEsfJsonCloseReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Releases the allocated memory. +
+** All resources associated with the handle, such as strings from the EsfJsonSerialize function and JSON Values, are released.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Return Value|Error Condition|Recovery Method
+3+|Argument Error
+|kEsfJsonInvalidArgument
+|handle is NULL
+|Check the argument and try again.
+
+3+|Internal Error
+|kEsfJsonInternalError
+|OSS or internal function error
+|As this is an internal error, please consult the system administrator.
+|===
+
+<<<
+
+[#structuringapi]
+==== Structuring Function API Details
+This API group provides functions related to JSON structuring and string conversion.
+
+[#EsfJsonSerialize]
+===== EsfJsonSerialize
+* *Function* 
++
+Converts a JSON Value into a string.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonSerialize(EsfJsonHandle handle, EsfJsonValue value, const char** str)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value to be serialized.
+
+**``[OUT] const char** str``**:: 
+Resulting string after conversion.
+
+* *Return Value* +
+[#_TableEsfJsonSerializeReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Serializes the specified **``value``** into a string. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+The serialized string is returned via **``str``**. +
+If the target JSON Value does not exist, this API returns **``kEsfJsonValueNotFound``**, and **``str``** will remain unchanged.
+
+** The string can be freed by calling the EsfJsonSerializeFree function. +
+** Only the most recent string is retained. +
+** When EsfJsonSerialize is called again, the previous string is freed, so it must not be referenced. +
+** If the JSON Value includes a String Value created by ``**EsfJsonStringInitFileIO**`` or ``**EsfJsonStringSetFileIO**``, a string containing substitute text is generated. +
+  To serialize data in a File I/O-compatible Memory Manager handle, use ``**EsfJsonSerializeFileIO**``. +
+** If the JSON Value includes a String Value created by ``**EsfJsonStringInitHandle**`` or ``**EsfJsonStringSetHandle**``, a string containing substitute text is generated. +
+  To serialize data in a Memory Manager handle (LargeHeap area), use ``**EsfJsonSerializeHandle**``.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|str is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+|===
+
+[#EsfJsonSerializeFree]
+===== EsfJsonSerializeFree
+* *Function* 
++
+Frees the string generated by the EsfJsonSerialize function.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeFree(EsfJsonHandle handle)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[OUT] None``**:: 
+There is no OUT parameter.
+
+* *Return Value* +
+[#_TableEsfJsonSerializeFreeReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonHandleError
+|Handle not acquired
+|===
+
+* *Description* +
+** Frees the string generated by the EsfJsonSerialize function. +
+If no string has been generated, the function does nothing and returns **``kEsfJsonSuccess``**. +
+
+Before calling this API, a handle must have been obtained using **``EsfJsonOpen``** and **``EsfJsonSerialize``** must have been called. +
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+|===
+
+[#EsfJsonDeserialize]
+===== EsfJsonDeserialize
+* *Function* 
++
+Converts a string into a JSON Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonDeserialize(EsfJsonHandle handle, const char* str, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] const char* str``**:: 
+String to be deserialized.
+
+**``[OUT] EsfJsonValue* value``**:: 
+Resulting JSON Value.
+
+* *Return Value* +
+[#_TableEsfJsonDeserializeReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+|===
+
+* *Description* +
+** Converts the input string **``str``** into a JSON Value and returns the result in **``value``**. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+If the input string is invalid, this API returns **``kEsfJsonInvalidArgument``**, and **``value``** remains unchanged.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|str is NULL
+|Check the argument and retry.
+
+|kEsfJsonInvalidArgument
+|Invalid JSON Value
+|Check the argument and retry.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON-related
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values for the handle
+|Obtain a new handle and retry.
+|===
+
+[#EsfJsonSerializeSizeGet]
+===== EsfJsonSerializeSizeGet
+* *Function* 
++
+Returns the number of characters when a JSON Value is converted to a string.
+
+* *Format* +
++
+``** size_t EsfJsonSerializeSizeGet(EsfJsonHandle handle, EsfJsonValue value)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value.
+
+* *Return Value* +
+Returns the number of characters excluding the NULL terminator. +
+Returns 0 if an error occurs.
+
+* *Description* +
+** Returns the number of characters resulting from serializing the given **``value``**. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+** If the target JSON Value or its children contain String Values created using ``**EsfJsonStringInitFileIO**`` or ``**EsfJsonStringSetFileIO**``, the size reflects the data serialized from the Memory Manager handle. +
+** Likewise, if they contain String Values created using ``**EsfJsonStringInitHandle**`` or ``**EsfJsonStringSetHandle**``, the size reflects the data serialized from the Memory Manager handle (LargeHeap area). +
+** This API does not change the seek position of the Memory Manager handles before and after execution.
+
+[#EsfJsonSerializeFileIO]
+===== EsfJsonSerializeFileIO
+* *Function* 
++
+Converts a JSON Value to a string and writes it to a File I/O-compatible Memory Manager handle.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeFileIO(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t* mem_size)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value.
+
+**``[OUT] EsfMemoryManagerHandle mem_handle``**:: 
+Memory Manager handle to store the serialized string.
+
+**``[OUT] size_t* mem_size``**:: 
+Number of characters after conversion (excluding NULL terminator).
+
+* *Return Value* +
+[#_TableEsfJsonSerializeFileIOReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Serializes the specified **``value``** and writes the resulting string to **``mem_handle``**. +
+A handle must be obtained in advance using **``EsfJsonOpen``**. +
+The string written includes the NULL terminator. +
+If the target JSON Value does not exist, this API returns **``kEsfJsonValueNotFound``** and **``mem_handle``** remains unchanged. +
+
+** Does not affect strings managed by the ``**EsfJsonSerialize**`` and ``**EsfJsonSerializeFree**`` functions. +
+  Strings created by ``**EsfJsonSerialize**`` are not freed when this API is called. +
+** The passed ``**mem_handle**`` must already be opened by ``**EsfMemoryManagerFopen**``, +
+  and its seek position must be set to the beginning of the write target. +
+** After this API is called, the seek position of ``**mem_handle**`` will be at the end of the written JSON string (including NULL terminator). +
+  If an error occurs, the seek position is undefined. +
+** To maintain correct seek behavior, use a different handle from those used in ``**EsfJsonStringInitFileIO**`` or ``**EsfJsonStringSetFileIO**``. +
+** Handles specified in ``**EsfJsonStringInitFileIO**`` or ``**EsfJsonStringSetFileIO**`` are reset to their original seek positions before processing. +
+  Therefore, the seek position after this API call is the position after reading the size of the data from the original seek point. +
+  If an error occurs, the seek position is undefined. +
+** This API can be called multiple times. +
+** This API is not reentrant and blocks until the current execution is complete.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|mem_handle or mem_size is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|Internal Error
+|kEsfJsonInternalError
+|OSS error, internal function failure, or module-level error
+|Consult the system administrator as this is an internal error.
+|===
+
+[#EsfJsonSerializeIncludesFileIO]
+===== EsfJsonSerializeIncludesFileIO
+* *Function* 
++
+Determines whether the JSON Value to be serialized includes a String Value associated with a File I/O-compatible Memory Manager handle.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeIncludesFileIO(EsfJsonHandle handle, EsfJsonValue value, bool* is_included)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value.
+
+**``[OUT] bool* is_included``**:: 
+Stores the determination result.
+
+* *Return Value* +
+[#_TableEsfJsonSerializeIncludesFileIOReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Determines whether the JSON Value includes String Values created using ``**EsfJsonStringInitFileIO**`` or ``**EsfJsonStringSetFileIO**``. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+The result is returned in **``is_included``**. If true, such String Values are included. +
+If the target JSON Value does not exist, this API returns **``kEsfJsonValueNotFound``**, and **``is_included``** remains unchanged. +
+** The seek position of the Memory Manager handle remains unchanged before and after this API call.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|mem_handle or mem_size is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Internal Error
+|kEsfJsonInternalError
+|OSS error, internal function error, or other module error
+|Consult the administrator as this is an internal error.
+|===
+
+[#EsfJsonSerializeHandle]
+===== EsfJsonSerializeHandle
+* *Function* 
++
+Converts a JSON Value to a string and writes it to a Memory Manager handle (LargeHeap area).
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeHandle(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t* mem_size)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value.
+
+**``[OUT] EsfMemoryManagerHandle mem_handle``**:: 
+Memory Manager handle to store the resulting string.
+
+**``[OUT] size_t* mem_size``**:: 
+Number of characters after conversion. NULL terminator is not included.
+
+* *Return Value* +
+[#_TableEsfJsonSerializeHandleHandleReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Serializes the specified **``value``** into a string. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+Writes the string (including the NULL terminator) to **``mem_handle``**. +
+If the target JSON Value does not exist, this API returns **``kEsfJsonValueNotFound``**, and **``mem_handle``** remains unchanged. +
+
+** This does not affect the strings managed by ``**EsfJsonSerialize**`` or ``**EsfJsonSerializeFree**``. +
+  Strings created by ``**EsfJsonSerialize**`` will not be freed when this API is called. +
+** After execution, the seek position of **``mem_handle``** is reset to the beginning of the written JSON string (including the NULL terminator), +
+  even in case of an error. +
+  (*Common behavior for File I/O and Map handles*) +
+** To ensure correct seek behavior, use a different handle from those used in ``**EsfJsonStringInitHandle**`` or ``**EsfJsonStringSetHandle**``. +
+** Handles specified in ``**EsfJsonStringInitHandle**`` or ``**EsfJsonStringSetHandle**`` are reset to their seek positions at the time of String Value creation before processing. +
+  (*Common behavior for File I/O and Map handles*) +
+** This API can be called multiple times. +
+** This API is not reentrant; it blocks until execution is complete.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|mem_handle or mem_size is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|Internal Error
+|kEsfJsonInternalError
+|OSS error, internal function error, or other module error
+|Consult the administrator as this is an internal error.
+|===
+
+[#EsfJsonSerializeIncludesHandle]
+===== EsfJsonSerializeIncludesHandle
+* *Function* 
++
+Determines whether the JSON Value to be serialized includes a String Value associated with a Memory Manager handle (LargeHeap area).
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonSerializeIncludesHandle(EsfJsonHandle handle, EsfJsonValue value, bool* is_included)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value.
+
+**``[OUT] bool* is_included``**:: 
+Stores the result of the check.
+
+* *Return Value* +
+[#_TableEsfJsonSerializeIncludesHandleReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Determines whether the JSON Value includes any String Values created using ``**EsfJsonStringInitHandle**`` or ``**EsfJsonStringSetHandle**`` during serialization. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+The result is returned via **``is_included``**. If true, the JSON Value includes a String Value created with the mentioned APIs. +
+If the specified JSON Value does not exist, this API returns **``kEsfJsonValueNotFound``**, and **``is_included``** remains unchanged. +
+** The seek position of the Memory Manager handle remains unchanged before and after execution of this API. +
+  (*Applicable to both File I/O and Map handles*)
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|mem_handle or mem_size is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Internal Error
+|kEsfJsonInternalError
+|OSS error, internal function error, or other module-level error
+|Consult the system administrator as this is an internal error.
+|===
+
+[#objectapi]
+==== Object-Type API Details
+This API group provides functions for JSON Object types.
+
+[#EsfJsonObjectInit]
+===== EsfJsonObjectInit
+* *Function* 
++
+Creates an empty Object Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectInit(EsfJsonHandle handle, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[OUT] EsfJsonValue* value``**:: 
+Resulting Object Value.
+
+* *Return Value* +
+[#_TableEsfJsonObjectInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|===
+
+* *Description* +
+** Generates an empty Object Value and returns it in **``value``**. +
+Before calling this API, a handle must be obtained using **``EsfJsonOpen``**. +
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON-related
+|kEsfJsonValueLimit 
+|Exceeded the number of JSON Values per handle
+|Obtain a new handle and retry.
+|===
+
+
+[#EsfJsonObjectGet]
+===== EsfJsonObjectGet
+* *Function* 
++
+Retrieves a JSON Value from an Object Value using the specified key.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectGet(EsfJsonHandle handle, EsfJsonValue parent, const char* key, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Value.
+
+**``[IN] const char* key``**:: 
+Target key.
+
+**``[OUT] EsfJsonValue* value``**:: 
+Retrieved JSON Value.
+
+* *Return Value* +
+[#_TableEsfJsonObjectInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Retrieves the JSON Value specified by the **``parent``** and **``key``**, and returns the result in **``value``**. +
+A handle must be obtained using **``EsfJsonOpen``** before calling this API. +
+If the API returns anything other than **``kEsfJsonSuccess``**, the content of **``value``** remains unchanged.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+
+
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+|kEsfJsonInvalidArgument
+|key is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON-related
+|kEsfJsonValueLimit 
+|Exceeded the number of JSON Values per handle
+|Obtain a new handle and retry.
+
+|===
+
+
+[#EsfJsonObjectSet]
+===== EsfJsonObjectSet
+* *Function* 
++
+Sets a JSON Value in an Object Value using the specified key.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectSet(EsfJsonHandle handle, EsfJsonValue parent, const char* key, EsfJsonValue value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Value.
+
+**``[IN] const char* key``**:: 
+Target key.
+
+**``[IN] EsfJsonValue value``**:: 
+JSON Value to be set.
+
+**``[OUT] None``**:: 
+There is no OUT parameter.
+
+* *Return Value* +
+[#_TableEsfJsonObjectSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+
+|kEsfJsonValueTypeError
+|JSON type mismatch
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonParentAlreadyExists
+|The parent already exists +
+(**``value``** already has a parent)
+
+|kEsfJsonValueDuplicated
+|JSON Value duplication error
+|===
+
+* *Description* +
+** Sets the specified **``value``** in the Object Value designated by **``parent``** and **``key``**. +
+A handle must be obtained using **``EsfJsonOpen``** before calling this API. +
+** If the key already exists, the existing JSON Value is replaced with the new one, and the old one is released. +
+** If the new JSON Value is already associated with another Object or Array, an error is returned. +
+** If **``parent``** and **``value``** are the same, or if the **``value``** includes **``parent``** in its structure, an error is returned.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|handle is invalid
+|Obtain the handle again and retry.
+
+|kEsfJsonInvalidArgument
+|key is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+|kEsfJsonInvalidArgument
+|Specified key does not exist
+|Check the argument and retry.
+
+3+| Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+| JSON-related
+|kEsfJsonValueTypeError
+|JSON type mismatch
+|Check the JSON type and retry.
+
+|kEsfJsonParentAlreadyExists
+|The parent already exists +
+(**``value``** already has a parent)
+|Obtain a new handle and retry.
+
+|kEsfJsonInternalError
+|OSS or internal function error
+|Consult the system administrator as this is an internal error.
+
+|kEsfJsonValueDuplicated
+|**``parent``** and **``value``** are the same, or **``value``** includes **``parent``** in its structure
+|Review the JSON structure to ensure that **``parent``** and **``value``** are not the same. +
+If you want to assign the same JSON Value to multiple JSON structures, +
+use `EsfJsonValueCopy` to create a copy of the JSON Value to avoid the `kEsfJsonValueDuplicated` error.
+|===
+
+[#EsfJsonObjectRemove]
+===== EsfJsonObjectRemove
+* *Function* 
++
+Removes a JSON Value from an Object Value using the specified key.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectRemove(EsfJsonHandle handle, EsfJsonValue parent, const char* key)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Value.
+
+**``[IN] const char* key``**:: 
+Target key.
+
+**``[OUT] None``**:: 
+There is no OUT parameter.
+
+* *Return Value* +
+[#_TableEsfJsonObjectRemoveReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueTypeError 
+|JSON type mismatch
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Removes the JSON Value from the Object Value specified by **``parent``** and **``key``**. +
+A handle must be obtained using **``EsfJsonOpen``** before calling this API. +
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|Handle is invalid
+|Obtain a valid handle and retry.
+
+|kEsfJsonInvalidArgument
+|Key is NULL
+|Check the argument and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+| JSON-related
+|kEsfJsonValueTypeError
+|JSON type mismatch
+|Check the JSON type and retry.
+
+|kEsfJsonInternalError
+|OSS or internal function error
+|Consult the system administrator as this is an internal error.
+|===
+
+
+[#EsfJsonObjectClear]
+===== EsfJsonObjectClear
+* *Function* 
++
+Initializes a JSON Value and converts it into an empty Object Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectClear(EsfJsonHandle handle, EsfJsonValue value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**:: 
+Object Value.
+
+**``[OUT] None``**:: 
+There is no OUT parameter.
+
+* *Return Value* +
+[#_TableEsfJsonObjectClearReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|Error when JSON Value is not found
+|===
+
+* *Description* +
+** Initializes (clears) the JSON Value specified by **``value``**. +
+A handle must be acquired using **``EsfJsonOpen``** before calling this API. +
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|Invalid handle
+|Acquire a valid handle and retry.
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check the argument and retry.
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+|Check the argument and retry.
+
+3+| Memory-related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+| JSON-related
+|kEsfJsonInternalError
+|OSS or internal function error
+|Consult the system administrator as this is an internal error.
+|===
+
+
+[#EsfJsonObjectCount]
+===== EsfJsonObjectCount
+* *Function* 
++
+Retrieves the number of elements in the Object Value.
+
+* *Format* +
++
+``** int32_t EsfJsonObjectCount(EsfJsonHandle handle, EsfJsonValue parent)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Value.
+
+**``[OUT] None``**:: 
+There is no OUT parameter.
+
+* *Return Value* +
+[#_TableEsfJsonObjectCountReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|Integer
+|Result of element count retrieval. +
+Returns -1 if an error occurs inside the function.
+|===
+
+* *Description* +
+** Retrieves the number of elements in the Object Value specified by **``parent``** and returns the result. +
+A handle must be acquired using **``EsfJsonOpen``** before calling this API.
+
+* Behavior in Case of Error and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+|-1
+|Failed to retrieve the number of elements
+|Since this return value aggregates errors, there is no specific recovery method.
+|===
+
+
+[#EsfJsonObjectGetAt]
+===== EsfJsonObjectGetAt
+* *Function* 
++
+Retrieves the Key and Value from an Object Value by specifying an index.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonObjectGetAt(EsfJsonHandle handle, EsfJsonValue parent, int32_t index, const char** key, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**:: 
+Object Value.
+
+**``[IN] int32_t index``**:: 
+Target index.
+
+**``[OUT] const char** key``**:: 
+Retrieved key.
+
+**``[OUT] EsfJsonValue* value``**:: 
+Retrieved JSON Value.
+
+* *Return Value* +
+[#_TableEsfJsonObjectGetAtReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonValueTypeError 
+|Type mismatch
+
+|kEsfJsonIndexExceed
+|Index out of bounds
+
+|kEsfJsonValueNotFound
+|Target JSON Value not found
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+
+|kEsfJsonValueLimit 
+|Exceeded JSON Value limit per handle
+|===
+
+* *Description* +
+** Retrieves the key and JSON Value corresponding to the specified **``index``** in the Object Value **``parent``**, and returns the result to **``key``** and **``value``**. +
+A handle must be obtained via **``EsfJsonOpen``** before calling this API. +
+If the return value is anything other than **``kEsfJsonSuccess``**, **``key``** and **``value``** will not be modified. +
+** The lifetime of the key is equal to the lifetime of the associated Value. +
+** Do not access the key after the corresponding Object Value has been released or deleted.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|str is NULL
+|Check arguments and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check arguments and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check arguments and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check available memory on the user side.
+
+3+| JSON-related Errors
+|kEsfJsonValueTypeError
+|Type mismatch
+|Check JSON types and retry.
+|kEsfJsonIndexExceed
+|Index exceeds element count
+|Check the index argument and retry.
+|kEsfJsonValueLimit 
+|Exceeded JSON Value limit per handle
+|Re-obtain the handle and retry.
+|===
+
+[#arrayapi]
+==== Array API Details
+This group of APIs provides functionality related to the JSON Array type.
+
+[#EsfJsonArrayInit]
+===== EsfJsonArrayInit
+* *Function* 
++
+Creates an empty Array Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayInit(EsfJsonHandle handle, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**:: 
+Handle for the JSON API.
+
+**``[OUT] EsfJsonValue* value``**:: 
+The resulting Array Value.
+
+* *Return Value* +
+[#_TableEsfJsonArrayInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+
+|kEsfJsonValueLimit 
+|Exceeded the number of JSON Values per handle
+|===
+
+* *Description* +
+** Generates an empty Array Value and returns it via **``value``**. +
+This API requires the handle to be obtained using **``EsfJsonOpen``** beforehand. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check arguments and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check available memory on the user side.
+
+3+| JSON-related Errors
+|kEsfJsonValueLimit 
+|Exceeded JSON Value limit per handle
+|Re-obtain the handle and retry.
+|===
+
+
+[#EsfJsonArrayGet]
+===== EsfJsonArrayGet
+* *Function* 
++
+Retrieves a JSON Value from an Array Value by specifying an index.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayGet(EsfJsonHandle handle, EsfJsonValue parent, int32_t index, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**::  
+Array Value.
+
+**``[IN] int32_t index``**::  
+Target index.
+
+**``[OUT] EsfJsonValue* value``**::  
+Retrieved JSON Value.
+
+* *Return Value* +
+[#_TableEsfJsonArrayGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonValueLimit 
+|Exceeded the number of JSON Values per handle
+
+|kEsfJsonValueTypeError 
+|Mismatched JSON Type
+
+|kEsfJsonIndexExceed
+|Index out of bounds
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure 
+|===
+
+* *Description* +
+** Returns the JSON Value corresponding to the specified **``index``** of the given **``parent``** Array Value in **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+If the API returns a value other than **``kEsfJsonSuccess``**, **``value``** is not modified.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check arguments and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check the arguments and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check available memory on the user side.
+
+3+| JSON-related Errors
+|kEsfJsonValueLimit
+|Exceeded the number of JSON Values per handle
+|Re-obtain the handle and retry.
+|kEsfJsonValueTypeError
+|Mismatched JSON Type
+|Verify the JSON Type and retry.
+|kEsfJsonIndexExceed
+|Index out of bounds
+|Check the arguments and retry.
+|===
+
+
+[#EsfJsonArrayAppend]
+===== EsfJsonArrayAppend
+* *Function* 
++
+Appends a JSON Value to the end of an Array Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayAppend(EsfJsonHandle handle, EsfJsonValue parent, EsfJsonValue value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**::  
+Array Value.
+
+**``[IN] EsfJsonValue value``**::  
+JSON Value to append.
+
+**``[OUT] None``**::  
+There is no output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonArrayAppendReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+
+|kEsfJsonValueTypeError 
+|Mismatched JSON Type
+
+|kEsfJsonParentAlreadyExists 
+|Parent already exists (the **``value``** already has a parent)
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonValueDuplicated
+|Duplicate JSON Value
+|===
+
+* *Description* +
+** Appends the specified **``value``** to the **``parent``** Array Value. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+** If **``parent``** and **``value``** are the same, or if **``value``** contains **``parent``** in its JSON data structure, the API returns an error.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check arguments and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check available memory on the user side.
+
+3+| JSON-related Errors
+|kEsfJsonValueTypeError
+|Mismatched JSON Type
+|Verify the JSON Type and retry.
+|kEsfJsonParentAlreadyExists
+|Parent already exists (value already has a parent)
+|Re-obtain the handle and retry.
+|kEsfJsonValueDuplicated
+|The parent and value are the same, or the value contains the parent
+|Ensure that parent and value are not the same. +
+If the same JSON Value needs to be used in multiple data structures, use `EsfJsonValueCopy` to create a copy of the JSON Value to avoid the `kEsfJsonValueDuplicated` error.
+|===
+
+[#EsfJsonArrayReplace]
+===== EsfJsonArrayReplace
+* *Function* 
++
+Replaces the JSON Value at the specified index of an Array Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayReplace(EsfJsonHandle handle, EsfJsonValue parent, int32_t index, EsfJsonValue value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**::  
+Array Value.
+
+**``[IN] int32_t index``**::  
+Target index.
+
+**``[IN] EsfJsonValue value``**::  
+JSON Value to replace with.
+
+**``[OUT] None``**::  
+There is no output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonArrayReplaceReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonValueTypeError 
+|Mismatched JSON Type
+
+|kEsfJsonParentAlreadyExists 
+|Parent already exists (the **``value``** already has a parent)
+
+|kEsfJsonIndexExceed
+|Index exceeds the number of elements
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+
+|kEsfJsonValueDuplicated
+|Duplicate JSON Value
+|===
+
+* *Description* +
+** Replaces the JSON Value at the specified **``index``** in the **``parent``** Array Value with **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+** If **``parent``** and **``value``** are the same, or if **``value``** contains **``parent``** in its JSON structure, the API returns an error.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check arguments and retry.
+
+3+| JSON-related Errors
+|kEsfJsonValueTypeError
+|Mismatched JSON Type
+|Verify the JSON Type and retry.
+|kEsfJsonParentAlreadyExists
+|Parent already exists (value already has a parent)
+|Re-obtain the handle and retry.
+|kEsfJsonIndexExceed
+|Index exceeds the number of elements
+|Check the index and retry.
+|kEsfJsonInternalError
+|Internal error (e.g., OSS or internal functions)
+|Contact the relevant personnel for investigation.
+|kEsfJsonValueDuplicated
+|The parent and value are the same, or the value contains the parent
+|Review the JSON structure to ensure parent and value are not the same. +
+If the same JSON Value must be used in multiple structures, use `EsfJsonValueCopy` to copy the JSON Value before assigning it to avoid the `kEsfJsonValueDuplicated` error.
+|===
+
+
+[#EsfJsonArrayRemove]
+===== EsfJsonArrayRemove
+* *Function* 
++
+Removes a JSON Value from an Array Value at the specified index.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayRemove(EsfJsonHandle handle, EsfJsonValue parent, int32_t index)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**::  
+Array Value.
+
+**``[IN] int32_t index``**::  
+Target index.
+
+**``[OUT] None``**::  
+There is no output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonArrayRemoveReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonValueTypeError 
+|Mismatched JSON Type
+
+|kEsfJsonIndexExceed
+|Index exceeds the number of elements
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Deletes the JSON Value from the Array Value specified by **``parent``** and **``index``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check arguments and retry.
+
+3+| JSON-related Errors
+|kEsfJsonValueTypeError
+|Mismatched JSON Type
+|Verify the JSON Type and retry.
+|kEsfJsonIndexExceed
+|Index exceeds the number of elements
+|Check the index and retry.
+|kEsfJsonInternalError
+|Internal error (e.g., OSS or internal function failure)
+|Contact the relevant personnel for investigation.
+|===
+
+
+[#EsfJsonArrayClear]
+===== EsfJsonArrayClear
+* *Function* 
++
+Initializes a JSON Value and resets it to an empty Array Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonArrayClear(EsfJsonHandle handle, EsfJsonValue value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+JSON Value.
+
+**``[OUT] None``**::  
+There is no output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonArrayClearReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not obtained
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Initializes the Array Value specified by **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check arguments and retry.
+|kEsfJsonInvalidArgument
+|Invalid argument
+|Check arguments and retry.
+
+3+| JSON-related Errors
+|kEsfJsonInternalError
+|Internal error (e.g., OSS or internal function failure)
+|Contact the relevant personnel for investigation.
+|===
+
+[#EsfJsonArrayCount]
+===== EsfJsonArrayCount
+* *Function* 
++
+Retrieves the number of elements in an Array Value.
+
+* *Format* +
++
+``** int32_t EsfJsonArrayCount(EsfJsonHandle handle, EsfJsonValue parent)**``    
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue parent``**::  
+Array Value.
+
+**``[OUT] None``**::  
+There is no output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonArrayCountReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|Integer
+|The number of elements retrieved. +
+Returns -1 if an error occurs within the function.
+|===
+
+* *Description* +
+** Retrieves the number of elements in the Array Value specified by **``parent``**, and returns the result. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+|-1
+|Failed to retrieve element count
+|As the error is generalized, no specific recovery method is provided.
+|===
+
+[#stringapi]
+==== String-Type API Details
+This group of APIs provides functionality for JSON String types.
+
+[#EsfJsonStringInit]
+===== EsfJsonStringInit
+* *Function* 
++
+Creates a String Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringInit(EsfJsonHandle handle, const char* str, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] const char* str``**::  
+String to be set.
+
+**``[OUT] EsfJsonValue* value``**::  
+The resulting String Value.
+
+* *Return Value* +
+[#_TableEsfJsonStringInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|===
+
+* *Description* +
+** Creates a String Value, sets the specified string **``str``**, and returns the result in **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|Handle is invalid
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|str is NULL
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+|Memory-Related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON-Related
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|Reacquire the handle and retry.
+|===
+
+
+[#EsfJsonStringInitFileIO]
+===== EsfJsonStringInitFileIO
+* *Function* 
++
+Creates a String Value associated with a File I/O-compatible Memory Manager handle.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringInitFileIO(EsfJsonHandle handle, EsfMemoryManagerHandle mem_handle, size_t mem_size, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**::  
+Handle of the File I/O-compatible Memory Manager containing the target string.
+
+**``[IN] size_t mem_size``**::  
+Number of characters to set. Do not include the NULL terminator.
+
+**``[OUT] EsfJsonValue* value``**::  
+The resulting String Value.
+
+* *Return Value* +
+[#_TableEsfJsonStringInitFileIOReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Creates a String Value using the string in **``mem_handle``** and returns it in **``value``**. +
+This API must be called after obtaining a handle via **``EsfJsonOpen``**. +
+
+** The **``mem_handle``** must be a handle already opened by **``EsfMemoryManagerFopen``**. +
+Set the seek position to the beginning of the data you want to use, and specify the size of the data to be written via the **``mem_size``** argument. The size must exclude the NULL terminator.
+
+** A placeholder string is assigned to the created String Value. If you call **``EsfJsonStringGet``**, the placeholder string will be returned. +
+When **``EsfJsonSerializeFileIO``** is invoked, the placeholder string will be replaced with the actual content of **``mem_handle``** in the serialized JSON.
+
+** No escaping or error checks are performed on the data embedded into the JSON from **``mem_handle``**. +
+Make sure **``mem_handle``** contains valid data.
+
+** Since the serialization process resets the seek position to what it was at String Value creation, the same **``mem_handle``** can be reused across multiple JSON Values.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|Handle is invalid
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|mem_handle is NULL or not File I/O-compatible
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+|Memory-Related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON-Related
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|Reacquire the handle and retry.
+|===
+
+[#EsfJsonStringInitHandle]
+===== EsfJsonStringInitHandle
+* *Function* 
++
+Creates a String Value associated with a Memory Manager (LargeHeap region) handle.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringInitHandle(EsfJsonHandle handle, EsfMemoryManagerHandle mem_handle, size_t mem_size, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**::  
+Handle of the Memory Manager containing the target string.
+
+**``[IN] size_t mem_size``**::  
+Number of characters to set. Do not include the NULL terminator.
+
+**``[OUT] EsfJsonValue* value``**::  
+The resulting String Value.
+
+* *Return Value* +
+[#_TableEsfJsonStringInitHandleReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+
+|kEsfJsonInternalError
+|Internal error
+|===
+
+* *Description* +
+** Creates a String Value using the string in **``mem_handle``** and returns it in **``value``**. +
+This API must be called after obtaining a handle via **``EsfJsonOpen``**. +
+
+** Specify the size of the data to write using **``mem_size``**. The size must exclude the NULL terminator.
+
+** A placeholder string is assigned to the created String Value. If **``EsfJsonStringGet``** is called, the placeholder string will be returned. +
+The data from **``mem_handle``** will replace the placeholder string in the serialized JSON when **``EsfJsonSerializeHandle``** is invoked.
+
+** No escaping or error checking is performed on the data embedded into the JSON from **``mem_handle``**. +
+Ensure that **``mem_handle``** contains valid data.
+
+** Since the serialization process resets the seek position to what it was at String Value creation, the same **``mem_handle``** can be reused across multiple JSON Values.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|Handle is invalid
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|mem_handle is NULL or invalid
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+|Memory-Related Error
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON-Related
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|Reacquire the handle and retry.
+|===
+
+
+[#EsfJsonStringGet]
+===== EsfJsonStringGet
+* *Function* 
++
+Retrieves the string from a String Value (no escape processing is applied).
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringGet(EsfJsonHandle handle, EsfJsonValue value, const char** str)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Target String Value.
+
+**``[OUT] const char** str``**::  
+The retrieved string.
+
+* *Return Value* +
+[#_TableEsfJsonStringGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueTypeError 
+|JSON type mismatch
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Retrieves the string contained in the String Value specified by **``value``**, and returns it via **``str``**. +
+This API must be called after obtaining a handle via **``EsfJsonOpen``**. +
+If the function does not return **``kEsfJsonSuccess``**, the contents of **``str``** will not be modified. +
+
+If the String Value was created using **``EsfJsonStringInitFileIO``** or **``EsfJsonStringSetFileIO``**, the string returned is not the data stored in the File I/O-capable Memory Manager handle, but a placeholder string used by this module. +
+
+Likewise, if the String Value was created using **``EsfJsonStringInitHandle``** or **``EsfJsonStringSetHandle``**, the returned string is the placeholder string used by this module, not the data in the Memory Manager handle (LargeHeap region).
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Error
+|kEsfJsonHandleError
+|Handle is invalid
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|str is NULL
+|Check the argument and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|JSON-Related
+|kEsfJsonValueTypeError
+|JSON type mismatch
+|Verify the JSON type and retry.
+|===
+
+
+[#EsfJsonStringSet]
+===== EsfJsonStringSet
+* *Function* 
++
+Sets a string (without escape processing) to the specified JSON Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringSet(EsfJsonHandle handle, EsfJsonValue value, const char* str)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Target JSON Value.
+
+**``[IN] const char* str``**::  
+String to be set.
+
+**``[OUT] None``**::  
+No output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonStringSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Sets the string **``str``** to the JSON Value specified by **``value``**. +
+This API must be called after acquiring a handle using **``EsfJsonOpen``**.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|str is NULL
+|Check the argument and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+|Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory on the user side.
+
+3+|JSON Related
+|kEsfJsonInternalError
+|Internal error (e.g., OSS failure)
+|Contact the appropriate personnel for investigation.
+|===
+
+
+[#EsfJsonStringSetFileIO]
+===== EsfJsonStringSetFileIO
+* *Function* 
++
+Overwrites the handle information of the File I/O-compatible Memory Manager set by EsfJsonStringInitFileIO.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringSetFileIO(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t mem_size)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Target JSON Value. Must be a value created using EsfJsonStringInitFileIO.
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**::  
+Handle for the File I/O-compatible Memory Manager containing the string to set.
+
+**``[IN] size_t mem_size``**::  
+Number of characters to set. Do not include the NULL terminator.
+
+* *Return Value* +
+[#_TableEsfJsonStringSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Sets the string **``mem_handle``** to the JSON Value specified by **``value``**. +
+The specified **``value``** must have been created using **``EsfJsonStringInitFileIO``**. +
+You must acquire a handle using **``EsfJsonOpen``** before calling this API. +
+
+** The **``mem_handle``** must be in an open state via **``EsfMemoryManagerFopen``**. +
+The seek position must be at the beginning of the data to write, and the data size must be specified in **``mem_size``** (excluding the NULL terminator).
+
+** A substitute string will be assigned to the generated String Value. When using **``EsfJsonStringGet``**, the substitute string is returned. +
+The data in **``mem_handle``** will be inserted into the JSON string upon calling **``EsfJsonSerializeFileIO``**, replacing the substitute string.
+
+** No escape processing or validation is performed on the data in **``mem_handle``**. +
+Ensure that valid data is set to **``mem_handle``**.
+
+** During serialization, the seek position is restored to where it was when the String Value was created, so the same **``mem_handle``** can be shared across multiple JSON Values.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|mem_handle is NULL or not File I/O compatible
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check memory capacity on the user side.
+
+3+| JSON Related
+|kEsfJsonValueLimit
+|Exceeded the maximum number of JSON Values per handle
+|Re-acquire a new handle and retry.
+
+3+| Internal Errors
+|kEsfJsonInternalError
+|Internal error such as OSS or module failure
+|Contact responsible personnel for investigation.
+|===
+
+
+[#EsfJsonStringSetHandle]
+===== EsfJsonStringSetHandle
+* *Function* 
++
+Overwrites the handle information of the Memory Manager (LargeHeap region) set by EsfJsonStringInitHandle.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonStringSetHandle(EsfJsonHandle handle, EsfJsonValue value, EsfMemoryManagerHandle mem_handle, size_t mem_size)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+JSON Value to be updated. Must have been created using EsfJsonStringInitHandle.
+
+**``[IN] EsfMemoryManagerHandle mem_handle``**::  
+Handle for the Memory Manager containing the string to set.
+
+**``[IN] size_t mem_size``**::  
+Number of characters to set. Do not include the NULL terminator.
+
+* *Return Value* +
+[#_TableEsfJsonStringSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Sets the string from **``mem_handle``** to the JSON Value specified by **``value``**. +
+The specified **``value``** must have been initialized with **``EsfJsonStringInitHandle``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+
+** Specify the data size in **``mem_size``** (excluding the NULL terminator).
+
+** A substitute string is used for the String Value. When using **``EsfJsonStringGet``**, this substitute string is returned. +
+The data in **``mem_handle``** is embedded into the JSON string during **``EsfJsonSerializeHandle``**, replacing the substitute string.
+
+** No escape or validation processing is applied to the data in **``mem_handle``**. +
+Make sure valid data is set in **``mem_handle``**.
+
+** During serialization, the seek position is restored to the location at the time of String Value creation, so the same **``mem_handle``** can be used for multiple JSON Values.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Acquire a valid handle and retry.
+|kEsfJsonInvalidArgument
+|mem_handle is NULL or invalid
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check memory capacity on the user side.
+
+3+| JSON Related
+|kEsfJsonValueLimit
+|Exceeded the maximum number of JSON Values per handle
+|Re-acquire a new handle and retry.
+
+3+| Internal Errors
+|kEsfJsonInternalError
+|Error in OSS, internal function, or other module
+|Contact the responsible party for investigation.
+|===
+
+[#numberapi]
+==== Number API Details
+This group of APIs provides functionality related to the JSON Number type.
+
+[#EsfJsonIntegerInit]
+===== EsfJsonIntegerInit
+* *Function* 
++
+Creates a Number Value using an integer.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonIntegerInit(EsfJsonHandle handle, int32_t num, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] int32_t num``**::  
+Integer value to be set.
+
+**``[OUT] EsfJsonValue* value``**::  
+The resulting Number Value.
+
+* *Return Value* +
+[#_TableEsfJsonIntegerInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|===
+
+* *Description* +
+** Creates a Number Value using the specified integer **``num``**, and stores the result in **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check memory capacity on the user side.
+
+3+| JSON Related
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|Obtain a new handle and retry.
+|===
+
+
+[#EsfJsonRealInit]
+===== EsfJsonRealInit
+* *Function* 
++
+Creates a Number Value using a floating-point value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonRealInit(EsfJsonHandle handle, double num, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] double num``**::  
+Floating-point value to be set.
+
+**``[OUT] EsfJsonValue* value``**::  
+The resulting Number Value.
+
+* *Return Value* +
+[#_TableEsfJsonRealInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error 
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|===
+
+* *Description* +
+** Creates a Number Value using the specified floating-point value **``num``**, and stores the result in **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+| Memory Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check memory capacity on the user side.
+
+3+| JSON Related
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+|Obtain a new handle and retry.
+|===
+
+
+[#EsfJsonIntegerGet]
+===== EsfJsonIntegerGet
+* *Function* 
++
+Retrieves an integer value from a Number Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonIntegerGet(EsfJsonHandle handle, EsfJsonValue value, int32_t* num)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+The Number Value to retrieve.
+
+**``[OUT] int32_t* num``**::  
+The retrieved integer value.
+
+* *Return Value* +
+[#_TableEsfJsonIntegerGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueTypeError 
+|JSON Type mismatch
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Retrieves the Number Value specified by **``value``** and stores the result in **``num``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+If the API returns any value other than **``kEsfJsonSuccess``**, **``num``** will remain unchanged. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|num is NULL
+|Check the argument and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+| JSON Related
+|kEsfJsonValueTypeError
+|JSON Type mismatch
+|Verify the JSON Type and retry.
+|===
+
+
+[#EsfJsonRealGet]
+===== EsfJsonRealGet
+* *Function* 
++
+Retrieves a floating-point value from a Number Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonRealGet(EsfJsonHandle handle, EsfJsonValue value, double* num)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+The Number Value to retrieve.
+
+**``[OUT] double* num``**::  
+The retrieved floating-point value.
+
+* *Return Value* +
+[#_TableEsfJsonRealGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueTypeError 
+|JSON Type mismatch
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Retrieves the Number Value specified by **``value``** and stores the result in **``num``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+If the API returns any value other than **``kEsfJsonSuccess``**, **``num``** will remain unchanged. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|num is NULL
+|Check the argument and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+| JSON Related
+|kEsfJsonValueTypeError
+|JSON Type mismatch
+|Verify the JSON Type and retry.
+|===
+
+
+[#EsfJsonIntegerSet]
+===== EsfJsonIntegerSet
+* *Function* 
++
+Sets an integer value to the specified JSON Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonIntegerSet(EsfJsonHandle handle, EsfJsonValue value, int32_t num)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Target JSON Value.
+
+**``[IN] int32_t num``**::  
+The integer value to set.
+
+**``[OUT] None``**::  
+No output parameters.
+
+* *Return Value* +
+[#_TableEsfJsonIntegerSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Sets the specified integer **``num``** to the JSON Value specified by **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|Invalid argument
+|Check the argument and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory and retry.
+
+3+| JSON-Related Errors
+|kEsfJsonInternalError
+|Internal error such as OSS or module failure
+|Contact the appropriate support personnel.
+|===
+
+
+[#EsfJsonRealSet]
+===== EsfJsonRealSet
+* *Function* 
++
+Sets a floating-point value to the specified JSON Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonRealSet(EsfJsonHandle handle, EsfJsonValue value, double num)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Target JSON Value.
+
+**``[IN] double num``**::  
+The floating-point number to set.
+
+**``[OUT] None``**::  
+No output parameters.
+
+* *Return Value* +
+[#_TableEsfJsonRealSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Sets the floating-point number **``num``** to the JSON Value specified by **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before using this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|Invalid argument
+|Check the argument and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory and retry.
+
+3+| JSON-Related Errors
+|kEsfJsonInternalError
+|Internal error such as OSS or module failure
+|Contact the appropriate support personnel.
+|===
+
+[#booleanapi]
+==== Boolean API Details
+This group of APIs provides functionality related to the JSON Boolean type.
+
+[#EsfJsonBooleanInit]
+===== EsfJsonBooleanInit
+* *Function* 
++
+Creates a Boolean Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonBooleanInit(EsfJsonHandle handle, bool boolean, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] bool boolean``**::  
+Boolean value to be set.
+
+**``[OUT] EsfJsonValue* value``**::  
+Resulting Boolean Value.
+
+* *Return Value* +
+[#_TableEsfJsonBooleanInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueLimit 
+|Exceeded the number of JSON Values per handle
+|===
+
+* *Description* +
+** Creates a Boolean Value using the specified Boolean **``boolean``** and stores the result in **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|value is NULL
+|Check the argument and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failed
+|Check available memory and retry.
+
+3+| JSON-Related Errors
+|kEsfJsonValueLimit 
+|Exceeded the number of JSON Values per handle
+|Obtain a new handle and retry.
+|===
+
+
+[#EsfJsonBooleanGet]
+===== EsfJsonBooleanGet
+* *Function* 
++
+Retrieves the Boolean value from a Boolean Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonBooleanGet(EsfJsonHandle handle, EsfJsonValue value, bool* boolean)**``
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Boolean Value.
+
+**``[OUT] bool* boolean``**::  
+Retrieved Boolean value.
+
+* *Return Value* +
+[#_TableEsfJsonBooleanGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonValueTypeError 
+|JSON type mismatch
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Retrieves the Boolean Value specified by **``value``** and stores the result in **``boolean``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+If this API returns anything other than **``kEsfJsonSuccess``**, **``boolean``** remains unchanged. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain a valid handle and retry.
+|kEsfJsonInvalidArgument
+|boolean is NULL
+|Check the argument and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+| JSON-Related Errors
+|kEsfJsonValueTypeError
+|JSON type mismatch
+|Check the JSON type and retry.
+|===
+
+
+[#EsfJsonBooleanSet]
+===== EsfJsonBooleanSet
+* *Function* 
++
+Sets a Boolean value to the specified JSON Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonBooleanSet(EsfJsonHandle handle, EsfJsonValue value, bool boolean)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+Target JSON Value.
+
+**``[IN] bool boolean``**::  
+Boolean value to set.
+
+**``[OUT] None``**::  
+None.
+
+* *Return Value* +
+[#_TableEsfJsonBooleanSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|JSON Value not found
+|===
+
+* *Description* +
+** Sets the specified Boolean value **``boolean``** to the JSON Value specified by **``value``**. +
+You must call **``EsfJsonOpen``** to obtain a handle before calling this API. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check the argument and retry.
+|kEsfJsonInvalidArgument
+|Invalid argument
+|Check the argument and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check memory capacity on the user side.
+
+3+| JSON-Related Errors
+|kEsfJsonInternalError
+|OSS or internal function error
+|Contact the maintainer due to internal error.
+|===
+
+[#nullapi]
+==== Null API Details
+This group of APIs provides functionality related to the JSON Null type.
+
+[#EsfJsonNullInit]
+===== EsfJsonNullInit
+* *Function* 
++
+Creates a Null Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonNullInit(EsfJsonHandle handle, EsfJsonValue* value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[OUT] EsfJsonValue* value``**::  
+The resulting Null Value.
+
+* *Return Value* +
+[#_TableEsfJsonNullInitReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueLimit 
+|Maximum number of JSON Values per handle exceeded
+|===
+
+* *Description* +
+** Creates a Null Value and returns the result in **``value``**. +
+The resulting value is set to **``NULL``**.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|``value`` is NULL
+|Check the argument and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check memory capacity on the user side.
+
+3+| JSON-Related Errors
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values for the handle
+|Reacquire the handle and retry.
+|===
+
+
+[#EsfJsonNullSet]
+===== EsfJsonNullSet
+* *Function* 
++
+Sets a JSON Value to Null.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonNullSet(EsfJsonHandle handle, EsfJsonValue value)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+JSON Value to be set.
+
+**``[OUT] None``**::  
+There is no output parameter.
+
+* *Return Value* +
+[#_TableEsfJsonNullSetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueNotFound
+|Error when JSON Value is not found
+|===
+
+* *Description* +
+** Sets the specified JSON Value to **``NULL``**. +
+This API requires a handle to be obtained beforehand by calling **``EsfJsonOpen``**.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonValueNotFound
+|JSON Value not found
+|Check the input parameter and retry.
+|kEsfJsonInvalidArgument
+|Invalid parameter
+|Check the input parameter and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Check available memory on the user side.
+
+3+| JSON-Related Errors
+|kEsfJsonInternalError
+|Internal function or OSS error
+|Contact the responsible developer for investigation.
+|===
+
+[#jsonvalueapi]
+==== JSON Value API Details
+This group of APIs provides functionality related to JSON Value.
+
+[#EsfJsonValueCopy]
+===== EsfJsonValueCopy
+* *Function* 
++
+Copies a JSON Value.
+
+* *Format* +
++
+``** enum EsfJsonErrorCode EsfJsonValueCopy(EsfJsonHandle handle, EsfJsonValue source, EsfJsonValue* destination)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue source``**::  
+Source JSON Value to be copied.
+
+**``[OUT] EsfJsonValue* destination``**::  
+Destination JSON Value.
+
+* *Return Value* +
+[#_TableEsfJsonValueCopyReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonOutOfMemory
+|Memory allocation error
+
+|kEsfJsonValueLimit 
+|Exceeded the maximum number of JSON Values per handle
+
+|kEsfJsonValueNotFound
+|Error when JSON Value is not found
+|===
+
+* *Description* +
+Copies the JSON Value specified by **``source``** and stores the result in **``destination``**. +
+A handle must be obtained in advance by calling **``EsfJsonOpen``**. +
+If the function returns anything other than **``kEsfJsonSuccess``**, the contents of **``destination``** will remain unchanged. +
+
+This function also supports JSON Values generated using **``EsfJsonStringInitFileIO``**, **``EsfJsonStringSetFileIO``**,  
+as well as those created by **``EsfJsonStringInitHandle``** and **``EsfJsonStringSetHandle``**.
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+3+| Argument Errors
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|destination is NULL
+|Check the argument and retry.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+
+3+| Memory-Related Errors
+|kEsfJsonOutOfMemory
+|Memory allocation failure
+|Verify memory capacity on the user side.
+
+3+| JSON-Related Errors
+|kEsfJsonValueLimit
+|Exceeded the maximum number of JSON Values per handle
+|Reacquire the handle and retry.
+|kEsfJsonInternalError
+|Internal function or OSS error
+|Contact the appropriate support personnel.
+|===
+
+
+[#EsfJsonValueTypeGet]
+===== EsfJsonValueTypeGet
+* *Function* 
++
+Retrieves the type of a JSON Value.
+
+* *Format* +
++
+``** EsfJsonErrorCode EsfJsonValueTypeGet(EsfJsonHandle handle, EsfJsonValue value, EsfJsonValueType* type)**``  
+
+* *Parameter Description* +
++
+**``[IN] EsfJsonHandle handle``**::  
+Handle for the JSON API.
+
+**``[IN] EsfJsonValue value``**::  
+JSON Value to check.
+
+**``[OUT] EsfJsonValueType* type``**::  
+The type of the JSON Value.
+
+* *Return Value* +
+[#_TableEsfJsonValueTypeGetReturnValue]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Name  |Description
+|kEsfJsonSuccess
+|Success
+
+|kEsfJsonHandleError
+|Handle not acquired
+
+|kEsfJsonInvalidArgument
+|Invalid argument
+
+|kEsfJsonInternalError
+|Internal error
+
+|kEsfJsonValueNotFound
+|Error when JSON Value is not found
+|===
+
+* *Description* +
+Retrieves the type of the JSON Value specified by **``value``**, and returns the result in **``type``**. +
+You must call **``EsfJsonOpen``** beforehand to obtain a handle. +
+If this function returns anything other than **``kEsfJsonSuccess``**, the contents of **``type``** will remain unchanged. +
+
+* Error Behavior and Recovery Method +
+
+.Error Description
+[width="100%", cols="20%,30%,50%",options="header"]
+|===
+|Return Value |Error Condition |Recovery Method
+|kEsfJsonHandleError
+|Invalid handle
+|Obtain the handle and retry.
+|kEsfJsonInvalidArgument
+|type is NULL
+|Check the argument and retry.
+|kEsfJsonInternalError
+|Internal or OSS error
+|Contact the appropriate support personnel.
+|kEsfJsonValueNotFound
+|JSON Value does not exist
+|Check the argument and retry.
+|===
+
+<<<
+
+
+== API Usage Examples
+=== Sequence
+
+* Serialize (Creating JSON)
+
+[{mermaid_block}]
+----
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+  autonumber
+  participant system as App
+  participant json as ESF (Parser JSON)
+  participant handle as JSON Handle
+
+  Note over system: Acquire handle
+  system ->> + json : EsfJsonOpen(EsfJsonHandle*)
+    json ->> handle : -
+    handle -->> json : -
+  json -->> - system : -
+
+  Note over system: Create JSON data<br>Example: Set string data into an object
+  system ->> + handle : EsfJsonStringInit(EsfJsonHandle, const char* data, EsfJsonValue* str)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonObjectInit(EsfJsonHandle, EsfJsonValue* parent)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonObjectSet(EsfJsonHandle, EsfJsonValue parent,<br> const char* key, EsfJsonValue str)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonSerialize(EsfJsonHandle, EsfJsonValue parent,<br> const char** serialized_str)
+  handle -->> - system : -
+
+  Note over system: Release handle<br>All related resources will be released
+  system ->> + handle : EsfJsonClose(EsfJsonHandle)
+  handle -->> - system : -
+----
+
+* Deserialize (Parsing a string)
+
+[{mermaid_block}]
+----
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+  autonumber
+  participant system as App
+  participant json as ESF (Parser JSON)
+  participant handle as JSON Handle
+
+  Note over system: Acquire handle
+  system ->> + json : EsfJsonOpen(EsfJsonHandle*)
+    json ->> handle : -
+    handle -->> json : -
+  json -->> - system : -
+
+  Note over system: Read JSON data<br>Example: Retrieve string data from an object
+  system ->> + handle : EsfJsonDeserialize(EsfJsonHandle, const char* str, EsfJsonValue* value)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonObjectGet(EsfJsonHandle, EsfJsonValue parent,<br> const char* key, EsfJsonValue* str)
+  handle -->> - system : -
+
+  system ->> + handle : EsfJsonStringGet(EsfJsonHandle, EsfJsonValue str, const char** data)
+  handle -->> - system : -
+
+  Note over system: Release handle<br>All related resources will be released
+  system ->> + handle : EsfJsonClose(EsfJsonHandle)
+  handle -->> - system : -
+----
+
+<<<
+
+
+== Notes and Component-specific Details
+
+=== Constraints
+* Thread Safety + 
+API calls to different handles are thread-safe. +
+API calls to the same handle are not thread-safe. +
+
+* Handle Lifetime +
+Be sure to release the handle after completing a series of JSON operations, as it holds internal resources.
+
+* JSON Value Lifetime +
+** JSON Values from different handles cannot be processed together.  
+** JSON Values associated with Objects or Arrays become invalid after Remove or Clear operations. +
+They also become invalid once the associated Object or Array is released.
+
+* JSON with Comments +
+Not supported.
+
+=== Resource Usage Overview
+==== OS Resources
+[#_TableOSResource]
+[width="100%", cols="15%,70%",options="header"]
+|===
+|OS Resource |Usage
+|Heap
+|Used for buffer allocation.
+|===
+
+==== HW Resources
+[#_TableHWResource]
+[width="100%", cols="15%,70%",options="header"]
+|===
+|HW Resource |Usage
+|Not used.
+|
+|===
+
+==== Dependent Blocks
+[#_TableDependentBlockResource]
+[width="100%", cols="15%,15%,70",options="header"]
+|===
+|HW Resource |Purpose |Remarks
+|OSAL
+|Heap
+|Used for memory allocation via OS resources.
+|===
+
+==== Unit Test Components
+[#_TableUnitTestResource]
+[width="100%", cols="15%,15%,70",options="header"]
+|===
+|Block Name |Type |Remarks
+|SystemApp
+|Driver
+|Calls JSON APIs.
+
+|OSAL
+|Stub
+|malloc/free
+|===
+
+=== Non-standard Extensions
+This module uses the following non-standard extensions. +
+
+[#_TableNonstandardExtensions]
+[width="100%", cols="15%,60%,25%",options="header"]
+|===
+|Extension |Description |Usage
+|**``##\\__VA_ARGS__``**
+|A GCC-specific non-standard extension to **``\\__VA_ARGS__``** +
+Expands variadic macros to allow handling of zero arguments.
+|Used in macros for switching log output destination.
+|===
+
+<<<
+
+== Open Source Software Used
+* parson  
+** A C-language JSON library used for JSON processing.
+
+<<<
+
+== References
+
+* JSON Standard Specification +
+** https://datatracker.ietf.org/doc/html/rfc8259[RFC 8259]
+
+* JSON OSS
+** C Language
+*** https://github.com/kgabis/parson[parson]
+*** https://github.com/akheron/jansson/tree/master[jansson]
+*** https://github.com/ibireme/yyjson[yyjson]
+
+** C++
+*** https://github.com/dropbox/json11[json11]
+*** https://github.com/nlohmann/json[nlohmann]
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%a",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|Initial release in ASCIIDoc format
+
+|v0.1.1
+|Incorporated feedback from detailed design
+
+* General
+  ** Fixed typos
+
+* API List
+  ** Data type definitions
+    *** **``SsfJsonValueType``** +
+      Removed **``kSsfJsonValueTypeError``** due to return value refinement
+
+    *** **``SsfJsonErrorCode``** +
+      Added **``kSSFJsonValueDuplicated``** for refined error handling
+
+  ** API Definitions
+    *** API Updates
+      **** Modified to return error codes for internal errors +
+        **``SsfJsonSerialize``** +
+        **``SsfJsonStringGet``** +
+        **``SsfJsonIntegerGet``** +
+        **``SsfJsonRealGet``** +
+        **``SsfJsonBooleanGet``** +
+        **``SsfJsonValueTypeGet``**
+
+      **** Added `kSSFJsonValueDuplicated` error +
+        **``SsfJsonObjectSet``** +
+        **``SsfJsonArrayAppend``** +
+        **``SsfJsonArrayReplace``**
+
+      **** Changed error return value from `0` to `-1` +
+        **``SsfJsonObjectCount``** +
+        **``SsfJsonArrayCount``**
+
+|v0.1.2
+|Naming updates
+
+* General
+  ** Renamed SSF to ESF
+
+* Data Type Definition
+  ** EsfJsonErrorCode
+    *** Renamed enum values from kEsfXXX to kEsfJsonXXX
+
+|v0.1.3
+|Added support for File I/O APIs
+
+* New APIs
+  ** EsfJsonSerializeSizeGet
+  ** EsfJsonSerializeFileIO
+  ** EsfJsonSerializeIncludesFileIO
+  ** EsfJsonStringInitFileIO
+  ** EsfJsonStringSetFileIO
+
+* Kconfig Additions
+  ** EXTERNAL_CODEC_JSON_BUFFER_SIZE
+  ** EXTERNAL_CODEC_JSON_MEM_HANDLE_MAX
+
+|v0.1.4
+|* Processing updates
+** Corrected return value of **``EsfJsonValueTypeGet``**  
+** Updated content of **``EsfJsonStringSetFileIO``**
+
+|v0.1.5
+|Synchronized spec with latest source and detailed design
+
+|v0.1.6
+|Added APIs for MemoryManager handle support
+
+  ** EsfJsonSerializeHandle
+  ** EsfJsonSerializeIncludesHandle
+  ** EsfJsonStringInitHandle
+  ** EsfJsonStringSetHandle
+|===

@@ -1,0 +1,640 @@
+= PL PowerManager (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document describes the specifications of PL PowerManager, which is one of the AITRIOS PL I/F layers.  
+The purpose of PL PowerManager is to handle power information retrieval and enabling USB data communication.
+
+<<<
+
+== Terminology
+
+[#_words]
+.Term List
+[options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. A layer that absorbs camera/OS differences.
+
+|I/F
+|Interface
+|===
+
+<<<
+
+== Component Description
+
+The purpose of the PL PowerManager layer is to retrieve power information and configure USB communication settings.  
+This module is not affected by camera differences and can absorb those differences depending on the build configuration.
+
+=== Component Overview
+
+The following is a software configuration diagram centered on this block.
+
+.Overview Diagram
+image::./images/pl_power_manager_layer.png[scaledwidth="100%",align="center"]
+
+<<<
+
+=== Detailed Component Description
+
+The following shows an example of the usage sequence for PL PowerManager.  
+After executing PlPowerMgrInitialize, the upper layer can use various control functions through the PL PowerManager APIs.
+
+[#_button_seq]
+.Sequence Overview
+image::./images/pl_power_manager_seq.png[scaledwidth="100%",align="center"]
+
+==== Dependent Blocks (for internal PL use)
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Link
+|HAL I2C
+|Used for retrieving power supply types and configuring USB communication
+|https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/hal/i2c/hal_i2c.adoc
+|===
+
+<<<
+
+=== State Transitions
+
+The possible states of PL PowerManager are listed in <<#_TableStates>>.
+
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|PL_READY
+|PL PowerManager is not initialized.
+
+|PL_RUNNING
+|PL PowerManager is initialized.
+
+|===
+
+The state transitions for PL PowerManager are shown in <<#_FigureState>>.  
+Note that no state transitions occur when an error occurs during API execution.
+
+[#_FigureState]
+.State Transition Diagram
+image::./images/pl_power_manager_state.png[scaledwidth="100%",align="center"]
+
+<<#_TableStateTransition>> shows whether each API is accepted in a given state and the resulting state after successful execution.  
+The state names shown in the table represent the destination states after API execution, indicating that the API can be called in that state.  
+"×" indicates that the API is not accepted in that state, and calling the API will return an error without causing any state transition.  
+For error details, refer to <<#_PlErrCode, PlErrCode>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,30%,30%"]
+|===
+2.2+| 2+|State
+|PL_READY |PL_RUNNING
+.14+|API Name
+
+|``**PlPowerMgrInitialize**``
+|PL_RUNNING
+|×
+
+|``**PlPowerMgrFinalize**``
+|×
+|PL_READY
+
+|``**PlPowerMgrGetSupplyType**``
+|×
+|PL_RUNNING
+
+|``**PlPowerMgrSetupUsb**``
+|×
+|PL_RUNNING
+
+|``**PlPowerMgrDisableUsb**``
+|×
+|PL_RUNNING
+
+|===
+<<<
+
+=== Component Function List
+
+<<#_TableFunction>> shows the list of functions.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section
+
+|Retrieve Power Supply Type
+|Retrieves the type of power supply.
+|<<#_Function1>>
+
+|Enable USB Communication
+|Enables USB communication.
+|<<#_Function2>>
+
+|===
+
+<<<
+
+=== Component Function Descriptions
+
+[#_Function1]
+==== Retrieve Power Supply Type
+
+Function Overview::  
+Retrieves the type of power supply.
+Preconditions::  
+PL PowerManager must be initialized.
+Function Details::  
+For details, refer to <<#_PlPowerMgrGetSupplyType, PlPowerMgrGetSupplyType>>.
+
+Detailed Behavior::  
+For details, refer to <<#_PlPowerMgrGetSupplyType, PlPowerMgrGetSupplyType>>.
+
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlPowerMgrGetSupplyType, PlPowerMgrGetSupplyType>>.
+
+Considerations::  
+None
+
+[#_Function2]
+==== Enable USB Communication
+
+Function Overview::  
+Enables USB communication.
+Preconditions::  
+PL PowerManager must be initialized.
+Function Details::  
+For details, refer to <<#_PlPowerMgrSetupUsb, PlPowerMgrSetupUsb>>.
+Detailed Behavior::  
+For details, refer to <<#_PlPowerMgrSetupUsb, PlPowerMgrSetupUsb>>.
+Behavior on Error and Recovery Method::  
+For details, refer to <<#_PlPowerMgrSetupUsb, PlPowerMgrSetupUsb>>.
+
+Considerations::  
+None
+
+
+=== Component Non-Functional Requirements List
+
+<<#_TableNonFunction>> shows the list of non-functional requirements.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="90%,10%",options="header"]
+|===
+|Requirement |Section
+
+|Maximum Stack Usage
+|<<#_NonFunctionStack, 3.7.1>>
+
+|Maximum Normal Heap Usage
+|<<#_NonFunctionNormalHeap, 3.7.2>>
+
+|Static Data Usage
+|<<#_NonFunctionStatic, 3.7.3>>
+
+|Performance
+|<<#_NonFunctionPerformance, 3.7.4>>
+|===
+
+=== Component Non-Functional Requirements Description
+
+[#_NonFunctionStack]
+==== Maximum Stack Usage
+512 bytes
+
+[#_NonFunctionNormalHeap]
+==== Maximum Normal Heap Usage
+0 bytes (not used)
+
+[#_NonFunctionStatic]
+==== Maximum Static Data Usage
+64 bytes
+
+[#_NonFunctionPerformance]
+==== Performance
+*** PlPowerMgrInitialize    : CONFIG_EXTRENAL_PL_POWER_MGR_CC_CTRL_ENABLE_WAIT_MS[ms] = 1 second  
+*** PlPowerMgrFinalize      : Less than 1 ms  
+*** PlPowerMgrGetSupplyType : Less than 1 ms  
+*** PlPowerMgrSetupUsb      : Less than 1 ms  
+
+Note: The above values do not include the processing time of lower modules.
+
+<<<
+
+== API Specifications
+=== Definition List
+==== Data Type List
+<<#_TableDataType>> shows the list of data types.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview |Section
+|enum PlErrCode
+|Enumeration that defines the result of API execution.
+|<<#_PlErrCode, 4.3.1>>
+
+|enum PlPowerMgrSupplyType
+|Enumeration that defines the type of power supply.
+|<<#_PlPowerMgrSupplyType, 4.3.2>>
+|===
+
+==== API List
+
+The list of APIs is shown in <<#_TablePublicAPI>> and <<#_TablePrivateAPI>>.
+
+[#_TablePublicAPI]
+.APIs Directly Usable from Upper Layers
+None
+
+[#_TablePrivateAPI]
+.APIs Used Only Internally by HAL
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Overview |Section
+|PlPowerMgrInitialize
+|Performs initialization processing for PL PowerManager.
+|<<#_PlPowerMgrInitialize, 4.4.1>>
+|PlPowerMgrFinalize
+|Performs finalization processing for PL PowerManager.
+|<<#_PlPowerMgrFinalize, 4.4.2>>
+|PlPowerMgrGetSupplyType
+|Retrieves the type of power supply.
+|<<#_PlPowerMgrGetSupplyType, 4.3.3>>
+|PlPowerMgrSetupUsb
+|Enables USB communication.
+|<<#_PlPowerMgrSetupUsb, 4.3.4>>
+|===
+
+<<<
+
+=== Build Configuration
+
+[#_BuildConfig]
+==== ESP32S3
+
+* *Format* +
+[source, C]
+....
+CONFIG_EXTRENAL_PL_POWER_MGR_CC_CTRL_ENABLE_WAIT_MS=1000
+....
+
+[#_BuildConfig_table]
+.Description of BuildConfig
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|CONFIG_EXTRENAL_PL_POWER_MGR_CC_CTRL_ENABLE_WAIT_MS
+|Wait time after CC Ctrl startup [ms] (for internal PL use).
+|===
+
+<<<
+=== Data Type Definitions
+[#_PlErrCode]
+==== PlErrCode
+An enumeration that defines the result of API execution. (T.B.D.)
+
+[#_PlPowerMgrSupplyType]
+==== PlPowerMgrSupplyType
+An enumeration that defines the type of power supply.
+
+* *Format* +
+[source, C]
+....
+typedef enum {
+  kPlPowerMgrSupplyTypePoE = 0,
+  kPlPowerMgrSupplyTypeBC12,
+  kPlPowerMgrSupplyTypeCC15A,
+  kPlPowerMgrSupplyTypeNotSupport,
+  kPlPowerMgrSupplyTypeMax
+} PlPowerMgrSupplyType;
+....
+
+<<<
+
+=== API Descriptions
+
+[#_PlPowerMgrInitialize]
+==== PlPowerMgrInitialize
+
+* *Function* +  
+Performs initialization processing for PL PowerManager.
+
+* *Format* +  
+[source, C]
+....
+PlErrCode PlPowerMgrInitialize(void)
+....
+
+* *Argument Description* +  
+-
+
+* *Return Value* +  
+Returns one of the values of PlErrCode depending on the result of execution.
+
+* *Description* +  
+** Performs initialization processing for PL PowerManager.
+
+[#_PlPowerMgrInitialize]
+.API Detailed Information
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Allowed
+|Multi-thread Access
+|Allowed
+|Multi-task Access
+|Allowed
+|Blocking Behavior
+|Blocks.  
+If another PL PowerManager API is running in a different context, this API waits until it completes.
+|===
+
+[#_PlPowerMgrInitialize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+
+|kPlInvalidState (tentative)
+|PlPowerMgrInitialize has already been executed
+|-
+|No impact
+|Not required
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInternal (tentative)
+|HAL I2C error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlPowerMgrFinalize]
+==== PlPowerMgrFinalize
+* *Function* +  
+Performs finalization processing for PL PowerManager.
+
+* *Format* +  
+[source, C]
+....
+PlErrCode PlPowerMgrFinalize(void)
+....
+
+* *Argument Description* +  
+-
+
+* *Return Value* +  
+Returns one of the values of PlErrCode depending on the result of execution.
+
+* *Description* +  
+** Performs finalization processing for PL PowerManager.  
+** This API can be used only after PlPowerMgrInitialize has been executed.
+
+[#_PlPowerMgrFinalize]
+.API Detailed Information
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Not allowed
+|Multi-thread Access
+|Allowed
+|Multi-task Access
+|Allowed
+|Blocking Behavior
+|Blocks.  
+If another PL PowerManager API is running in a different context, this API waits until it completes.
+|===
+
+[#_PlPowerMgrFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+
+|kPlInvalidState (tentative)
+|PlPowerMgrInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInternal (tentative)
+|HAL I2C error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlPowerMgrGetSupplyType]
+==== PlPowerMgrGetSupplyType
+* *Function* +  
+Retrieves the type of power supply.
+
+* *Format* +  
+[source, C]
+....
+PlErrCode PlPowerMgrGetSupplyType(PlPowerMgrSupplyType *type)
+....
+
+* *Argument Description* +  
+**[OUT] <<_PlPowerMgrSupplyType, PlPowerMgrSupplyType>> *type**::  
+The retrieved power supply type. Returns an error if NULL is passed.
+
+* *Return Value* +  
+Returns one of the values of PlErrCode depending on the result of execution.
+
+* *Description* +  
+** Retrieves the power supply type.  
+** This API can be used only after PlPowerMgrInitialize has been executed.
+
+[#_PlPowerMgrGetSupplyType]
+.API Detailed Information
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Allowed
+|Multi-thread Access
+|Allowed
+|Multi-task Access
+|Allowed
+|Blocking Behavior
+|Blocks.  
+If another PL PowerManager API is running in a different context, this API waits until it completes.
+|===
+
+[#_PlPowerMgrGetSupplyType_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+|kPlInvalidState (tentative)
+|PlPowerMgrInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam (tentative)
+|Value retrieval error
+|-
+|No impact
+|Not required
+
+|kPlErrInternal (tentative)
+|HAL I2C error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlPowerMgrSetupUsb]
+==== PlPowerMgrSetupUsb
+* *Function* +  
+Enables USB communication.
+
+* *Format* +  
+[source, C]
+....
+PlErrCode PlPowerMgrSetupUsb(void)
+....
+
+* *Argument Description* +  
+-
+
+* *Return Value* +  
+Returns one of the values of PlErrCode depending on the result of execution.
+
+* *Description* +  
+** Enables USB communication.  
+** This API can be used only after PlPowerMgrInitialize has been executed.
+
+[#_PlPowerMgrSetupUsb]
+.API Detailed Information
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Item |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Reentrancy
+|Allowed
+|Multi-thread Access
+|Allowed
+|Multi-task Access
+|Allowed
+|Blocking Behavior
+|Blocks.  
+If another PL PowerManager API is running in a different context, this API waits until it completes.
+|===
+
+[#_PlPowerMgrSetupUsb_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameter Status |System State After Error |Recovery Method
+
+|kPlInvalidState (tentative)
+|PlPowerMgrInitialize has not been executed
+|-
+|No impact
+|Not required
+
+|kPlErrLock / kPlErrUnlock (tentative)
+|Blocking error
+|-
+|No impact
+|Not required
+
+|kPlErrInternal (tentative)
+|HAL I2C error
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+
+== Example Usage of APIs
+
+=== Example of Retrieving Power Supply Type and Enabling/Disabling USB Communication
+.Example of Retrieving Power Supply Type and Enabling/Disabling USB Communication  
+image::./images/pl_power_manager_example.png[scaledwidth="100%",align="center"]
+
+== List of OSS Used  
+None
+
+<<<
+
+== References  
+None
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes  
+|0.0.1
+|Initial version
+|===

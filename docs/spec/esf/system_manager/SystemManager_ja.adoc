@@ -1,0 +1,2458 @@
+= SystemManager 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.9
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書はAITRIOSのSystemManagerを定義します。
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+特にありません。
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+Appに対して特定のデータへのアクセスAPIを提供します。
+
+<<<
+
+=== コンポーネントの詳細説明
+AppからのAPIコールを受けて、ParameterStorageManagerへのデータ取得、設定を行います。
+
+.コンポーネント図
+[source,mermaid]
+....
+graph TB;
+direction LR
+
+App --> |Get/Set API| SystemManager
+SystemManager --> |データ取得/保存| ParameterStorageManager
+....
+
+<<<
+
+=== 状態遷移
+SystemManagerは状態を持ちません。
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|データ取得機能
+|指定されたデータをParameterStorageManagerから取得する機能です。
+|<<#_データ取得機能>>
+
+|データ設定機能
+|指定されたデータをParameterStorageManagerに設定する機能です。
+|<<#_データ設定機能>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_データ取得機能]
+==== データ取得機能
+* 機能概要
+    ** 指定されたデータをParameterStorageManagerから取得する機能です。
+* 前提条件
+    ** ParameterStorageManagerが初期化されていることです。
+* 機能詳細
+    ** 詳細挙動
+        *** ParameterStorageManagerをオープンしてデータを取得し、ParameterStorageManagerをクローズしてデータを返します。
+    ** エラー時の挙動、復帰方法
+        *** ParameterStorageManagerのAPI呼び出しに失敗した場合はエラーを返します。
+        *** ParameterStorageManagerから取得したデータが空だった場合、コンフィグ（<<#_Config一覧>>）によって定義されるデフォルト値を返します。ParameterStorageManagerから取得したデータが空であることが許されないデータに関しては、デフォルト値のコンフィグは存在せず、エラーを返します。
+
+[#_データ設定機能]
+==== データ設定機能
+* 機能概要
+    ** 指定されたデータをParameterStorageManagerに設定する機能です。
+* 前提条件
+    ** ParameterStorageManagerが初期化されていることです。
+* 機能詳細
+    ** 詳細挙動
+        *** ParameterStorageManagerをオープンしてデータを設定し、ParameterStorageManagerをクローズします。
+    ** エラー時の挙動、復帰方法
+        *** ParameterStorageManagerのAPI呼び出しに失敗した場合はエラーを返します。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|連続処理実行時間
+|最大でかかる処理時間です。
+|<<#_連続処理実行時間>>
+
+|スタックメモリ使用量
+|最大で使用するスタックメモリ量です。
+|<<#_スタックメモリ使用量>>
+
+|ヒープメモリ使用量
+|最大で使用するヒープメモリ量です。
+|<<#_ヒープメモリ使用量>>
+
+|静的メモリ使用量
+|使用する静的メモリ量です。
+|<<#_静的メモリ使用量>>
+
+|スレッド使用数
+|使用するスレッド数です。
+|<<#_スレッド使用数>>
+
+|===
+
+<<<
+
+[#_コンポーネントの非機能要件説明]
+=== コンポーネントの非機能要件説明
+[#_連続処理実行時間]
+==== 連続処理実行時間
+本コンポーネントの処理時間は最大10msです。 +
+他モジュールに依存するデータアクセスやサービス設定の所要時間は、上記処理時間から除きます。
+
+[#_スタックメモリ使用量]
+==== スタックメモリ使用量
+最大で1024Byteです。
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+ヒープメモリを使用しません。
+
+[#_静的メモリ使用量]
+==== 静的メモリ使用量
+静的メモリを使用しません。
+
+[#_スレッド使用数]
+==== スレッド使用数
+スレッドを使用しません。
+
+<<<
+
+== API仕様
+=== 定義一覧
+
+==== Config一覧
+[#_Config一覧]
+.Config一覧
+[width="100%", options="header"]
+|===
+|Config名 |概要  |デフォルト値 
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_URL
+|ParameterStorageManagerからDPS URLを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_COMMON_NAME
+|ParameterStorageManagerからCommon Nameを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_SCOPE_ID
+|ParameterStorageManagerからDPS Scope IDを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_PROJECT_ID
+|ParameterStorageManagerからProject IDを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_REGISTER_TOKEN
+|ParameterStorageManagerからRegister Tokenを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_URL
+|ParameterStorageManagerからEVP Hub URLを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_PORT
+|ParameterStorageManagerからEVP Hub Portを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_IOT_PLATFORM
+|ParameterStorageManagerからIoT Platformを読みだせなかった際に返すデフォルト値です。
+|``""``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS
+a|
+ParameterStorageManagerからEVP TLSを読みだせなかった際に返すデフォルト値です。
+
+* ``"0"``:TLS有効
+* ``"1"``:TLS無効
+
+|``"0"``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_QR_MODE_TIMEOUT_VALUE
+|ParameterStorageManagerからQRモードタイムアウト値を読みだせなかった際に返すデフォルト値です。
+|``0``
+
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG
+a|
+ParameterStorageManagerからInitialSettingFlagを読みだせなかった際に返すデフォルト値です。
+
+* ``0``:初期設定未実施
+* ``1``:初期設定済み
+
+|``0``
+
+|===
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfSystemManagerResult
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfSystemManagerResult>>
+
+|ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE
+|Device Manifestのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE
+|Dps URLのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE
+|Common Nameのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE
+|Dps Scope IDのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE
+|Project IDのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE
+|Register Tokenのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE
+|EVP Hub URLのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE
+|EVP Hub Portのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE
+|EVP IoT Platformのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE>>
+
+|EsfSystemManagerEvpTlsValue
+|EVP TLSの設定値を定義する列挙型です。
+|<<#_EsfSystemManagerEvpTlsValue>>
+
+|ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE
+|Root証明書のデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE
+|Root証明書ハッシュ値のデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE>>
+
+|EsfSystemManagerHwInfo
+|デバイスに設定されたHW情報に関するデータをまとめた構造体です。
+|<<#_EsfSystemManagerHwInfo>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+|HwInfo Model Nameのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+|HwInfo Manufacturer Nameのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+|HwInfo Product Serial Numberのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+|HwInfo Serial Numberのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+|HwInfo AIISP Chip IDのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+|HwInfo Sensor IDのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE
+|HwInfo Application Processor Typeのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE>>
+
+|ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+|HwInfo Sensor Model Nameのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>
+
+|EsfSystemManagerInitialSettingFlag
+|InitialSettingFlagの設定値を定義する列挙型です。
+|<<#_EsfSystemManagerInitialSettingFlag>>
+
+|===
+
+[#_API一覧]
+==== API一覧
+APIの一覧を示します。
+
+[#_GetAPI]
+.取得用API一覧
+[width="100%",options="header"]
+|===
+|API名 |概要  |空データ取得時に返す値|節番号
+|EsfSystemManagerGetDeviceManifest
+|Device Manifestを取得します。
+|エラー
+|<<#_EsfSystemManagerGetDeviceManifest>>
+
+|EsfSystemManagerGetProjectId
+|Project IDを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_PROJECT_ID
+|<<#_EsfSystemManagerGetProjectId>>
+
+|EsfSystemManagerGetDpsUrl
+|Dps URLを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_URL
+|<<#_EsfSystemManagerGetDpsUrl>>
+
+|EsfSystemManagerGetCommonName
+|Common Nameを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_COMMON_NAME
+|<<#_EsfSystemManagerGetCommonName>>
+
+|EsfSystemManagerGetDpsScopeId
+|Dps Scope IDを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_SCOPE_ID
+|<<#_EsfSystemManagerGetDpsScopeId>>
+
+|EsfSystemManagerGetRegisterToken
+|Register Tokenを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_REGISTER_TOKEN
+|<<#_EsfSystemManagerGetRegisterToken>>
+
+
+|EsfSystemManagerGetEvpHubUrl
+|EVP Hub URLを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_URL
+|<<#_EsfSystemManagerGetEvpHubUrl>>
+
+
+|EsfSystemManagerGetEvpHubPort
+|EVP Hub Portを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_PORT
+|<<#_EsfSystemManagerGetEvpHubPort>>
+
+|EsfSystemManagerGetEvpIotPlatform
+|EVP IoT Platformを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_IOT_PLATFORM
+|<<#_EsfSystemManagerGetEvpIotPlatform>>
+
+|EsfSystemManagerGetEvpTls
+|EVP TLSを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS
+|<<#_EsfSystemManagerGetEvpTls>>
+
+
+|EsfSystemManagerGetRootCa
+|Root証明書を取得します。
+|エラー
+|<<#_EsfSystemManagerGetRootCa>>
+
+|EsfSystemManagerGetRootCaHash
+|Root証明書ハッシュ値を取得します。
+|エラー
+|<<#_EsfSystemManagerGetRootCaHash>>
+
+|EsfSystemManagerGetQrModeTimeoutValue
+|QRモードタイムアウト値を取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_QR_MODE_TIMEOUT_VALUE
+|<<#_EsfSystemManagerGetQrModeTimeoutValue>>
+
+|EsfSystemManagerGetInitialSettingFlag
+|InitialSettingFlagを取得します。
+|CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG
+|<<#_EsfSystemManagerGetInitialSettingFlag>>
+
+|EsfSystemManagerGetHwInfo
+|デバイスに設定されたHW情報を取得します。
+| 空データを返す
+|<<#_EsfSystemManagerGetHwInfo>>
+
+|===
+
+
+
+[#_SetAPI]
+.設定用API一覧
+[width="100%",options="header"]
+|===
+|API名 |概要 |節番号
+
+|EsfSystemManagerSetDpsUrl
+|Dps URLを設定します。
+|<<#_EsfSystemManagerSetDpsUrl>>
+
+|EsfSystemManagerSetCommonName
+|Common Nameを設定します。
+|<<#_EsfSystemManagerSetCommonName>>
+
+|EsfSystemManagerSetDpsScopeId
+|Dps Scope IDを設定します。
+|<<#_EsfSystemManagerSetDpsScopeId>>
+
+|EsfSystemManagerSetProjectId
+|Project IDを設定します。
+|<<#_EsfSystemManagerSetProjectId>>
+
+|EsfSystemManagerSetRegisterToken
+|Register Tokenを設定します。
+|<<#_EsfSystemManagerSetRegisterToken>>
+
+|EsfSystemManagerSetEvpHubUrl
+|EVP Hub URLを設定します。
+|<<#_EsfSystemManagerSetEvpHubUrl>>
+
+|EsfSystemManagerSetEvpHubPort
+|EVP Hub Portを設定します。
+|<<#_EsfSystemManagerSetEvpHubPort>>
+
+|EsfSystemManagerSetEvpTls
+|EVP TLSを設定します。
+|<<#_EsfSystemManagerSetEvpTls>>
+
+|EsfSystemManagerSetEvpIotPlatform
+|EVP IoT Platformを設定します。
+|<<#_EsfSystemManagerSetEvpIotPlatform>>
+
+|EsfSystemManagerSetQrModeTimeoutValue
+|QRモードタイムアウト値を保存します。
+|<<#_EsfSystemManagerSetQrModeTimeoutValue>>
+
+|EsfSystemManagerSetInitialSettingFlag
+|InitialSettingFlagを設定します。
+|<<#_EsfSystemManagerSetInitialSettingFlag>>
+
+|===
+
+
+<<<
+
+=== データ型定義
+[#_EsfSystemManagerResult]
+==== EsfSystemManagerResult
+APIの実行結果を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerResultOk,
+  kEsfSystemManagerResultParamError,
+  kEsfSystemManagerResultInternalError,
+  kEsfSystemManagerResultOutOfRange,
+  kEsfSystemManagerResultEmptyData,
+} EsfSystemManagerResult;
+....
+
+
+* *値* 
+
+[#_TableReturnValue]
+.EsfSystemManagerResultの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfSystemManagerResultOk
+|処理に成功しました。
+
+|kEsfSystemManagerResultParamError
+|引数が無効な値です。
+
+|kEsfSystemManagerResultInternalError
+|内部でエラーが発生しました。
+
+|kEsfSystemManagerResultOutOfRange
+|データサイズが範囲外です。
+
+|kEsfSystemManagerResultEmptyData
+|取得対象のデータが格納されていません。
+
+|===
+
+[#_ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE
+Device Manifestの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE (32768)
+....
+
+[#_ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE
+Dps URLの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE (256)
+....
+
+[#_ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE
+Common Nameの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE (256)
+....
+
+[#_ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE
+Dps Scope IDの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE (17)
+....
+
+[#_ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE
+Project IDの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE (33)
+....
+
+[#_ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE
+Register Tokenの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE (45)
+....
+
+[#_ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE
+EVP Hub URLの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE (65)
+....
+
+[#_ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE
+EVP Hub Portの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE (6)
+....
+
+[#_ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE
+EVP IoT Platformの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE (33)
+....
+
+[#_EsfSystemManagerEvpTlsValue]
+==== EsfSystemManagerEvpTlsValue
+EVP TLSの設定値を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+    kEsfSystemManagerEvpTlsDisable,
+    kEsfSystemManagerEvpTlsEnable
+} EsfSystemManagerEvpTlsValue;
+....
+
+* *値* 
+
+.EsfSystemManagerEvpTlsValueの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfSystemManagerEvpTlsDisable
+|EVP TLS無効
+
+|kEsfSystemManagerEvpTlsEnable
+|EVP TLS有効
+|===
+
+
+[#_ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE
+Root証明書の最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE (393216)
+....
+
+[#_ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE
+Root証明書ハッシュ値の最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE (512)
+....
+
+[#_EsfSystemManagerHwInfo]
+==== EsfSystemManagerHwInfo
+デバイスに設定されたHW情報に関するデータをまとめた構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct EsfSystemManagerHwInfo{
+  char model_name[ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE];
+  char manufacturer_name[ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE];
+  char product_serial_number[ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE];
+  char serial_number[ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE];
+  char aiisp_chip_id[ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE];
+  char sensor_id[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE];
+  char application_processor_type[ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE];
+  char sensor_model_name[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];
+} EsfSystemManagerHwInfo;
+....
+
+* *値* 
+
+.EsfSystemManagerHwInfoの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|model_name
+|Model Name
+
+|manufacturer_name
+|Manufacturer Name
+
+|product_serial_number
+|Product Serial Number
+
+|serial_number
+|Serial Number
+
+|aiisp_chip_id
+|Aiisp Chip Id
+
+|sensor_id
+|Sensor ID
+
+|application_processor_type
+|Application Processor Type
+
+|sensor_model_name
+|Sensor Model Name
+|===
+
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+HwInfo Model Nameのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE (33)
+....
+
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+HwInfo Manufacturer Nameのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE (33)
+....
+
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+HwInfo Product Serial Numberのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE (33)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+HwInfo Serial Numberのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE (64)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+HwInfo AIISP Chip IDのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE (37)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+HwInfo Sensor IDのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE (37)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE
+HwInfo Application Processor Typeのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE (64)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+HwInfo Sensor Model Nameのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+....
+
+[#_EsfSystemManagerInitialSettingFlag]
+==== EsfSystemManagerInitialSettingFlag
+InitialSettingFlagの設定値を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerInitialSettingNotCompleted,
+  kEsfSystemManagerInitialSettingCompleted
+} EsfSystemManagerInitialSettingFlag;
+....
+
+* *値* 
+
+.EsfSystemManagerInitialSettingFlagの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfSystemManagerInitialSettingNotCompleted
+|初期設定未実施
+
+|kEsfSystemManagerInitialSettingCompleted
+|初期設定済み
+|===
+
+
+<<<
+
+=== API定義
+
+[#_EsfSystemManagerGetDeviceManifest]
+==== EsfSystemManagerGetDeviceManifest
+* *機能* 
++
+Device Manifestを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetDeviceManifest( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したDevice Manifest（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効データサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Device Manifestの最大サイズ``ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Device Manifestを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetDeviceManifestの戻り値の説明]
+.EsfSystemManagerGetDeviceManifestの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|kEsfSystemManagerResultEmptyData
+|ParameterStorageManagerにDevice Manifestが格納されていない場合です。
+|変更されません。
+|正しくDevice Manifestを書き込んでください。
+
+|===
+
+
+[#_EsfSystemManagerGetDpsUrl]
+==== EsfSystemManagerGetDpsUrl
+* *機能* 
++
+Dps URLを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetDpsUrl( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したDps URL（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Dps URLの最大サイズ``ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Dps URLを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetDpsUrlの戻り値の説明]
+.EsfSystemManagerGetDpsUrlの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetDpsUrl]
+==== EsfSystemManagerSetDpsUrl
+* *機能* 
++
+Dps URLを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetDpsUrl( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するDps URLの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Dps URLの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetDpsUrlの戻り値の説明]
+.EsfSystemManagerSetDpsUrlの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetCommonName]
+==== EsfSystemManagerGetCommonName
+* *機能* 
++
+Common Nameを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetCommonName( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したCommon Name（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Common Nameの最大サイズ``ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Common Nameを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetCommonNameの戻り値の説明]
+.EsfSystemManagerGetCommonNameの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetCommonName]
+==== EsfSystemManagerSetCommonName
+* *機能* 
++
+Common Nameを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetCommonName( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するCommon Nameの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Common Nameの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetCommonNameの戻り値の説明]
+.EsfSystemManagerSetCommonNameの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetDpsScopeId]
+==== EsfSystemManagerGetDpsScopeId
+* *機能* 
++
+Dps Scope IDを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetDpsScopeId( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したDps Scope ID（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Dps Scope IDの最大サイズ``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Dps Scope IDを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetDpsScopeIdの戻り値の説明]
+.EsfSystemManagerGetDpsScopeIdの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetDpsScopeId]
+==== EsfSystemManagerSetDpsScopeId
+* *機能* 
++
+Dps Scope IDを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetDpsScopeId( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するDps Scope IDの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Dps Scope IDの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetDpsScopeIdの戻り値の説明]
+.EsfSystemManagerSetDpsScopeIdの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetProjectId]
+==== EsfSystemManagerGetProjectId
+* *機能* 
++
+Project IDを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetProjectId( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したProject ID（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Project IDの最大サイズ``ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Project IDを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetProjectIdの戻り値の説明]
+.EsfSystemManagerGetProjectIdの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetProjectId]
+==== EsfSystemManagerSetProjectId
+* *機能* 
++
+Project IDを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetProjectId( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するProject IDの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Project IDの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetProjectIdの戻り値の説明]
+.EsfSystemManagerSetProjectIdの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetRegisterToken]
+==== EsfSystemManagerGetRegisterToken
+* *機能* 
++
+Register Tokenを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetRegisterToken( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したRegister Token（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Register Tokenの最大サイズ``ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Register Tokenを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetRegisterTokenの戻り値の説明]
+.EsfSystemManagerGetRegisterTokenの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetRegisterToken]
+==== EsfSystemManagerSetRegisterToken
+* *機能* 
++
+Register Tokenを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetRegisterToken( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するRegister Tokenの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Register Tokenの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetRegisterTokenの戻り値の説明]
+.EsfSystemManagerSetRegisterTokenの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetEvpHubUrl]
+==== EsfSystemManagerGetEvpHubUrl
+* *機能* 
++
+EVP Hub URLを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpHubUrl( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したEVP Hub URL（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Register Tokenの最大サイズ``ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP Hub URLを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetEvpHubUrlの戻り値の説明]
+.EsfSystemManagerGetEvpHubUrlの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetEvpHubUrl]
+==== EsfSystemManagerSetEvpHubUrl
+* *機能* 
++
+EVP Hub URLを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpHubUrl( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するEVP Hub URLの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP Hub URLの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetEvpHubUrlの戻り値の説明]
+.EsfSystemManagerSetEvpHubUrlの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetEvpHubPort]
+==== EsfSystemManagerGetEvpHubPort
+* *機能* 
++
+EVP Hub Portを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpHubPort( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したEVP Hub Port（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Register Tokenの最大サイズ``ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP Hub Portを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetEvpHubPortの戻り値の説明]
+.EsfSystemManagerGetEvpHubPortの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetEvpHubPort]
+==== EsfSystemManagerSetEvpHubPort
+* *機能* 
++
+EVP Hub Portを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpHubPort( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するEVP Hub Portの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP Hub Portの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetEvpHubPortの戻り値の説明]
+.EsfSystemManagerSetEvpHubPortの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetEvpIotPlatform]
+==== EsfSystemManagerGetEvpIotPlatform
+* *機能* 
++
+EVP IoT Platformを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpIotPlatform( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したEVP IoT Platform（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。EVP IoT Platformの最大サイズ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP IoT Platformを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetEvpIotPlatformの戻り値の説明]
+.EsfSystemManagerGetEvpIotPlatformの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|===
+
+
+[#_EsfSystemManagerSetEvpIotPlatform]
+==== EsfSystemManagerSetEvpIotPlatform
+* *機能* 
++
+EVP IoT Platformを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpIotPlatform( const char *data, size_t data_size )**``  
+
+* *引数の説明* +
++
+**``[IN] const char *data``**:: 
+設定するEVP IoT Platformの文字列です。 +
+``'\0'``終端の文字列の先頭アドレスを入力してください +
+最大``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``サイズの文字列を設定可能です。
+**``[IN] size_t data_size``**:: 
+引数``data``のサイズ（``'\0'``終端を含む）を指定してください。 +
+``0``または``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``より大きな値が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP IoT Platformの文字列を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetEvpIotPlatformの戻り値の説明]
+.EsfSystemManagerSetEvpIotPlatformの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``の場合
+* ``data``に``'\0'終端``が設定されていない場合
+* ``data_size == 0``の場合
+* ``data_size > ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetEvpTls]
+==== EsfSystemManagerGetEvpTls
+* *機能* 
++
+EVP TLSを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpTls( EsfSystemManagerEvpTlsValue *data )**``  
+
+* *引数の説明* +
++
+**``[OUT] EsfSystemManagerEvpTlsValue *data``**:: 
+取得したEVP TLSが格納されます。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP TLSを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetEvpTlsの戻り値の説明]
+.EsfSystemManagerGetEvpTlsの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``data == NULL``の場合です。
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|ParameterStorageManagerから不正な値を取得した場合です。
+|変更されません。
+|事前に正しい値を書き込んでください。
+
+|===
+
+
+[#_EsfSystemManagerSetEvpTls]
+==== EsfSystemManagerSetEvpTls
+* *機能* 
++
+EVP TLSを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpTls( EsfSystemManagerEvpTlsValue data )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfSystemManagerEvpTlsValue data``**:: 
+EVP TLSの設定値です。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVP TLSの無効/有効を設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetEvpTlsの戻り値の説明]
+.EsfSystemManagerSetEvpTlsの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``data``に無効なenum値が設定された場合です。
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetRootCa]
+==== EsfSystemManagerGetRootCa
+* *機能* 
++
+Root証明書を取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetRootCa( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したRoot証明書（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Root証明書の最大サイズ``ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Root証明書を取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetRootCaの戻り値の説明]
+.EsfSystemManagerGetRootCaの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|kEsfSystemManagerResultEmptyData
+|ParameterStorageManagerにRoot証明書が格納されていない場合です。
+|変更されません。
+|正しくRoot証明書を書き込んでください。
+
+|===
+
+
+[#_EsfSystemManagerGetRootCaHash]
+==== EsfSystemManagerGetRootCaHash
+* *機能* 
++
+Root証明書を取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetRootCaHash( char *data, size_t *data_size )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したRoot証明書ハッシュ値（``'\0'``終端の文字列）を格納する領域の先頭アドレスを引き渡してください。
+**``[IN/OUT] size_t *data_size``**:: 
+引数``data``のサイズを指定してください。 +
+設定可能な値は、``'\0'``終端を含めて、``1``以上です。 +
+本API実行後は実際に取得した有効なデータサイズ（``'\0'``終端を含む）が格納されます。 +
+``*data_size``が実際に格納されている有効データサイズに対して不足している場合は``kEsfSystemManagerResultOutOfRange``を返します。Root証明書ハッシュ値の最大サイズ``ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE``以上の領域サイズを指定すれば不足することはありません。 +
+``0``または``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Root証明書ハッシュ値を取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetRootCaHashの戻り値の説明]
+.EsfSystemManagerGetRootCaHashの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``data == NULL``
+* ``data_size == NULL``
+* ``*data_size == 0``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|``*data_size``が実際に取得した有効データサイズに対して不足している場合です。
+|不定値が格納されている可能性があります。
+|十分な``*data_size``を指定してリトライしてください。
+
+|kEsfSystemManagerResultEmptyData
+|ParameterStorageManagerにRoot証明書ハッシュ値が格納されていない場合です。
+|変更されません。
+|正しくRoot証明書ハッシュ値を書き込んでください。
+
+|===
+
+
+[#_EsfSystemManagerGetQrModeTimeoutValue]
+==== EsfSystemManagerGetQrModeTimeoutValue
+* *機能* 
++
+QRモードタイムアウト値を取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetQrModeTimeoutValue( int32_t *data )**``  
+
+* *引数の説明* +
++
+**``[OUT] int32_t *data``**:: 
+取得したQRモードタイムアウト値が格納されます。値の意味合いはSystemMangerとしては規定せず、本APIを使用する側に委ねます。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** QRモードタイムアウト値を取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetQrModeTimeoutValueの戻り値の説明]
+.EsfSystemManagerGetQrModeTimeoutValueの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``data == NULL``の場合です。
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerSetQrModeTimeoutValue]
+==== EsfSystemManagerSetQrModeTimeoutValue
+* *機能* 
++
+QRモードタイムアウト値を保存します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetQrModeTimeoutValue( int32_t data )**``  
+
+* *引数の説明* +
++
+**``[IN] int32_t data``**:: 
+QRモードタイムアウト値です。int32_tの範囲で指定可能です。値の意味合いはSystemMangerとしては規定せず、本APIを使用する側に委ねます。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** QRモードタイムアウト値を保存します。本APIは値を保持するのみです。``EsfSystemManagerGetQrModeTimeoutValue``により値を読み出し、QRモードタイムアウトの動作をさせてください。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetQrModeTimeoutValueの戻り値の説明]
+.EsfSystemManagerSetQrModeTimeoutValueの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetInitialSettingFlag]
+==== EsfSystemManagerGetInitialSettingFlag
+* *機能* 
++
+InitialSettingFlagを取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetInitialSettingFlag( EsfSystemManagerInitialSettingFlag *data )**``  
+
+* *引数の説明* +
++
+**``[OUT] EsfSystemManagerInitialSettingFlag *data``**:: 
+取得したInitialSettingFlagが格納されます。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** InitialSettingFlagを取得し、``data``に格納します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetInitialSettingFlagの戻り値の説明]
+.EsfSystemManagerGetInitialSettingFlagの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``data == NULL``の場合です。
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultOutOfRange
+|ParameterStorageManagerから不正な値を取得した場合です。
+|変更されません。
+|事前に正しい値を書き込んでください。
+
+|===
+
+
+[#_EsfSystemManagerSetInitialSettingFlag]
+==== EsfSystemManagerSetInitialSettingFlag
+* *機能* 
++
+InitialSettingFlagを設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetInitialSettingFlag( EsfSystemManagerInitialSettingFlag data )**``  
+
+* *引数の説明* +
++
+**``[IN] EsfSystemManagerInitialSettingFlag data``**:: 
+InitialSettingFlagの設定値です。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** InitialSettingFlagを設定します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetInitialSettingFlagの戻り値の説明]
+.EsfSystemManagerSetInitialSettingFlagの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``data``に無効なenum値が設定された場合です。
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|-
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetHwInfo]
+==== EsfSystemManagerGetHwInfo
+* *機能*
++
+デバイスに設定されたHW情報を取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetHwInfo( EsfSystemManagerHwInfo *data )**``
+
+* *引数の説明* +
++
+**``[OUT] EsfSystemManagerHwInfo *data``**::
+取得したHW情報を格納する領域の先頭アドレスを引き渡してください。
+``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返します。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** デバイスに設定されたHW情報を取得します。
+** 取得したHW情報の内、`EsfSystemManagerHwInfo`のメンバーが空だった場合、空データ(\0)を返します。
+
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetHwInfoの戻り値の説明]
+.EsfSystemManagerGetHwInfoの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+``data == NULL``
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfSystemManagerResultEmptyData
+|デバイスにHW情報が格納されていない場合です。
+|変更されません。
+|デバイスに正しくHW情報を設定してください。
+
+|===
+
+
+<<<
+
+== API使用時の呼び出し例
+
+各APIを使用する場合の呼び出し例を以下に示します。
+
+[source, mermaid]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+autonumber
+participant App
+participant SystemManager
+participant ParameterStorageManager
+
+
+App ->> +SystemManager: EsfSystemManagerSet〇〇〇(データ)
+
+SystemManager ->> +ParameterStorageManager: ハンドル取得
+ParameterStorageManager -->> -SystemManager: ハンドル
+
+SystemManager ->> +ParameterStorageManager: データ保存
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager ->> +ParameterStorageManager: ハンドル解放
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager -->> -App: -
+
+
+App ->> +SystemManager: EsfSystemManagerGet〇〇〇()
+
+SystemManager ->> +ParameterStorageManager: ハンドル取得
+ParameterStorageManager -->> -SystemManager: ハンドル
+
+SystemManager ->> +ParameterStorageManager: データ取得
+ParameterStorageManager -->> -SystemManager: データ
+
+SystemManager ->> +ParameterStorageManager: ハンドル解放
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager -->> -App: データ
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== ParameterStorageManager IF仕様
+
+
+<<<
+
+== 使用しているOSSの一覧
+OSSは使用しません。
+
+<<<
+
+== 参考文献
+
+* ParameterStorageManager 機能仕様書
+** https://github.com/aitrios/aitrios-edge-device-manager/blob/main/docs/spec/esf/parameter_storage_manager/ParameterStorageManager_ja.adoc
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|初版リリース
+|v0.1.1
+a|
+* <<#_Config一覧>>を追加
+* ``kEsfSystemManagerResultOutOfRange``、``kEsfSystemManagerResultEmptyData``を追加
+* 他のAPIとの統一感を持たせるため、<<#_EsfSystemManagerGetEvpTls>>と<<#_EsfSystemManagerSetEvpTls>>の仮引数名を``value``から``data``に変更
+* <<#_EsfSystemManagerGetEvpHubUrl>>を追加
+* <<#_EsfSystemManagerGetEvpHubPort>>を追加 
+* <<#_EsfSystemManagerGetQrModeTimeoutValue>>を追加
+* <<#_EsfSystemManagerSetQrModeTimeoutValue>>を追加
+* <<#_EsfSystemManagerGetDeviceManifest>>、<<#_EsfSystemManagerGetProjectId>>、<<#_EsfSystemManagerGetRegisterToken>>、<<#_EsfSystemManagerGetRootCa>>、<<#_EsfSystemManagerGetTlsClientCert>>、<<#_EsfSystemManagerGetTlsClientKey>>に引数``size_t *data_size``を追加
+* <<#_EsfSystemManagerSetProjectId>>、<<#_EsfSystemManagerSetRegisterToken>>、<<#_EsfSystemManagerSetEvpHubUrl>>、<<#_EsfSystemManagerSetEvpHubPort>>に引数``size_t data_size``を追加
+* 「ParameterStorageManager IF仕様」をSystemManager詳細設計書に移動
+|v0.1.2
+a|
+* <<#_EsfSystemManagerGetEvpTls>>の戻り値に``kEsfSystemManagerResultOutOfRange``を追加
+* <<#_EsfSystemManagerSetProjectId>>、<<#_EsfSystemManagerSetRegisterToken>>、<<#_EsfSystemManagerSetEvpHubUrl>>、<<#_EsfSystemManagerSetEvpHubPort>>の``data_size``の説明がポインタになっていたため修正
+|v0.1.3
+a|
+* EsfSystemManagerGetTlsClientCertを削除
+* EsfSystemManagerGetTlsClientKeyを削除
+|v0.1.4
+a|
+* EsfSystemManagerGetQrModeTimeoutValue, EsfSystemManagerSetQrModeTimeoutValueの説明を修正
+* kEsfSystemManagerResultMutexErrorを追加
+* 各APIのブロッキングの説明から「（ParameterStorageManagerの仕様によるものです。）」を削除
+|v0.1.5
+a|
+* <<#_データ型一覧>>に``ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE``を追加
+* <<#_API一覧>>に``EsfSystemManagerGetHwInfo``を追加
+* <<#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>を追加
+* <<#_EsfSystemManagerGetHwInfo>>を追加
+|v0.1.6
+a|
+* コンフィグ追加
+** ``CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG``を追加
+* データ型追加
+** ``ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE``を追加
+** ``ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE``を追加
+** ``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``を追加
+** ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``を追加
+** ``ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE``を追加
+** ``EsfSystemManagerInitialSettingFlag``を追加
+* API追加
+** ``EsfSystemManagerGetRootCaHash``を追加
+** ``EsfSystemManagerGetDpsUrl``を追加
+** ``EsfSystemManagerSetDpsUrl``を追加
+** ``EsfSystemManagerGetCommonName``を追加
+** ``EsfSystemManagerSetCommonName``を追加
+** ``EsfSystemManagerGetDpsScopeId``を追加
+** ``EsfSystemManagerSetDpsScopeId``を追加
+** ``EsfSystemManagerGetInitialSettingFlag``を追加
+** ``EsfSystemManagerSetInitialSettingFlag``を追加
+** ``EsfSystemManagerGetEvpIotPlatform``を追加
+** ``EsfSystemManagerSetEvpIotPlatform``を追加
+|v0.1.7
+a|
+* CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLSの文字列への変更対応
+* EVP TLS有効を"0"、無効を"1"とするように修正
+|v0.1.8
+a|
+* kEsfSystemManagerResultMutexErrorを削除
+* ``ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE``のサイズを変更
+* ``ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE``のサイズを変更
+* ``ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE``のサイズを変更
+* ``ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE``のサイズを変更
+* ``ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE``のサイズを変更
+* ``ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE``のサイズを変更
+|v0.1.9
+a|
+* ``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE``のサイズを64に変更
+|===

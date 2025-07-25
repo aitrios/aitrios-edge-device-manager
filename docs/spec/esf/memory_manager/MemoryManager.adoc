@@ -1,0 +1,3475 @@
+= Memory Manager Function Specification
+:sectnums:
+:sectnumlevels: 5
+:chapter-label:
+:revnumber: 0.0.11
+:toc:
+:toc-title: Table of Contents
+:toclevels: 5
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document defines the memory manager that provides memory operation functions for the AITRIOS LargeHeap area, WasmHeap area, and DMA area. +
+Applicable to version XX of XX.
+
+<<<
+
+== Terminology
+=== Memory Space
+There are three types of memory spaces: physical address space, virtual address space, and in-WASM address space.
+
+=== Physical Address Space
+The actual address space where instruction code and data are placed.
+
+=== Virtual Address Space
+An address space that remaps physical addresses into a separate address space.
+
+=== In-WASM Address Space
+An address space uniquely held by the WASM App itself.
+
+=== LargeHeap Area
+A heap area reserved in the physical address space for storing large data.
+
+=== WasmHeap Area
+A heap area held by the WASM App itself.
+
+=== DMA Area
+A dedicated area used for receiving data via DMA.
+
+=== WASM Module Management Information
+Includes management information required to execute WASM modules. +
+*Note: To perform memory operations on a WASM module, the WASM module instance information included in this management information is required.*
+
+=== AppMemory Area
+Application Memory +
+A memory area that can be used by WASM (AoT).
+
+=== Memory Map Access
+Accesses the LargeHeap area by mapping it into the virtual address space.
+
+=== Memory File I/O Access
+Accesses the LargeHeap area via File I/O operations such as Open, Close, Read, Write, and Seek.
+
+<<<
+
+== Component Description
+=== Component Overview
+The memory manager is a block that provides handles for performing memory operations on memory allocated from the LargeHeap area and WasmHeap area, as well as the following memory operation functions:
+
+- Memory manager initialization
+- Memory manager termination
+- Memory allocation
+- Memory release
+- Map
+- Unmap
+- File open
+- File close
+- File seek
+- File write
+- File read
+- Handle information retrieval
+
+In addition, it provides functionality for memory allocation and release within the WASM environment:
+
+- Memory allocation
+- Memory resizing
+- Memory release
+
+It also provides a function to check whether the map feature is supported, as support for mapping functions may vary depending on the environment.
+
+- Map feature support check
+
+.Overview Diagram
+
+System-wide diagram to be inserted
+
+<<<
+
+=== Detailed Component Description
+This section describes the functionality of the memory manager. +
+The memory manager handles memory operations on the following three types of memory areas:
+
+- LargeHeap Area: Heap area used by NativeApp for large data
+- WasmHeap Area: Heap area used within WasmApp (refers to in-Wasm address space)
+- DMA Area: Heap area mainly used as the DMA transfer destination by NativeApp
+
+The memory manager provides APIs for memory operations corresponding to the above memory areas. The following four types of memory operation APIs are available:
+
+* Memory Operation APIs
+- Memory Allocation (Handle Acquisition): Allocates memory of the specified size from the specified area and acquires memory operation rights for the allocated memory.
+- Memory Free (Handle Release): Frees the allocated memory and releases memory operation rights for that memory.
+- Map: Maps the allocated memory into the virtual address space. +
+  *Note: Partial mapping can be specified by providing an arbitrary offset to the memory operation handle (multiple mappings are supported).*
+- Unmap: Unmaps the mapped memory from the virtual address space. +
+  *Note: Memory operation rights are acquired and released at the time of memory allocation and release.*
+
+- File Open: Opens the allocated memory as a file to allow File I/O access. +
+  *Note: The open information (file descriptor) is linked to the handle and managed internally by the memory manager.*
+- File Close: Closes the file corresponding to the allocated memory that was opened.
+- File Seek: Sets the file pointer for the allocated memory that was opened.
+- File Write: Writes arbitrary data to the allocated memory that was opened.
+- File Read: Reads arbitrary data from the allocated memory that was opened.
+- Handle Information Retrieval: Retrieves information (area, size) associated with the handle generated by the memory manager.
+
+.Memory Image Diagram (Conceptual View of Memory-Mapped I/O Access)
+....
+                 +--------------------+-------------------------------------------------+
+virtual address  |     Static area    |   Dynamic area [W][W][D][D][L][L][ ][ ](*1)     |  
+                 +--------------------+-------------------------------------------------+
+                 :     ↑map           :  ↑map               ↑map            ↑map 
+                 :    *Assign as is   :  [W][W]              [D][D]           [L][L]
+                 :                    :  ↑Allocate(*2)      ↑Allocate(*2)   ↑allocate(*2) 
+                 +--------------------+-------------------+---------------+---------------------+
+physical address |     Normal area    |   Wasm Heap area  |   DMA area    | Large Heap area     |
+                 +--------------------+-------------------+---------------+---------------------+
+
+  *1: Memory allocated as non-contiguous addresses can be assigned as contiguous addresses.
+  *2: A memory operation handle is acquired for each allocated memory block.
+
+  Normal area: Includes Normal Heap, Thread Stack, etc.
+
+  Static area: The Normal area is directly mapped to the "virtual address" space.
+
+  Dynamic area: In NativeApp and WasmApp, memory is allocated from the Large Heap area,
+                Wasm Heap area, or DMA area and dynamically mapped to the "virtual address"
+                space to enable data exchange via SPI or between NativeApp and WasmApp.
+
+  The memory manager supports memory operations on the above "Dynamic area".
+....
+
+.Memory Image Diagram (Conceptual View of Memory File I/O Access)
+....
+                 +--------------------+----------------------------------------------------------+
+virtual address  |     Static area    |   Dynamic area [FileIO Window] (*1)                      |  
+                 +--------------------+----------------------------------------------------------+
+                    FileIO Operation                      ↑map[An] (step_4)
+                                                                 ↑map[Bn] (step_4)
+                                      +----------------------------------------------------------+
+                     Wtite/Read/Seek[A] (step_3)        [A1][A2][A3][A4]
+                     Wtite/Read/Seek[B] (step_3)        [B1][B2][B3][B4][B5]
+                     Open[A] (step_2)                   [A1][A2][A3][A4]
+                     Open[B] (step_2)                   [B1][B2][B3][B4][B5]
+                     Allocate[A] (step_1)               [A1][A2][  ][A3][  ][  ][A4][  ][  ][  ]
+                     Allocate[B] (step_1)               [  ][  ][B1][  ][B2][B3][  ][B4][B5][  ]
+                 +--------------------+----------------------------------------------------------+
+ hysical address |     Normal area    | Large Heap area [ ][ ][ ][ ][ ][ ][ ][ ][ ][ ]  |
+                 +--------------------+----------------------------------------------------------+
+ 
+  *1: In environments where File I/O access is enabled, a virtual address space of arbitrary size is reserved for file access. +
+      ↑ This virtual address space is referred to as the "FileIO Window" for performing data read/write.
+
+  step_1: Allocates memory of arbitrary size in the LargeHeap area (may be allocated as non-contiguous memory).
+
+  step_2: Assigns the non-contiguous memory blocks as a contiguous address space +
+          (Memory is linearized for file access.)
+
+  step_3: Determines the memory block location for file access, and then performs the corresponding operation (Write/Read/Seek) after executing step_4.
+
+  step_4: Maps the memory block determined in step_3 into the "FileIO Window" (virtual address space) prepared in *1.
+
+  Steps 3 and 4 are repeated internally for file access. +
+  *Note: These are internal processes of file access handled by the memory manager.*
+....
+
+....
+....
+.Component Diagram (LargeHeap)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph Upper App
+        memory_init( Memory Initialization )
+        memory_deinit( Memory Termination )
+    end
+
+    subgraph Upper App
+        lheap( Memory Operation Target: LargeHeap Area )
+    end
+
+    subgraph PortingLayer
+        PL_LHeap[LargeHeap Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[Memory Allocation + Handle Acquisition]
+        ESF_Free[Memory Release + Handle Disposal]
+        ESF_Map[Map]
+        ESF_Unmap[Unmap]
+        ESF_init[Memory Initialization]
+        ESF_deinit[Memory Termination]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+lheap ---> |"Memory Allocation + Handle Acquisition"| ESF_Alloc
+ESF_Alloc ---> |"Allocate LargeHeap Memory()"| PL_LHeap
+ESF_Alloc -.-> |Handle for LargeHeap| lheap
+
+lheap ---> |"Memory Release + Handle Disposal<br>Arg: Handle for LargeHeap"| ESF_Free
+ESF_Free ---> |"Release LargeHeap Memory()"| PL_LHeap
+
+lheap ---> |"Map<br>Arg: Handle for LargeHeap"| ESF_Map
+ESF_Map ---> |"Map LargeHeap Memory()"| PL_LHeap
+lheap ---> |"Unmap<br>Arg: Handle for LargeHeap"| ESF_Unmap
+ESF_Unmap ---> |"Unmap LargeHeap Memory()"| PL_LHeap
+
+memory_init ---> |"Memory Initialization"| ESF_init
+ESF_init ---> |"Initialize LargeHeap Memory()"| PL_LHeap
+
+memory_deinit ---> |"Memory Termination"| ESF_deinit
+ESF_deinit ---> |"Terminate LargeHeap Memory()"| PL_LHeap
+....
+
+....
+....
+.Component Diagram (LargeHeap: FileIO)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph Upper App
+        memory_init( Memory Initialization )
+        memory_deinit( Memory Termination )
+    end
+
+    subgraph Upper App
+        lheap( Memory Operation Target: LargeHeap Area )
+    end
+
+    subgraph PortingLayer
+        PL_LHeap[LargeHeap Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[Memory Allocation + Handle Acquisition]
+        ESF_Free[Memory Release + Handle Disposal]
+        ESF_Fopen[Open]
+        ESF_Fclose[Close]
+        ESF_Fseek[Seek]
+        ESF_Fwrite[Write]
+        ESF_Fread[Read]
+        ESF_init[Memory Initialization]
+        ESF_deinit[Memory Termination]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+lheap ---> |"Memory Allocation + Handle Acquisition"| ESF_Alloc
+ESF_Alloc ---> |"Allocate LargeHeap Memory()"| PL_LHeap
+ESF_Alloc -.-> |Handle for LargeHeap| lheap
+
+lheap ---> |"Memory Release + Handle Disposal<br>Arg: Handle for LargeHeap"| ESF_Free
+ESF_Free ---> |"Release LargeHeap Memory()"| PL_LHeap
+
+lheap ---> |"Open<br>Arg: Handle for LargeHeap"| ESF_Fopen
+ESF_Fopen ---> |"Open LargeHeap File()"| PL_LHeap
+
+lheap ---> |"Close<br>Arg: Handle for LargeHeap"| ESF_Fclose
+ESF_Fclose ---> |"Close LargeHeap File()"| PL_LHeap
+
+lheap ---> |"Seek<br>Arg: Handle for LargeHeap, Seek Info"| ESF_Fseek
+ESF_Fseek ---> |"Seek LargeHeap File()"| PL_LHeap
+
+lheap ---> |"Write<br>Arg: Handle for LargeHeap, Write Info"| ESF_Fwrite
+ESF_Fwrite ---> |"Write to LargeHeap File()"| PL_LHeap
+
+lheap ---> |"Read<br>Arg: Handle for LargeHeap, Read Info"| ESF_Fread
+ESF_Fread ---> |"Read from LargeHeap File()"| PL_LHeap
+
+memory_init ---> |"Memory Initialization"| ESF_init
+ESF_init ---> |"Initialize LargeHeap Memory()"| PL_LHeap
+
+memory_deinit ---> |"Memory Termination"| ESF_deinit
+ESF_deinit ---> |"Terminate LargeHeap Memory()"| PL_LHeap
+....
+
+....
+....
+.Component Diagram (WasmHeap)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph Upper App
+        memory_init( Memory Initialization )
+        memory_deinit( Memory Termination )
+    end
+
+    subgraph Upper App
+        wheap( Memory Operation Target: WasmHeap Area )
+    end
+
+    subgraph PortingLayer
+        PL_WHeap[WasmHeap Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[Memory Allocation + Handle Acquisition]
+        ESF_Free[Memory Release + Handle Disposal]
+        ESF_Map[Map]
+        ESF_Unmap[Unmap]
+        ESF_WasmMalloc[Wasm Memory Allocation]
+        ESF_WasmRealloc[Wasm Memory Resize]
+        ESF_WasmFree[Wasm Memory Release]
+
+        ESF_init[Memory Initialization]
+        ESF_deinit[Memory Termination]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+wheap ---> |"Memory Allocation + Handle Acquisition"| ESF_Alloc
+ESF_Alloc ---> |"Allocate WASMHeap Memory()"| WAMR
+ESF_Alloc -.-> |Handle for WasmHeap| wheap
+
+wheap ---> |"Memory Release + Handle Disposal<br>Arg: Handle for WasmHeap"| ESF_Free
+ESF_Free ---> |"Release WASMHeap Memory()"| WAMR
+
+wheap ---> |"Map<br>Arg: Handle for WasmHeap"| ESF_Map
+ESF_Map ---> |"Map WASMHeap Memory()"| WAMR
+wheap ---> |"Unmap<br>Arg: Handle for WasmHeap"| ESF_Unmap
+ESF_Unmap ---> |"Unmap WASMHeap Memory()"| WAMR
+
+WAMR ---> ESF_WasmMalloc
+ESF_WasmMalloc ---> |"Allocate Wasm Memory()"| PL_WHeap
+WAMR ---> ESF_WasmRealloc
+ESF_WasmRealloc ---> |"Resize Wasm Memory()"| PL_WHeap
+WAMR ---> ESF_WasmFree
+ESF_WasmFree ---> |"Release Wasm Memory()"| PL_WHeap
+
+memory_init ---> |"Memory Initialization"| ESF_init
+ESF_init ---> |"Initialize WasmHeap Memory()"| PL_WHeap
+
+memory_deinit ---> |"Memory Termination"| ESF_deinit
+ESF_deinit ---> |"Terminate WasmHeap Memory()"| PL_WHeap
+....
+
+....
+....
+.Component Diagram (DMA)
+....
+....
+[{mermaid_block}]
+....
+flowchart LR
+    subgraph Upper App
+        memory_init( Memory Initialization )
+        memory_deinit( Memory Termination )
+    end
+
+    subgraph Upper App
+        dma( Memory Operation Target: DMA Area ) 
+    end
+
+    subgraph PortingLayer
+        PL_DMA[DMA Memory Allocator]
+    end
+
+    subgraph Memory_Manager
+        ESF_Alloc[Memory Allocation + Handle Acquisition]
+        ESF_Free[Memory Release + Handle Disposal]
+        ESF_Map[Map]
+        ESF_Unmap[Unmap]
+
+        ESF_init[Memory Initialization]
+        ESF_deinit[Memory Termination]
+    end
+    style Memory_Manager fill:#f9f
+
+direction TB
+
+dma ---> |"Memory Allocation + Handle Acquisition"| ESF_Alloc
+ESF_Alloc ---> |"Allocate DMA Memory()"| PL_DMA
+ESF_Alloc -.-> |Handle for DMA| dma
+
+dma ---> |"Memory Release + Handle Disposal<br>Arg: Handle for DMA"| ESF_Free
+ESF_Free ---> |"Release DMA Memory()"| PL_DMA
+
+dma ---> |"Map<br>Arg: Handle for DMA"| ESF_Map
+ESF_Map ---> |"Map DMA Memory()"| PL_DMA
+dma ---> |"Unmap<br>Arg: Handle for DMA"| ESF_Unmap
+ESF_Unmap ---> |"Unmap DMA Memory()"| PL_DMA
+
+memory_init ---> |"Memory Initialization"| ESF_init
+ESF_init ---> |"Initialize DMA Memory()"| PL_DMA
+
+memory_deinit ---> |"Memory Termination"| ESF_deinit
+ESF_deinit ---> |"Terminate DMA Memory()"| PL_DMA
+....
+
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%", cols="20%,40%,40%",options="header"]
+|===
+|Block Name |Usage |Comments
+
+|PortingLayer
+|Calls the following APIs:  +
+・LargeHeap memory allocation API +
+・LargeHeap memory release API +
+・LargeHeap memory map API +
+・LargeHeap memory unmap API +
+・LargeHeap memory file open API +
+・LargeHeap memory file close API +
+・LargeHeap memory file seek API +
+・LargeHeap memory file write API +
+・LargeHeap memory file read API +
+・LargeHeap memory enable/disable check API +
+・LargeHeap memory initialization API +
+・LargeHeap memory termination API +
+・LargeHeap map feature support check API +
+・WasmHeap memory map API +
+・WasmHeap memory unmap API +
+・WasmHeap memory initialization API +
+・WasmHeap memory termination API +
+・WasmHeap map feature support check API +
+・DMA memory allocation API +
+・DMA memory release API +
+・DMA memory map API +
+・DMA memory unmap API +
+・DMA memory enable/disable check API +
+・DMA memory initialization API +
+・DMA memory termination API +
+・DMA map feature support check API +
+
+|Calls memory operation APIs for LargeHeap and returns results to the App. +
+Calls WasmHeap memory allocation/release APIs and returns results to the App.
+
+|wasm_runtime
+|Calls the following APIs: +
+・WasmHeap memory allocation API +
+・WasmHeap memory release API +
+・WasmHeap address translation API +
+・Wasm module information retrieval API +
+|Calls memory operation APIs for WasmHeap and returns results to the App. +
+Assumed to be used in WasmApp and WASI.
+
+|WAMR
+|Calls the following APIs: +
+・Wasm memory allocation API +
+・Wasm memory resize API +
+・Wasm memory release API +
+|Calls memory operation APIs for Wasm and returns results to the App.
+
+|===
+
+<<<
+
+[[State_Transition]] 
+=== State Transition
+The memory manager manages the states of memory (handles) allocated from the LargeHeap area and DMA area. +
+
+*Note: For the WasmHeap area, only memory allocation, release, map, and unmap functions are provided—state management is not performed.* +
+*File I/O is only supported for the LargeHeap area.*
+
+[#_TableStates_aloocate]
+.State List
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+2+^|State              |Description
+2+^|Initial State 
+                      |Memory is unallocated.
+.2+^.^|allocate |map  |Allocated State: Mapped. This also applies when multiple regions are mapped using partial mapping.
+                |unmap|Allocated State: Unmapped.
+|===
+
+[#_TableStates_aloocate2]
+.State List: File I/O
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+2+^|State              |Description
+2+^|Initial State 
+                      |Memory is unallocated.
+.2+^.^|allocate |open  |Open State: File I/O access is enabled for the allocated memory.
+                |close |Close State: File I/O access is disabled.
+|===
+
+The memory manager transitions between states as shown below when each API is called. +
+No state transition occurs if an error occurs during the API call. +
+
+[#_State_Transition_Diagram]
+....
+....
+.State Transition Diagram: Map Function
+....
+....
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+stateDiagram-v2
+    [*] --> unmap : EsfMemoryManagerAllocate
+    state allocate {
+        unmap --> map : EsfMemoryManagerMap
+        map --> unmap : EsfMemoryManagerUnmap
+        map --> map : EsfMemoryManagerMap<br>EsfMemoryManagerUnmap
+    }
+    unmap --> [*] : EsfMemoryManagerFree
+....
+
+[#_State_Transition_Diagram_FileIO]
+....
+....
+.State Transition Diagram: File I/O
+....
+....
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+stateDiagram-v2
+    [*] --> close : EsfMemoryManagerAllocate
+    state allocate {
+        close --> open : EsfMemoryManagerFopen
+        open --> close : EsfMemoryManagerFclose
+        open --> open : EsfMemoryManagerFseek<br>EsfMemoryManagerFwrite<br>EsfMemoryManagerFread<br>EsfMemoryManagerFpwrite<br>EsfMemoryManagerFpread
+    }
+    close --> [*] : EsfMemoryManagerFree
+....
+
+EsfMemoryManagerFopen can open memory regions allocated via EsfMemoryManagerAllocate as multiple files by specifying arbitrary offsets. +
+Multiple handles can be used to access those files concurrently. +
+*Note: "Memory handle + specified offset" is managed as a single handle.*
+....
+....
+
+Each API's availability in different memory states and the corresponding transition destinations are shown in <<#_TableStateTransition>>, <<_TableStateTransition_2>>, and <<_TableStateTransition_3>>. +
+In the tables, the state names indicate the destination state after successful API execution, which also implies that the API is accepted. +
+"×" indicates that the API is not accepted in the current state and no state transition occurs. +
+If "×" is shown, an error will be returned. For error details, see <<#_EsfMemoryManagerResult>>.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.3+| 3+^| State 
+                                 .2+^.^| Initial State 2+^| allocate
+                                                     | map        | unmap 
+.4+^.^|API  | EsfMemoryManagerAllocate | unmap    2+^| N/A
+            | EsfMemoryManagerFree     | ×           | ×          | Initial State
+            | EsfMemoryManagerMap      | ×           | map *1     | map
+            | EsfMemoryManagerUnmap    | ×           | unmap or map *2      | ×
+|===
+*1: Multiple mappings for the same memory region +
+*2: Transitions to "unmap" state upon unmapping all multiple mapped regions
+
+[#_TableStateTransition_2]
+.State Transition Table: File I/O
+[width="100%", cols="10%,30%,20%,20%,20%"]
+|===
+2.3+| 3+^| State 
+                                 .2+^.^| Initial State 2+^| allocate
+                                                     | open       | close 
+.9+^.^|API  | EsfMemoryManagerAllocate | close    2+^| N/A
+            | EsfMemoryManagerFree     | ×           | ×          | Initial State
+            | EsfMemoryManagerFopen    | ×           | ×          | open *1
+            | EsfMemoryManagerFclose   | ×           | close      | ×
+            | EsfMemoryManagerFseek    | ×           | open       | ×
+            | EsfMemoryManagerFwrite   | ×           | open       | ×
+            | EsfMemoryManagerFread    | ×           | open       | ×
+            | EsfMemoryManagerFpwrite  | ×           | open *2    | ×
+            | EsfMemoryManagerFpread   | ×           | open *2    | ×
+|===
+*1: Multiple open operations for the same memory region are supported +
+     (Each "memory handle + specified offset" is managed as a separate handle) +
+*2: For protection of file (memory) seek positions, access is performed as blocking operations +
+     for "Seek+Write" and "Seek+Read" combinations on the same handle +
+
+<<<
+
+=== List of Component Functions
+The list of available functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="25%,50%,25%",options="header"]
+|===
+|Function Name |Description |Section
+
+|Memory Initialization
+|Initializes the LargeHeap, WasmHeap, and DMA regions managed by PL Memory.
+|<<#_メモリ初期化機能>>
+
+|Memory Finalization
+|Finalizes (cleans up) the LargeHeap, WasmHeap, and DMA regions managed by PL Memory.
+|<<#_メモリ終了機能>>
+
+|Memory Allocation
+|Allocates memory of the specified size from the specified memory region and generates a memory operation handle for the allocated memory.
+|<<#_メモリ確保機能>>
+
+|Memory Deallocation
+|Frees memory associated with the acquired memory operation handle and destroys the handle.
+|<<#_メモリ解放機能>>
+
+|Memory Mapping
+|Maps the allocated memory using the acquired memory operation handle.
+|<<#_メモリマップ機能>>
+
+|Memory Unmapping
+|Unmaps the memory previously mapped with the acquired memory operation handle.
+|<<#_メモリアンマップ機能>>
+
+|Memory Unmapping
+|Unmaps the memory previously mapped with the acquired memory operation handle.
+|<<#_メモリアンマップ機能>>
+
+|Memory File Open
+|Obtains a file descriptor (`fd`) to access the allocated memory as a file using the memory operation handle.
+|<<#_メモリファイルオープン機能>>
+
+|Memory File Close
+|Closes and returns the file descriptor (`fd`) acquired during memory file open.
+|<<#_メモリファイルクローズ機能>>
+
+|Memory File Seek
+|Moves the file pointer to a specified offset using the file descriptor (`fd`) of the allocated memory.
+|<<#_メモリファイルシーク機能>>
+
+|Memory File Write
+|Writes data to the position pointed to by the file pointer using the file descriptor (`fd`) of the allocated memory.
+|<<#_メモリファイルライト機能>>
+
+|Memory File Read
+|Reads data from the position pointed to by the file pointer using the file descriptor (`fd`) of the allocated memory.
+|<<#_メモリファイルリード機能>>
+
+|Map Support Check
+|Checks whether mapping is supported for the target memory region using the memory operation handle.
+|<<#_マップ機能サポートチェック>>
+
+|Handle Information Retrieval
+|Retrieves region and size information associated with the acquired memory operation handle.
+|<<#_ハンドル情報取得機能>>
+
+|===
+
+[#_TableFunction2]
+.Function List (Wasm-specific)
+[width="100%", cols="25%,50%,25%",options="header"]
+|===
+|Function Name |Description |Section
+
+|Wasm Memory Allocation
+|Allocates memory of the specified size from the designated region.
+|<<#_Wasmメモリ確保機能>>
+
+|Wasm Memory Resize
+|Changes the size of previously allocated Wasm memory.
+|<<#_Wasmメモリサイズ変更機能>>
+
+|Wasm Memory Deallocation
+|Frees the previously allocated Wasm memory.
+|<<#_Wasmメモリ解放機能>>
+
+|===
+
+=== Component Function Descriptions
+
+[#_メモリ初期化機能]
+==== Memory Initialization Function
+* *Function Overview*
+    ** Initializes the LargeHeap, WasmHeap, and DMA regions managed by PL memory.
+    ** Executes the dedicated PL memory initialization APIs for each region.
+* *Preconditions*
+    ** -
+* *Function Details*
+    ** `EsfMemoryManagerInitialize()` performs initialization for the LargeHeap, WasmHeap, and DMA regions. +
+    Additionally, the AppMemory region (WasmHeap) is partitioned according to the number of blocks specified as an argument. +
+
+This function is intended to be executed at system startup, before using the memory manager. +
+*If memory operation APIs of the memory manager are executed before initialization, an error indicating uninitialized memory will be returned.* +
+(Refer to <<#_MemoryInitializationSequence>>)
+
+[#_MemoryInitializationSequence]
+.Memory Initialization Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  heap ->> +ssf_memutility : EsfMemoryManagerInitialize(AppMemory block count)
+  
+  ssf_memutility ->> +pl : Initialize LargeHeap region
+  note over pl : Initialize LargeHeap region
+  pl -->> -ssf_memutility : Error code
+  ssf_memutility ->> +pl : Initialize AppMemory (WasmHeap) region
+  note over pl : Initialize AppMemory (WasmHeap) region
+  pl -->> -ssf_memutility : Error code
+  ssf_memutility ->> +pl : Set AppMemory (WasmHeap) block count
+  note over pl : Set number of blocks in AppMemory (WasmHeap)
+  pl -->> -ssf_memutility : Error code
+  ssf_memutility ->> +pl : Initialize DMA region
+  note over pl : Initialize DMA region
+  pl -->> -ssf_memutility : Error code
+  
+  ssf_memutility -->> -heap : Processing result OK
+
+....
+*If an error code (indicating already initialized) is returned during each initialization, it is ignored and initialization continues.*
+
+[#_メモリ終了機能]
+==== Memory Finalization Function
+* Function Overview
+    ** Finalizes the LargeHeap, WasmHeap, and DMA regions managed by PL memory.
+    ** Executes the PL memory finalization API provided for each region.
+* Prerequisites
+    ** The Memory Manager must be initialized.
+* Function Details
+    ** `EsfMemoryManagerFinalize()` performs finalization for the LargeHeap, WasmHeap, and DMA regions. +
+
+This function is intended to be executed before shutting down the system or after memory management is no longer needed. +
+*If memory operation APIs are called without prior initialization, an error indicating uninitialized memory will be returned.* +
+(See <<#_MemoryFinalizationSequence>>)
+
+[#_MemoryFinalizationSequence]
+.Memory Finalization Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as Memory Manager
+    participant pl as Porting Layer
+
+    heap ->> +ssf_memutility : EsfMemoryManagerFinalize()
+
+    ssf_memutility ->> +pl : Finalize LargeHeap region
+    note over pl : Finalize LargeHeap region
+    pl -->> -ssf_memutility : Error code
+    ssf_memutility ->> +pl : Finalize AppMemory (WasmHeap) region
+    note over pl : Finalize AppMemory (WasmHeap) region
+    pl -->> -ssf_memutility : Error code
+    ssf_memutility ->> +pl : Finalize DMA region
+    note over pl : Finalize DMA region
+    pl -->> -ssf_memutility : Error code
+
+    ssf_memutility -->> -heap : Processing result OK
+
+....
+*If an error code (indicating already finalized) is returned during each finalization, it will be ignored and the finalization process will continue.*
+
+
+[#_メモリ確保機能]
+==== Memory Allocation Function
+* Function Overview
+    ** Allocates memory of the specified size.
+    ** Generates a memory operation handle for the allocated memory.
+* Prerequisites
+    ** The Memory Manager must be initialized.
+* Function Details
+    ** `EsfMemoryManagerAllocate()` allocates memory from a specified region according to the region information passed as an argument. +
+    [Target Memory Region]
+      - LargeHeap: Allocates memory from the LargeHeap region +
+      - DMA: Allocates memory from the DMA region +
+      - WasmHeap: Allocates memory from the WasmHeap region +
+      *When specifying WasmHeap, additional "WASM module management info (exec_env)" is required.*
+    ** Generates a memory operation handle for the allocated memory. +
+(See <<#_EsfMemoryManagerHandle>> for details about memory operation handles.)
+
+This function supports concurrent access and can be called from multiple threads.
+When calling `EsfMemoryManagerAllocate`, specify the WASM module management info to allocate memory from the WasmHeap region. (See <<#_MemoryAllocationSequence>>)
+
+[#_MemoryAllocationSequence]
+.Memory Allocation Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as Memory Manager
+    participant pl as Porting Layer
+    participant wamr as WAMR
+
+    heap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: LargeHeap, WASM Info: NULL, Size)
+    alt Normal Case (Memory Allocation OK)
+        note over ssf_memutility : Recognized as memory allocation from LargeHeap
+        ssf_memutility ->> +pl : Allocate Memory (Size)
+        note over pl : Allocate memory
+        pl -->> -ssf_memutility : Memory address (LargeHeap)
+        note over ssf_memutility : Generate handle for LargeHeap<br>Generate memory management info:<br>- Region info<br>- Memory info<br>Associate handle with memory info
+        ssf_memutility -->> heap : OK, LargeHeap handle [Upper 7 bits: ID=1–127, Lower 25 bits: offset=0]
+    else Abnormal Case (Allocation Failed)
+        note over ssf_memutility : Error due to invalid parameter or allocation failure
+        ssf_memutility -->> -heap : NG, LargeHeap handle (NULL)
+    end
+
+    heap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: DMA, WASM Info: NULL, Size)
+    alt Normal Case (Memory Allocation OK)
+        note over ssf_memutility : Recognized as memory allocation from DMA
+        ssf_memutility ->> +pl : Allocate Memory (Size)
+        note over pl : Allocate memory
+        pl -->> -ssf_memutility : Memory address (DMA)
+        note over ssf_memutility : Generate handle for DMA<br>Generate memory management info:<br>- Region info<br>- Memory info<br>Associate handle with memory info
+        ssf_memutility -->> heap : OK, DMA handle [Upper 7 bits: ID=1–127, Lower 25 bits: offset=0]
+    else Abnormal Case (Allocation Failed)
+        note over ssf_memutility : Error due to invalid parameter or allocation failure
+        ssf_memutility -->> -heap : NG, DMA handle (NULL)
+    end
+
+    heap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: WasmHeap, WASM Info: *exec_env, Size)
+    alt Normal Case (Memory Allocation OK)
+        note over ssf_memutility : Recognized as memory allocation from WasmHeap
+        ssf_memutility ->> +wamr : Allocate Memory (Size)
+        note over wamr : Allocate memory
+        wamr -->> -ssf_memutility : Memory address (WasmHeap) *WASM address*
+        note over ssf_memutility : Generate handle for WasmHeap<br>*Memory management info is not generated*
+        ssf_memutility -->> heap : OK, WasmHeap handle [Upper 7 bits: ID=0, Lower 25 bits: offset=Wasm address]
+    else Abnormal Case (Allocation Failed)
+        note over ssf_memutility : Error due to invalid parameter or allocation failure
+        ssf_memutility -->> -heap : NG, WasmHeap handle (NULL)
+    end
+....
+
+
+[#_メモリ解放機能]
+==== Memory Free Function
+* Function Overview
+    ** Frees the memory associated with the specified memory operation handle.
+    ** Discards the memory operation handle.
+* Prerequisites
+    ** A valid memory operation handle has been obtained via `EsfMemoryManagerAllocate`.
+* Function Details
+    ** Memory is freed based on the memory management information (e.g., region and memory details) linked to the specified memory operation handle. +
+(For details on memory operation handles, see <<#_EsfMemoryManagerHandle>>.)
+
+This function supports exclusive access and can be safely called from multiple threads.
+Memory is released for the associated region by specifying the memory operation handle when calling `EsfMemoryManagerFree`. (See <<#_MemoryFreeSequence>> for details.)
+
+[#_MemoryFreeSequence]
+.Memory Free Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as Memory Manager
+    participant pl as Porting Layer
+    participant wamr as WAMR
+
+    heap ->> +ssf_memutility : EsfMemoryManagerFree(LargeHeap handle, WASM Info: NULL)
+    alt Normal Case (Free OK)
+        note over ssf_memutility : Extract memory management info from the LargeHeap handle<br>Free memory using the extracted information
+
+        ssf_memutility ->> +pl : Free memory (address)
+        note over pl : Free memory
+        pl -->> -ssf_memutility : <br>
+        note over ssf_memutility : Destroy LargeHeap handle
+        ssf_memutility -->> heap : OK
+    else Abnormal Case (Free NG)
+        note over ssf_memutility : Invalid parameters or memory release error occurred
+        ssf_memutility -->> -heap : NG
+    end
+
+    heap ->> +ssf_memutility : EsfMemoryManagerFree(DMA handle, WASM Info: NULL)
+    alt Normal Case (Free OK)
+        note over ssf_memutility : Extract memory management info from the DMA handle<br>Free memory using the extracted information
+
+        ssf_memutility ->> +pl : Free memory (address)
+        note over pl : Free memory
+        pl -->> -ssf_memutility : <br>
+        note over ssf_memutility : Destroy DMA handle
+        ssf_memutility -->> heap : OK
+    else Abnormal Case (Free NG)
+        note over ssf_memutility : Invalid parameters or memory release error occurred
+        ssf_memutility -->> -heap : NG
+    end
+
+    heap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap handle, WASM Info: *exec_env)
+    alt Normal Case (Free OK)
+        note over ssf_memutility : Free memory associated with the WasmHeap handle
+
+        ssf_memutility ->> +wamr : Free memory (address)
+        note over wamr : Free memory
+        wamr -->> -ssf_memutility : <br>
+        note over ssf_memutility : Destroy WasmHeap handle
+        ssf_memutility -->> heap : OK
+    else Abnormal Case (Free NG)
+        note over ssf_memutility : Invalid parameters or memory release error occurred
+        ssf_memutility -->> -heap : NG
+    end
+....
+
+
+[#_メモリマップ機能]
+==== Memory Map Function
+* Function Overview
+    ** Maps a specified memory area.
+    *** Memory operation handles obtained via EsfMemoryManagerAllocate, or user-defined memory operation handles, can be specified. +
+    *Note: Mapping with user-defined memory operation handles is only supported for the WasmHeap region.*
+    *** For memory areas obtained via EsfMemoryManagerAllocate, offset-based specification and multiple mappings using the memory operation handle are supported. +
+    *Note: Offset specification and multiple mappings are supported only with memory operation handles obtained via EsfMemoryManagerAllocate.*
+* Prerequisites
+    ** Memory must have been allocated using EsfMemoryManagerAllocate and a memory operation handle obtained, or memory must have been allocated from the WasmHeap region. +
+* Functional Details
+    ** When using a memory operation handle obtained via EsfMemoryManagerAllocate
+    *** Mapping is performed to a virtual address based on the memory management information (region info, memory info, etc.) associated with the memory operation handle. +
+    *** The mapped virtual address is returned to the upper layer as the map address. +
+    ** When using a user-defined memory operation handle
+    *** The address in the WasmHeap region specified by the memory operation handle is mapped to a virtual address. +
+    *** The mapped virtual address is returned to the upper layer as the map address. +
+
+This function performs operations exclusively, and can therefore be called from multiple threads.
+By specifying a memory operation handle when calling EsfMemoryManagerMap, memory mapping for the corresponding area is performed. (Refer to <<#_MemoryMapSequenceDiagram>>)
+
+[#_MemoryMapSequenceDiagram]
+.Memory Map Sequence Diagram
+Case using a memory operation handle obtained via EsfMemoryManagerAllocate +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(LargeHeap handle, WASM module info: NULL, size)
+  alt Normal Case (Mapping Successful)
+    note over ssf_memutility : Extract "memory management info" associated with [LargeHeap handle]<br>Map the corresponding memory based on the extracted "memory management info"
+    opt First mapping for the memory area
+      ssf_memutility ->> +pl : Map memory()
+      note over pl : Perform memory mapping<br>Physical address ⇒ Virtual address
+      pl -->> -ssf_memutility : Virtual address
+      note over ssf_memutility : Register "mapping" to the "memory info" within [memory management info]
+    end
+    note over ssf_memutility : Calculate map address from "virtual address" and [LargeHeap handle] "offset"<br>Register "offset" in [memory management info]
+    ssf_memutility -->> heap : Result OK, map address
+  else Error Case (Mapping Failed)
+    note over ssf_memutility : When parameter error or mapping failure occurs<br>*[LargeHeap handle] and [memory management info] are not updated*
+    ssf_memutility -->> -heap : Result NG, map address (NULL)
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(DMA handle, WASM module info: NULL, size)
+  alt Normal Case (Mapping Successful)
+    note over ssf_memutility : Extract "memory management info" associated with [DMA handle]<br>Map the corresponding memory based on the extracted "memory management info"
+    opt First mapping for the memory area
+      ssf_memutility ->> +pl : Map memory()
+      note over pl : Perform memory mapping<br>Physical address ⇒ Virtual address
+      pl -->> -ssf_memutility : Virtual address
+      note over ssf_memutility : Register "mapping" to the "memory info" within [memory management info]
+    end
+    note over ssf_memutility : Calculate map address from "virtual address" and [DMA handle] "offset"<br>Register "offset" in [memory management info]
+    ssf_memutility -->> heap : Result OK, map address
+  else Error Case (Mapping Failed)
+    note over ssf_memutility : When parameter error or mapping failure occurs<br>*[DMA handle] and [memory management info] are not updated*
+    ssf_memutility -->> -heap : Result NG, map address (NULL)
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap handle, WASM module info: *exec_env, size)
+  alt Normal Case (Mapping Successful)
+    note over ssf_memutility : Use WasmHeap handle as memory address<br>Map the corresponding memory based on WASM module info: *exec_env
+    ssf_memutility ->> +pl : Map memory()
+    note over pl : Perform memory mapping<br>Physical address ⇒ Virtual address
+    pl -->> -ssf_memutility : Virtual address
+    note over ssf_memutility : Set "virtual address" as the map address
+    ssf_memutility -->> heap : Result OK, map address
+  else Error Case (Mapping Failed)
+    note over ssf_memutility : Parameter error
+    ssf_memutility -->> -heap : Result NG, map address (NULL)
+  end
+
+....
+
+When using a user-defined memory operation handle +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerMap(User-defined handle, WASM module info: *exec_env, size)
+  alt Normal Case (Mapping Successful)
+    note over ssf_memutility : Use the user-defined handle as the memory address<br>Map the corresponding memory based on WASM module info: *exec_env
+    ssf_memutility ->> +pl : Map memory()
+    note over pl : Perform memory mapping<br>Physical address ⇒ Virtual address
+    pl -->> -ssf_memutility : Virtual address
+    note over ssf_memutility : Set the "virtual address" as the map address
+    ssf_memutility -->> heap : Result OK, map address
+  else Error Case (Mapping Failed)
+    note over ssf_memutility : Parameter error
+    ssf_memutility -->> -heap : Result NG, map address (NULL)
+  end
+
+....
+
+
+[#_メモリアンマップ機能]
+==== Memory Unmap Function
+* Function Overview
+    ** Unmaps the specified memory.
+    *** Memory operation handles obtained via EsfMemoryManagerAllocate, or user-defined memory operation handles, can be specified. +
+    *Note: Mapping operations using user-defined memory operation handles are only supported for the WasmHeap region.*
+* Prerequisites
+    ** A memory operation handle must have been obtained via EsfMemoryManagerAllocate and used for mapping, or a mapping operation must have been performed on user-allocated memory.
+
+* Functional Details
+    ** When using a memory operation handle obtained via EsfMemoryManagerAllocate
+    *** Unmapping is performed for the virtual address based on the memory management information (region info, memory info, etc.) associated with the memory operation handle. +
+
+    ** When using a user-defined memory operation handle
+    *** Unmapping is performed for the virtual address specified by the memory operation handle and map address.
+
+This function operates exclusively, and can therefore be called from multiple threads.
+By specifying a memory operation handle when calling EsfMemoryManagerUnmap, memory unmapping for the corresponding area is performed. (Refer to <<#_MemoryUnmapSequenceDiagram>>)
+
+[#_MemoryUnmapSequenceDiagram]
+.Memory Unmap Sequence Diagram
+Case using a memory operation handle obtained via EsfMemoryManagerAllocate +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(LargeHeap handle, map address: NULL)
+  alt Normal Case (Unmapping Successful)
+    note over ssf_memutility : Extract "memory management info" associated with [LargeHeap handle]<br>Unmap the corresponding memory based on the extracted "memory management info"<br>*When using a handle obtained via EsfMemoryManagerAllocate,<br>unmapping is performed using the map address stored in the "memory management info"*
+    note over ssf_memutility : Clear the [LargeHeap handle] "offset" from the "memory management info"
+    opt Map count in the corresponding memory region is "0"
+      ssf_memutility ->> +pl : Unmap memory()
+      note over pl : Memory unmap<br>Unmap virtual memory address
+      pl -->> -ssf_memutility : <br>
+      note over ssf_memutility : Set "unmap" on the "memory info" in the "memory management info"
+    end
+    ssf_memutility -->> heap : Result OK, LargeHeap handle
+  else Error Case (Unmapping Failed)
+    note over ssf_memutility : If parameter error or unmapping failure occurs<br>*[LargeHeap handle] and [memory management info] will not be updated*
+    ssf_memutility -->> -heap : Result NG, LargeHeap handle
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(DMA handle, map address: NULL)
+  alt Normal Case (Unmapping Successful)
+    note over ssf_memutility : Extract "memory management info" associated with [DMA handle]<br>Unmap the corresponding memory based on the extracted "memory management info"<br>*When using a handle obtained via EsfMemoryManagerAllocate,<br>unmapping is performed using the map address stored in the "memory management info"*
+    note over ssf_memutility : Clear the [DMA handle] "offset" from the "memory management info"
+    opt Map count in the corresponding memory region is "0"
+      ssf_memutility ->> +pl : Unmap memory()
+      note over pl : Memory unmap<br>Unmap virtual memory address
+      pl -->> -ssf_memutility : <br>
+      note over ssf_memutility : Set "unmap" on the "memory info" in the "memory management info"
+    end
+    ssf_memutility -->> heap : Result OK, DMA handle
+  else Error Case (Unmapping Failed)
+    note over ssf_memutility : If parameter error or unmapping failure occurs<br>*[DMA handle] and [memory management info] will not be updated*
+    ssf_memutility -->> -heap : Result NG, DMA handle
+  end
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap handle, map address: map address obtained during map operation)
+  alt Normal Case (Unmapping Successful)
+    note over ssf_memutility : Deregister the map using the WasmHeap handle and map address
+      ssf_memutility ->> +pl : Unmap memory()
+      note over pl : Memory unmap<br>Unmap virtual memory address
+      pl -->> -ssf_memutility : <br>
+    ssf_memutility -->> heap : Result OK, WasmHeap handle
+  else Error Case (Unmapping Failed)
+    note over ssf_memutility : Parameter error
+    ssf_memutility -->> -heap : Result NG, WasmHeap handle
+  end
+
+....
+
+When using a user-defined memory operation handle +
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerUnmap(User-defined handle, map address: address obtained during map operation)
+  alt Normal Case (Unmapping Successful)
+    note over ssf_memutility : Deregister the mapping using the user-defined handle and map address
+      ssf_memutility ->> +pl : Unmap memory()
+      note over pl : Memory unmap<br>Unmap virtual memory address
+      pl -->> -ssf_memutility : <br>
+    ssf_memutility -->> heap : Result OK, user-defined handle
+  else Error Case (Unmapping Failed)
+    note over ssf_memutility : Parameter error
+    ssf_memutility -->> -heap : Result NG, user-defined handle
+  end
+
+....
+
+[#_メモリファイルオープン機能]
+==== Memory File Open Function
+* Function Overview
+    ** Opens a file for the specified memory.
+    *** Performs file open to enable file access to the memory allocated using a memory operation handle obtained via EsfMemoryManagerAllocate. +
+    *** For memory areas allocated via EsfMemoryManagerAllocate, file open operations can be performed with an offset specified in the memory operation handle, and multiple opens are supported. +
+    *Note: File open operations using memory operation handles are only supported for the LargeHeap region.* +
+* Prerequisites
+    ** A memory operation handle must have been obtained for the LargeHeap region using EsfMemoryManagerAllocate.
+* Functional Details
+    ** Performs file open for the target memory based on the memory management information (region info, memory info, etc.) associated with the memory operation handle, and retrieves the file descriptor "fd". +
+    ** The retrieved file descriptor "fd" is stored and associated with the memory operation handle.
+
+[#_MemoryFileOpenSequenceDiagram]
+.Memory File Open Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFopen(LargeHeap handle)
+  alt Normal Case (Open Successful)
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a memory file open for the LargeHeap region
+  ssf_memutility ->> +pl : Memory file open (handle)
+  note over pl : Memory file open
+  pl -->> -ssf_memutility : File descriptor "fd"
+    note over ssf_memutility : Update [LargeHeap handle]<br>with the following [memory management info]<br>・Region info<br>・Memory info<br>・File descriptor "fd"<br>・Specified region info (offset, size)<br>*The [handle] and [memory management info] are managed in association*
+  ssf_memutility -->> heap : Result OK
+  else Error Case (Open Failed)
+    note over ssf_memutility : If a parameter error or open failure occurs
+  ssf_memutility -->> -heap : Result NG
+  end
+....
+
+
+[#_メモリファイルクローズ機能]
+==== Memory File Close Function
+* Function Overview
+    ** Closes the file for the specified memory.
+    *** Performs memory file close using the file descriptor "fd" obtained via memory file open. +
+    *Note: File close operations using memory operation handles are only supported for the LargeHeap region.*
+* Prerequisites
+    ** The file descriptor "fd" for the LargeHeap region must have been obtained via memory file open.
+* Functional Details
+    ** Performs file close for the target memory based on the memory management information (region info, memory info, etc.) associated with the memory operation handle, and releases the file descriptor "fd". +
+
+[#_MemoryFileCloseSequenceDiagram]
+.Memory File Close Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFclose(LargeHeap handle)
+  alt Normal Case (Close Successful)
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a memory file close for the LargeHeap region
+  ssf_memutility ->> +pl : Memory file close (file descriptor "fd")
+  note over pl : Memory file close
+  pl -->> -ssf_memutility : File close OK
+    note over ssf_memutility : Update [LargeHeap handle]<br>with the following [memory management info]<br>・Region info<br>・Memory info<br>・File descriptor "NULL"<br>*The [handle] and [memory management info] are managed in association*
+  ssf_memutility -->> heap : Result OK
+  else Error Case (Close Failed)
+    note over ssf_memutility : If a parameter error or close failure occurs
+  ssf_memutility -->> -heap : Result NG
+  end
+....
+
+[#_メモリファイルシーク機能]
+==== Memory File Seek Function
+* Function Overview
+    ** Performs file seek on the specified memory.
+    *** Executes memory file seek using the file descriptor "fd" obtained through memory file open. +
+    *Note: File seek operations using memory operation handles are only supported for the LargeHeap region.*
+* Prerequisites
+    ** The file descriptor "fd" for the LargeHeap region must have been obtained via memory file open.
+* Functional Details
+    ** Performs file seek on the corresponding memory based on the memory management information (region info, memory info, etc.) associated with the memory operation handle, and sets the position in the file descriptor "fd". +
+
+[#_MemoryFileSeekSequenceDiagram]
+.Memory File Seek Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFseek(LargeHeap handle, seek offset, seek origin)
+  alt Normal Case (Seek Successful)
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a memory file seek for the LargeHeap region
+  ssf_memutility ->> +pl : Memory file seek (file descriptor "fd", seek offset, seek origin)
+  note over pl : Memory file seek
+  pl -->> -ssf_memutility : Seek OK, final seek position
+    note over ssf_memutility : Update [LargeHeap handle]<br>with the following [memory management info]<br>・Region info<br>・Memory info<br>・File descriptor "fd"<br>・File seek position ← final seek position<br>*The [handle] and [memory management info] are managed in association*
+  ssf_memutility -->> heap : Result OK, final seek position
+  else Error Case (Seek Failed)
+    note over ssf_memutility : If a parameter error or seek failure occurs
+  ssf_memutility -->> -heap : Result NG, final seek position
+  end
+....
+
+
+[#_メモリファイルライト機能]
+==== Memory File Write Function
+* Function Overview
+    ** Performs file write on the specified memory.
+    *** Executes memory file write using the file descriptor "fd" obtained through memory file open. +
+    *Note: File write operations using memory operation handles are only supported for the LargeHeap region.*
+* Prerequisites
+    ** The file descriptor "fd" for the LargeHeap region must have been obtained via memory file open.
+* Functional Details
+    ** Performs a file write at an arbitrary position specified by the file descriptor "fd" associated with the memory operation handle, based on the memory management information (region info, memory info, etc.). +
+    ** When calling EsfMemoryManagerFpwrite, a memory file seek is also performed.
+
+[#_MemoryFileWriteSequenceDiagram]
+.Memory File Write Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFwrite(LargeHeap handle, write buffer, write size)
+  alt Normal Case (Write Successful)
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a memory file write for the LargeHeap region
+    opt In case of EsfMemoryManagerFpwrite
+      ssf_memutility ->> +pl : Memory file seek (file descriptor "fd", seek offset, seek origin)
+      note over pl : Memory file seek
+      pl -->> -ssf_memutility : Seek OK, final seek position
+    end
+  ssf_memutility ->> +pl : Memory file write (file descriptor "fd", write buffer, write size)
+  note over pl : Memory file write
+  pl -->> -ssf_memutility : Write OK, write size
+    note over ssf_memutility : Update [LargeHeap handle]<br>with the following [memory management info]<br>・Region info<br>・Memory info<br>・File descriptor "fd"<br>・File seek position ← file seek position + write size<br>*The [handle] and [memory management info] are managed in association*
+  ssf_memutility -->> heap : Result OK, write size
+  else Error Case (Write Failed)
+    note over ssf_memutility : If a parameter error or write failure occurs
+  ssf_memutility -->> -heap : Result NG, write size
+  end
+....
+
+[#_メモリファイルリード機能]
+==== Memory File Read Function
+* Function Overview
+    ** Performs file read on the specified memory.
+    *** Executes memory file read using the file descriptor "fd" obtained through memory file open. +
+    *Note: File read operations using memory operation handles are only supported for the LargeHeap region.*
+* Prerequisites
+    ** The file descriptor "fd" for the LargeHeap region must have been obtained via memory file open.
+* Functional Details
+    ** Reads specified data from an arbitrary position set in the file descriptor "fd", based on the memory management information (region info, memory info, etc.) associated with the memory operation handle. +
+    ** When calling EsfMemoryManagerFpread, a memory file seek is also performed.
+
+[#_MemoryFileReadSequenceDiagram]
+.Memory File Read Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> +ssf_memutility : EsfMemoryManagerFread(LargeHeap handle, read buffer, read size)
+  alt Normal Case (Read Successful)
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a memory file read for the LargeHeap region
+    opt In case of EsfMemoryManagerFpread
+      ssf_memutility ->> +pl : Memory file seek (file descriptor "fd", seek offset, seek origin)
+      note over pl : Memory file seek
+      pl -->> -ssf_memutility : Seek OK, final seek position
+    end
+  ssf_memutility ->> +pl : Memory file read (file descriptor "fd", read buffer, read size)
+  note over pl : Memory file read
+  pl -->> -ssf_memutility : Read OK, read size
+    note over ssf_memutility : Update [LargeHeap handle]<br>with the following [memory management info]<br>・Region info<br>・Memory info<br>・File descriptor "fd"<br>・File seek position ← file seek position + read size<br>*The [handle] and [memory management info] are managed in association*
+  ssf_memutility -->> heap : Result OK, read size
+  else Error Case (Read Failed)
+    note over ssf_memutility : If a parameter error or read failure occurs
+  ssf_memutility -->> -heap : Result NG, read size
+  end
+....
+
+[#_マップ機能サポートチェック]
+==== Map Support Check Function
+* Function Overview
+    ** Checks whether the specified memory supports the Map feature.
+    *** Uses the memory operation handle obtained via EsfMemoryManagerAllocate to determine whether Map is supported or not for the allocated memory. +
+    *Note: File open operations using memory operation handles are only supported for the LargeHeap region.*
+* Prerequisites
+    ** A memory operation handle must have been obtained for the LargeHeap region using EsfMemoryManagerAllocate.
+* Functional Details
+    ** Based on the memory management information (region info, memory info, etc.) associated with the memory operation handle, determines whether Map is supported for the corresponding memory. +
+    *** If Map is supported +
+      Memory operations are performed using the Memory Map and Memory Unmap functions.
+    *** If Map is not supported +
+      Memory operations are performed using the Memory File Open, Memory File Close, Memory File Seek, +
+      Memory File Write, and Memory File Read functions.
+
+[#_MapSupportCheckSequenceDiagram]
+.Map Support Check Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant heap as Upper App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  heap ->> ssf_memutility : EsfMemoryManagerIsMapSupport(LargeHeap handle)
+  alt Map Supported: Memory operations via Map/Unmap
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a check for the LargeHeap region
+  ssf_memutility ->> +pl : Map support check (LargeHeap handle)
+  note over pl : Map support check
+  pl -->> -ssf_memutility : Map support: Supported
+  ssf_memutility -->> heap : Map support: Supported
+
+  heap ->> ssf_memutility : EsfMemoryManagerMap()
+  ssf_memutility ->> +pl : <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  note over heap : Memory operations
+
+  heap ->> ssf_memutility : EsfMemoryManagerUnmap()
+  ssf_memutility ->> +pl : <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  else Map Not Supported: Memory operations via Fopen, Fclose, Fseek, Fwrite, Fread
+    note over ssf_memutility : Recognize from "LargeHeap handle"<br>that this is a check for the LargeHeap region
+  ssf_memutility ->> +pl : Map support check (LargeHeap handle)
+  note over pl : Map support check
+  pl -->> -ssf_memutility : Map support: Not Supported
+  ssf_memutility -->> heap : Map support: Not Supported
+
+  heap ->> ssf_memutility : EsfMemoryManagerFopen()
+  ssf_memutility ->> +pl :  <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  loop Memory Operations
+    heap ->> ssf_memutility : EsfMemoryManagerFseek(), EsfMemoryManagerFwrite(), EsfMemoryManagerFread()
+    ssf_memutility ->> +pl : <br>
+    pl -->> -ssf_memutility : <br>
+    ssf_memutility -->> heap : <br>
+  end
+
+  heap ->> ssf_memutility : EsfMemoryManagerFclose()
+  ssf_memutility ->> +pl : <br>
+  pl -->> -ssf_memutility : <br>
+  ssf_memutility -->> heap : <br>
+
+  end
+....
+
+[#_ハンドル情報取得機能]
+==== Handle Info Retrieval Function
+* Function Overview
+    ** Retrieves the target memory region and size information associated with a specified handle.
+    *** Retrieves the following information associated with a memory operation handle obtained via EsfMemoryManagerAllocate, and returns it as handle information: +
+      - Target region: LargeHeap region, WasmHeap region, DMA region, or Other +
+      - Size: The size allocated by EsfMemoryManagerAllocate +
+      *Note: Size information is returned only if the target region is "LargeHeap" or "DMA".*
+* Prerequisites
+    ** MemoryManager must be initialized.
+* Functional Details
+    ** Retrieves the target region and size information for the corresponding memory from the memory management information associated with the memory operation handle. +
+    *** LargeHeap region, DMA region +
+      Retrieves the target region and size information from the memory management data managed internally by the Memory Manager. +
+    *** WasmHeap region +
+      If the upper 7 bits of the memory operation handle (<<#_EsfMemoryManagerHandle>> EsfMemoryManagerHandle) are "0" and the lower 25 bits are not "0", the handle is recognized as belonging to the "WasmHeap" region. +
+      *Note: Size information is not available.*
+    *** Other regions +
+      If the region does not match LargeHeap, DMA, or WasmHeap, it is categorized as "Other".
+
+[#_HandleInfoRetrievalSequenceDiagram]
+.Handle Info Retrieval Sequence Diagram
+ - Omitted
+
+
+[#_Wasmメモリ確保機能]
+==== Wasm Memory Allocation Function
+* Function Overview
+    ** Allocates memory of the specified size from the specified region.
+    ** Returns a pointer to the allocated memory block.
+* Prerequisites
+    ** -
+* Functional Details
+    ** Allocates memory of the specified size from the corresponding region based on the "purpose of the memory to be allocated" specified as an argument when calling EsfMemoryManagerWasmMalloc(). +
+    [Purpose of memory to be allocated] *Specify one of the following:* +
+        *** Allocate memory from the regular heap area +
+        *** Allocate memory from the AppMemory area +
+    ** Returns a pointer to the allocated memory block. +
+
+This function is exclusive and can be called from multiple threads.
+
+[#_Wasmメモリサイズ変更機能]
+==== Wasm Memory Resize Function
+* Function Overview
+    ** Resizes the memory allocated via <<#_WasmMemoryAllocationFunction>>.
+    ** Returns a pointer to the resized memory block.
+* Prerequisites
+    ** -
+* Functional Details
+    ** Resizes the allocated memory block to the specified size, based on the argument passed to EsfMemoryManagerWasmRealloc(). +
+    ** Returns a pointer to the resized memory block. +
+
+This function is exclusive and can be called from multiple threads.
+
+[#_Wasmメモリ解放機能]
+==== Wasm Memory Free Function
+* Function Overview
+    ** Frees memory previously allocated via <<#_WasmMemoryAllocationFunction>>.
+* Prerequisites
+    ** -
+* Functional Details
+    ** Frees the memory block specified by the argument passed to EsfMemoryManagerWasmFree(). +
+
+This function is exclusive and can be called from multiple threads.
+
+=== List of Non-Functional Requirements for the Component
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function |Description |Section
+
+|Maximum Processing Time
+|XXXX ms
+|<<#_MaximumProcessingTime>>
+
+|Maximum Stack Usage
+|512 byte
+|<<#_MaximumStackUsage>>
+
+|Heap Memory Usage
+|XXXX byte
+|<<#_HeapMemoryUsage>>
+
+|===
+
+
+=== Non-Functional Requirements Description for the Component
+
+[#_MaximumProcessingTime]
+==== Maximum Processing Time
+The measured values on T3S3 at the time of design are shown in <<#_MaximumProcessingTimeTable>>.  
+*As of 2024/2/28, measurements have not yet been taken.*
+
+[#_MaximumProcessingTimeTable]
+.Maximum Processing Time Table
+[width="100%",options="header"]
+|===
+|Memory Operation API |Time
+
+|LargeHeap Memory Allocation
+|XXXX ms
+|LargeHeap Memory Free
+|XXXX ms
+|LargeHeap Memory Map
+|XXXX ms
+|LargeHeap Memory Unmap
+|XXXX ms
+
+|LargeHeap Memory File Open
+|XXXX ms
+|LargeHeap Memory File Close
+|XXXX ms
+|LargeHeap Memory File Seek
+|XXXX ms
+|LargeHeap Memory File Write
+|XXXX ms
+|LargeHeap Memory File Read
+|XXXX ms
+
+|DMA Memory Allocation
+|XXXX ms
+|DMA Memory Free
+|XXXX ms
+|DMA Memory Map
+|XXXX ms
+|DMA Memory Unmap
+|XXXX ms
+
+|WasmHeap Memory Allocation
+|XXXX ms
+|WasmHeap Memory Free
+|XXXX ms
+|WasmHeap Memory Map
+|XXXX ms
+|WasmHeap Memory Unmap
+|XXXX ms
+
+|===
+
+
+[#_MaximumStackUsage]
+==== Maximum Stack Usage
+The target value at the time of design is 512 bytes.
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+Depends on the number of memory operation handles obtained.
+
+<<<
+
+
+== API Specification
+=== List of Definitions
+==== Data Type List
+A list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+
+|EsfMemoryManagerResult
+|Enumeration that defines the result of API execution.
+|<<#_EsfMemoryManagerResult>>
+
+|EsfMemoryManagerTargetArea
+|Enumeration that defines the target area for memory allocation. +
+|<<#_EsfMemoryManagerTargetArea>>
+
+|EsfMemoryManagerMapSupport
+|Enumeration that defines whether Map functionality is supported or not. +
+|<<#_EsfMemoryManagerMapSupport>>
+
+|EsfMemoryManagerHandle
+|Type that defines the memory operation handle. +
+|<<#_EsfMemoryManagerHandle>>
+
+|EsfMemoryManagerHandleInfo
+|Type that defines memory operation handle information. +
+|<<#_EsfMemoryManagerHandleInfo>>
+
+|===
+
+==== API List
+A list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description |Section
+
+|EsfMemoryManagerInitialize
+|Initializes the EsfMemoryManager.
+|<<#_EsfMemoryManagerInitialize>>
+
+|EsfMemoryManagerFinalize
+|Finalizes the EsfMemoryManager.
+|<<#_EsfMemoryManagerFinalize>>
+
+|EsfMemoryManagerAllocate
+|Allocates memory of a specified size in a specified region and generates a handle for memory operations on the allocated memory.
+|<<#_EsfMemoryManagerAllocate>>
+
+|EsfMemoryManagerFree
+|Frees the memory specified by the handle obtained via EsfMemoryManagerAllocate and destroys the handle.
+|<<#_EsfMemoryManagerFree>>
+
+|EsfMemoryManagerMap
+|Maps the memory allocated via the handle obtained from EsfMemoryManagerAllocate.
+|<<#_EsfMemoryManagerMap>>
+
+|EsfMemoryManagerUnmap
+|Unmaps the memory specified by the handle obtained from EsfMemoryManagerAllocate.
+|<<#_EsfMemoryManagerUnmap>>
+
+|EsfMemoryManagerFopen
+|Opens memory as a file using the handle obtained via EsfMemoryManagerAllocate.
+|<<#_EsfMemoryManagerFopen>>
+
+|EsfMemoryManagerFclose
+|Closes the memory file opened by EsfMemoryManagerFopen.
+|<<#_EsfMemoryManagerFclose>>
+
+|EsfMemoryManagerFseek
+|Sets the file pointer position in the memory file opened by EsfMemoryManagerFopen.
+|<<#_EsfMemoryManagerFseek>>
+
+|EsfMemoryManagerFwrite
+|Writes data at the current file pointer position in the memory file opened by EsfMemoryManagerFopen.
+|<<#_EsfMemoryManagerFwrite>>
+
+|EsfMemoryManagerFpwrite
+|Writes data at a specified position in the memory file opened by EsfMemoryManagerFopen.
+|<<#_EsfMemoryManagerFpwrite>>
+
+|EsfMemoryManagerFread
+|Reads data from the current file pointer position in the memory file opened by EsfMemoryManagerFopen.
+|<<#_EsfMemoryManagerFread>>
+
+|EsfMemoryManagerFpread
+|Reads data from a specified position in the memory file opened by EsfMemoryManagerFopen.
+|<<#_EsfMemoryManagerFpread>>
+
+|EsfMemoryManagerIsMapSupport
+|Checks whether the handle obtained via EsfMemoryManagerAllocate supports the Map feature.
+|<<#_EsfMemoryManagerIsMapSupport>>
+
+|EsfMemoryManagerGetHandleInfo
+|Retrieves the region and size information associated with the handle obtained via EsfMemoryManagerAllocate.
+|<<#_EsfMemoryManagerGetHandleInfo>>
+
+|===
+
+[#_TableAPI2]
+.API List (Wasm Only)
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description |Section
+
+|EsfMemoryManagerWasmMalloc
+|Allocates memory of the specified size in the specified region and returns a pointer to the allocated memory block.
+|<<#_EsfMemoryManagerWasmAllocate>>
+
+|EsfMemoryManagerWasmRealloc
+|Resizes memory previously allocated via <<#_EsfMemoryManagerWasmAllocate>>.
+|<<#_EsfMemoryManagerWasmReallocate>>
+
+|EsfMemoryManagerFree
+|Frees memory allocated via EsfMemoryManagerAllocate.
+|<<#_EsfMemoryManagerFree>>
+
+|===
+
+<<<
+
+=== Data Type Definitions
+[[EsfMemoryManagerResult]]
+[#_EsfMemoryManagerResult]
+==== EsfMemoryManagerResult
+An enumeration that defines the result of API execution.
+
+* *Format*
++
+[source, C]
+....
+typedef enum{
+  kEsfMemoryManagerResultSuccess,
+  kEsfMemoryManagerResultParamError,
+  kEsfMemoryManagerResultAllocationError,
+  kEsfMemoryManagerResultMapError,
+  kEsfMemoryManagerResultFileIoError,
+  kEsfMemoryManagerResultNotSupport,
+  kEsfMemoryManagerResultOperationError,
+  kEsfMemoryManagerResultOtherError
+} EsfMemoryManagerResult;
+....
+
+* *Values*
++
+[#_EsfMemoryManagerResultの値の説明]
+.Description of EsfMemoryManagerResult Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfMemoryManagerResultSuccess
+|No error
+
+|kEsfMemoryManagerResultParamError
+|Parameter error
+
+|kEsfMemoryManagerResultAllocationError
+|Memory allocation error
+
+|kEsfMemoryManagerResultMapError
+|Memory mapping error
+
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation error
+
+|kEsfMemoryManagerResultOperationError
+|Operation error
+
+|kEsfMemoryManagerResultOtherError
+|Other error
+
+|===
+
+[[EsfMemoryManagerTargetArea]]
+[#_EsfMemoryManagerTargetArea]
+==== EsfMemoryManagerTargetArea
+An enumeration that defines the target area for memory allocation.
+
+* *Format*
++
+[source, C]
+....
+typedef enum{
+  kEsfMemoryManagerTargetLargeHeap,
+  kEsfMemoryManagerTargetDma,
+  kEsfMemoryManagerTargetWasmHeap,
+  kEsfMemoryManagerTargetOtherHeap
+} EsfMemoryManagerTargetArea;
+....
+
+* *Values*
++
+[#_EsfMemoryManagerTargetAreaDescription]
+.Description of EsfMemoryManagerTargetArea Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfMemoryManagerTargetLargeHeap
+|LargeHeap region
+
+|kEsfMemoryManagerTargetDma
+|DMA region
+
+|kEsfMemoryManagerTargetWasmHeap
+|WasmHeap region
+
+|kEsfMemoryManagerTargetOtherHeap
+|Any region other than the above (i.e., regions not defined in <<#_EsfMemoryManagerHandle>>)
+
+|===
+
+[[EsfMemoryManagerMapSupport]]
+[#_EsfMemoryManagerMapSupport]
+==== EsfMemoryManagerMapSupport
+An enumeration that defines whether the Map feature is supported or not.
+
+* *Format*
++
+[source, C]
+....
+typedef enum{
+  kEsfMemoryManagerMapIsSupport,
+  kEsfMemoryManagerMapIsNotSupport
+} EsfMemoryManagerMapSupport;
+....
+
+* *Values*
++
+[#_EsfMemoryManagerMapSupportDescription]
+.Description of EsfMemoryManagerMapSupport Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfMemoryManagerMapIsSupport
+|Map feature is supported.
+
+|kEsfMemoryManagerMapIsNotSupport
+|Map feature is not supported. +
+*File I/O (Open, Close, Read, Write, Seek) access will be used instead.*
+
+|===
+
+
+[[EsfMemoryManagerWasmMemoryUsage]]
+[#_EsfMemoryManagerWasmMemoryUsage]
+==== EsfMemoryManagerWasmMemoryUsage
+An enumeration that defines the intended usage of memory when allocating Wasm memory.
+
+* *Format*
++
+[source, C]
+....
+typedef enum { 
+  kEsfMemoryManagerWasmAllocForRuntime,
+  kEsfMemoryManagerWasmAllocForLinearMemory
+} EsfMemoryManagerWasmMemoryUsage;
+....
+
+* *Values*
++
+[#_EsfMemoryManagerWasmMemoryUsageDescription]
+.Description of EsfMemoryManagerWasmMemoryUsage Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kEsfMemoryManagerWasmAllocForRuntime
+|Allocates memory from the regular heap.
+
+|kEsfMemoryManagerWasmAllocForLinearMemory
+|Allocates memory from the AppMemory region.
+
+|===
+
+
+[#_EsfMemoryManagerHandle]
+==== EsfMemoryManagerHandle
+Defines the memory operation handle for LargeHeap, DMA, and WasmHeap regions. +
+*Note: The memory management information associated with the memory operation handle is internal and not publicly accessible (see <<#_AboutEsfMemoryManagerHandle>>).*
+
+There are two types of memory operation handles: +
+
+- Handle obtained via EsfMemoryManagerAllocate() +
+  Used for a sequence of memory operations from allocation to deallocation. +
+  Applicable APIs: EsfMemoryManagerAllocate(), EsfMemoryManagerMap(), EsfMemoryManagerUnmap(), EsfMemoryManagerFree() +
+  *Note: The memory manager sets the following "handle_id" to values between 0 and 127 via EsfMemoryManagerAllocate().*
+
+- User-defined memory operation handle +
+  Used when performing only map/unmap operations on user-allocated memory (WasmHeap only). +
+  Applicable APIs: EsfMemoryManagerMap(), EsfMemoryManagerUnmap() +
+  *Note: The user must set "handle_id" to 0 when executing EsfMemoryManagerMap() or EsfMemoryManagerUnmap().*
+
++
+* *Format*
++
+[source, C]
+....
+typedef uint32_t EsfMemoryManagerHandle;
+....
+
+.Handle Details
+....
+  |<------ 7bit ------>|<--------------------------- 25bit -------------------------->|
+  +--------------------+--------------------+--------------------+--------------------+
+  |      handle_id     |                        address_offset                        |
+  +--------------------+--------------------+--------------------+--------------------+
+
+  handle_id     : 0, 1~127
+  address_offset: 0x0000000~0x1FFFFFF (up to 32MB)
+....
+
+* *EsfMemoryManagerHandle*
++
+[#_DescriptionOfEsfMemoryManagerHandleSetByAllocate]
+.Description of EsfMemoryManagerHandle Values Set by EsfMemoryManagerAllocate()
+[width="100%", cols="10%,20%,20%,20%,30%",options="header"]
+|===
+|Type |Target Region |handle_id |address_offset |Notes
+
+.3+^.^|Handle obtained via EsfMemoryManagerAllocate()
+|LargeHeap
+|1–127
+|0
+|Set during EsfMemoryManagerAllocate and returned as the handle. +
+※ Set internally by the memory manager.
+
+|DMA
+|1–127
+|0
+|Set during EsfMemoryManagerAllocate and returned as the handle. +
+※ Set internally by the memory manager.
+
+|WasmHeap
+|0 +
+※ ID is set to "0" for WasmHeap as memory management is not performed
+|Wasm address (Wasm address space)
+|Set during EsfMemoryManagerAllocate and returned as the handle. +
+※ Set internally by the memory manager.
+
+|User-defined memory operation handle
+|WasmHeap
+|0 +
+※ ID is set to "0" for WasmHeap as memory management is not performed
+|Wasm address (Wasm address space)
+|User sets this manually and calls EsfMemoryManagerMap(). +
+※ Set by the user.
+
+|===
+
+[#_EsfMemoryManagerHandleInfo]
+==== EsfMemoryManagerHandleInfo
+Defines the handle information structure that stores the target memory region and size obtained from the memory management information associated with a memory operation handle. +
+*Note: The memory management information associated with the memory operation handle is not publicly accessible (see <<#_EsfMemoryManagerHandle>>).*
+
+The following constraints apply when retrieving handle information: +
+
+- The size information is valid only if the target region is "LargeHeap" or "DMA". +
+  For "WasmHeap" and "Other" regions, the size will be returned as "0".
+- The "Other" region is used when the handle is not managed by the memory manager. +
+
++
+* *Format*
++
+[source, C]
+....
+struct EsfMemoryManagerHandleInfo {
+  EsfMemoryManagerTargetArea target_area;  // target memory area
+  int32_t allocate_size;                   // allocated memory size
+};
+....
+
+* *Values*
++
+[#_EsfMemoryManagerHandleInfoDescription]
+.Description of EsfMemoryManagerHandleInfo Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|target_area
+|Specifies the target region associated with the handle. +
+Values: LargeHeap, WasmHeap, DMA, Other
+
+|allocate_size
+|Allocated size. +
+Valid only for target areas: LargeHeap and DMA (returns "0" for other regions)
+
+|===
+
+[#_EsfMemoryManagerAppMemory]
+==== EsfMemoryManagerAppMemory
+Defines the memory address type for Wasm memory.
+
+* *Format*
++
+[source, C]
+....
+typedef void* EsfMemoryManagerAppMemory;
+....
+
+<<<
+
+=== API Definitions
+
+[#_EsfMemoryManagerInitialize]
+==== EsfMemoryManagerInitialize
+* *Function* 
++
+Initializes the memory manager. +
+
+* *Format* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerInitialize( int32_t app_mem_div_num )**``
+
+* *Parameter Description* +
+
+**``[IN] int32_t app_mem_div_num``**:: 
+
+Specifies the number of divisions for AppMemory. +
+Defines the number of blocks to divide the AppMemory region (``CONFIG_ESP32S3_APP_BLOCK_SIZE``). +
+*One block size of AppMemory = total AppMemory size ÷ ``app_mem_div_num`` (rounded down).* +
+- If 0 is specified, an error is returned.  
+- ``CONFIG_ESP32S3_APP_BLOCK_SIZE`` must be greater than or equal to ``app_mem_div_num``. +
+*If ``CONFIG_ESP32S3_APP_BLOCK_SIZE`` < ``app_mem_div_num``, an error is returned.*
+
+Specify as follows based on AppMemory usage: +
+  For T5: Specify a custom number of divisions +
+  For T3P: Specify "1" as the number of divisions +
+
+* *Return Value* +
++
+One of the values from <<#_EsfMemoryManagerResultDescription>> is returned based on the result. +
+
+[#_EsfMemoryManagerInitializeReturnValues]
+.Return Values for EsfMemoryManagerInitialize
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Returned when the input argument is invalid
+
+|kEsfMemoryManagerResultOtherError
+|Other error
+
+|===
+
+* *Description* +
+Performs the following initialization and configuration:
+** Executes the PL Lheap initialization API.
+** Executes the PL DMA initialization API.
+** Executes the API to set the number of divisions for the PL DMA region.
+** Executes the PL AppMemory initialization API.
+** Executes the API to set the number of divisions for the PL AppMemory region.
+** Initializes the memory manager's internal management information. +
+
+[#_EsfMemoryManagerFinalize]
+==== EsfMemoryManagerFinalize
+* *Function* 
++
+Finalizes the memory manager. +
+
+* *Format* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFinalize( void )**``
+
+* *Parameter Description* +
+None
+
+* *Return Value* +
++
+One of the values from <<#_EsfMemoryManagerResultDescription>> is returned based on the result. +
+
+[#_EsfMemoryManagerFinalizeReturnValues]
+.Return Values for EsfMemoryManagerFinalize
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+
+|kEsfMemoryManagerResultOtherError
+|Other error
+
+|===
+
+* *Description* +
+Performs the following finalization steps:
+** Executes the PL Lheap finalization API.
+** Executes the PL DMA finalization API.
+** Executes the PL AppMemory finalization API.
+** Cleans up the internal management information of the memory manager. +
+
+
+[#_EsfMemoryManagerAllocate]
+==== EsfMemoryManagerAllocate
+* *Function* 
++
+Allocates the specified size of memory and generates the corresponding management information and memory operation handle.
+
+* *Format* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerAllocate( EsfMemoryManagerTargetArea target_area, const wasm_exec_env_t *exec_env, int32_t size, EsfMemoryManagerHandle *handle )**``
+
+* *Parameter Description* +
+
+**``[IN] EsfMemoryManagerTargetArea target_area``**::  
+Target memory area for allocation.  
+Specify the area in which to allocate the memory operation handle. +
+
+- For memory handles in the LargeHeap area: `kEsfMemoryManagerTargetLargeHeap`  
+- For memory handles in the DMA area: `kEsfMemoryManagerTargetDma`  
+- For memory handles in the WasmHeap area: `kEsfMemoryManagerTargetWasmHeap` +
+
+**``[IN] const wasm_exec_env_t *exec_env``**::  
+WASM module context pointer +
+
+- For LargeHeap: specify `NULL`  
+- For DMA: specify `NULL`  
+- For WasmHeap: specify the WASM module context of the corresponding WASM App +
+
+**``[IN] int32_t size``**::  
+Specify the size of memory to allocate.
+
+**``[OUT] EsfMemoryManagerHandle *handle``**::  
+Pointer to the memory operation handle +
+
+- If memory allocation is successful: sets the memory operation handle for the specified area.  
+- If memory allocation fails: sets `NULL`.
+
+* *Return Value* +
+Returns one of the values defined in <<#_EsfMemoryManagerResultの値の説明>> depending on the result. +
+
+[#_EsfMemoryManagerAllocateReturnValues]
+.Return Values for EsfMemoryManagerAllocate
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error
+|kEsfMemoryManagerResultAllocationError
+|Memory allocation error
+|===
+
+* *Description* +
+Performs the following processing based on the value of the `EsfMemoryManagerTargetArea target_area` argument: +
+
+** For LargeHeap (`kEsfMemoryManagerTargetLargeHeap`):
+*** Allocates the specified size from the LargeHeap area.
+*** Generates and initializes internal memory management information +
+**** Area info (a key to link with the handle: ID, offset)  
+**** Allocated memory info (address, size, mapped address, etc.)
+*** Generates the memory operation handle +
+**** Sets handle ID to a value between 1 and 127  
+**** Sets handle offset to "0" +
+
+** For DMA (`kEsfMemoryManagerTargetDma`):
+*** Allocates the specified size from the DMA area.
+*** Generates and initializes internal memory management information +
+**** Area info (a key to link with the handle: ID, offset)  
+**** Allocated memory info (address, size, mapped address, etc.)
+*** Generates the memory operation handle +
+**** Sets handle ID to a value between 1 and 127  
+**** Sets handle offset to "0" +
+
+** For WasmHeap (`kEsfMemoryManagerTargetWasmHeap`):
+*** Allocates the specified size from the WasmHeap area.
+*** Generates the memory operation handle +
+**** Sets handle ID to 0  
+**** Sets handle offset to the allocated Wasm address (in the Wasm address space) +
+
+** Returns the result and the memory operation handle.
+** In case of an error, returns NULL in the memory operation handle.
+** Concurrency Support:
+*** Supports concurrent operations +
+
+
+[#_EsfMemoryManagerFree]
+==== EsfMemoryManagerFree
+* *Function* 
++
+Releases the memory associated with the specified memory operation handle and discards its management information and the handle itself.
+
+* *Format* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerFree( EsfMemoryManagerHandle handle, const wasm_exec_env_t *exec_env )**``  
+
+* *Parameter Description* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle obtained through `EsfMemoryManagerAllocate()`.
+
+**``[IN] const wasm_exec_env_t *exec_env``**::  
+WASM module context pointer +
+
+- For handles in the LargeHeap area: specify `NULL`  
+- For handles in the DMA area: specify `NULL`  
+- For handles in the WasmHeap area: specify the WASM module context of the target WASM App +
+
+* *Return Value* +
+Returns one of the values defined in <<#_EsfMemoryManagerResultの値の説明>> based on the result.
+
+[#_EsfMemoryManagerFreeReturnValues]
+.Return Values for EsfMemoryManagerFree
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+The specified memory operation handle is invalid.
+|kEsfMemoryManagerResultOperationError
+|Operation error +
+The handle has not been unmapped.
+|===
+
+* *Description* +
+Executes the following steps based on the `EsfMemoryManagerHandle handle` provided:
+
+** For memory handles corresponding to LargeHeap or DMA:
+*** Check management information  
+**** Returns an error if the memory is still mapped.
+*** Calls the memory release API for the memory area registered in the management information.
+*** Discards the handle and associated management information.
+
+** For memory handles corresponding to WasmHeap:
+*** Calls the memory release API for the relevant memory area.
+*** Discards the memory operation handle.
+
+** Concurrency Support:
+*** Supports concurrent operation
+
+[#_EsfMemoryManagerMap]
+==== EsfMemoryManagerMap
+* *Function* 
++
+Maps the memory specified by the memory operation handle.
+
+* *Format* +
++
+``** EsfMemoryManagerResult EsfMemoryManagerMap( EsfMemoryManagerHandle handle, const wasm_exec_env_t *exec_env, int32_t size, void **address )**``  
+
+* *Parameter Description* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+You may specify either a handle obtained via `EsfMemoryManagerAllocate()` or a user-defined handle.  
+Note: Mapping using user-defined handles is only supported for the WasmHeap area.
+
+**``[IN] const wasm_exec_env_t *exec_env``**::  
+WASM module context +
+
+- For LargeHeap: specify `NULL`  
+- For DMA: specify `NULL`  
+- For WasmHeap: specify the WASM module context of the target WASM App +
+
+**``[IN] int32_t size``**::  
+Specify the size of memory to be mapped.  
+Note: For LargeHeap or DMA areas, specifying `MAP_ALL_AREA(1)` maps the entire allocated area (recommended to retrieve the size via `MemoryManagerGetHandleInfo()`).
+
+**``[OUT] void **address``**::  
+- On success: sets the base address (virtual memory address) of the mapped region  
+- On failure: sets `NULL`
+
+* *Return Value* +
+Returns one of the values defined in <<#_EsfMemoryManagerResultの値の説明>> based on the result.
++
+[#_EsfMemoryManagerMapReturnValues]
+.Return Values for EsfMemoryManagerMap
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+The specified memory operation handle is invalid.
+|kEsfMemoryManagerResultMapError
+|Memory mapping error
+|kEsfMemoryManagerResultOperationError
+|Operation error +
+Mapping was attempted despite the memory already being mapped.
+|===
+
+* *Description* +
+Performs the following processing based on the given `EsfMemoryManagerHandle handle`:
+
+** When using a handle for LargeHeap or DMA:
+*** Sets the offset to be mapped in the address offset portion of the handle (the ID portion remains unchanged).
+*** Extracts the memory management information (area info, memory info, etc.) associated with the handle.
+*** Based on the extracted memory management state, performs the following:
+**** If the memory is not currently mapped: maps the memory region associated with the handle into virtual memory, and returns the virtual address + offset as the mapped address.
+**** If already mapped: returns the mapped virtual address + offset as the mapped address.
+
+** When using a handle for WasmHeap:
+*** The handle (offset) designates the address in the preallocated WasmHeap memory (ID must be 0 for WasmHeap).
+*** Maps the Wasm address (in the Wasm address space) specified by the handle (offset) into virtual memory and returns that virtual address as the mapped address.
+
+This function allows concurrent operation across multiple threads. When calling `EsfMemoryManagerMap`, specifying a memory handle enables memory mapping for the corresponding area (refer to the memory mapping sequence diagram).
+
+** Concurrency Support:
+*** Supports concurrent operation
+
+[#_EsfMemoryManagerUnmap]
+==== EsfMemoryManagerUnmap
+* *Function* +
+Unmaps the memory that is currently mapped using the memory operation handle.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerUnmap( EsfMemoryManagerHandle handle, void **address )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+You can specify either a handle obtained via `EsfMemoryManagerAllocate` or a user-defined handle.  
+*Note:* User-defined memory handles can only be used for mapping operations on the WasmHeap region.
+
+**``[IN/OUT] void **address``**::  
+- For LargeHeap region: specify `NULL`.  
+- For DMA region: specify `NULL`.  
+- For WasmHeap region: specify the mapped address obtained via `EsfMemoryManagerMap`. The pointer will be set to `NULL` after unmapping.
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+
+[#_EsfMemoryManagerUnmapReturnValues]
+.Return Values for EsfMemoryManagerUnmap
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+The specified memory operation handle is invalid.
+|kEsfMemoryManagerResultOperationError
+|Operation error +
+An unmap operation was attempted on already unmapped memory.
+|===
+
+* *Description* +
+Performs the following based on the specified `EsfMemoryManagerHandle handle`:
+
+** When using a handle for LargeHeap or DMA regions:
+*** Extracts the memory management information (area info, memory info, etc.) associated with the handle.
+*** Based on the memory state:
+**** If currently mapped: returns the mapped virtual address + offset as the target mapped address. If multiple mappings are active, the memory is unmapped only when all mappings have been released.
+
+** When using a handle for WasmHeap region:
+*** Unmaps the virtual address specified by the handle (offset) and the given mapped address.
+
+** Concurrency Support:
+*** Concurrent operation is supported.
+
+[#_EsfMemoryManagerFopen]
+==== EsfMemoryManagerFopen
+* *Function* +
+Opens the specified memory as a file using a handle obtained via `EsfMemoryManagerAllocate`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFopen( EsfMemoryManagerHandle handle )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the memory handle obtained from `EsfMemoryManagerAllocate()`.
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+
+[#_EsfMemoryManagerFopenReturnValues]
+.Return Values for EsfMemoryManagerFopen
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations based on the specified `EsfMemoryManagerHandle handle`:
+
+** For handles targeting the LargeHeap region:
+*** Set the offset of the memory operation handle to specify the address to open (ID remains unchanged).
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Open the memory file on `PlLheap`.
+*** Update the memory operation handle (internal memory management information) with the file descriptor `fd` returned from the file open operation on `PlLheap`.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** The result of the operation is returned as a return value.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+
+[#_EsfMemoryManagerFclose]
+==== EsfMemoryManagerFclose
+* *Function* +
+Closes the memory file that was opened via `EsfMemoryManagerFopen`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFclose( EsfMemoryManagerHandle handle )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle obtained through `EsfMemoryManagerAllocate()`.  
+When using an offset-based open, specify the handle including the offset.
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+
+[#_EsfMemoryManagerFcloseの戻り値の説明]
+.Return Values for EsfMemoryManagerFclose
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations based on the specified `EsfMemoryManagerHandle handle`:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Get the file descriptor `fd` associated with the LargeHeap handle.
+*** Use the obtained file descriptor to perform memory file close via `PlLheap`.
+*** Update the memory operation handle (internal memory management information):
+**** Set the file descriptor `fd` associated with the LargeHeap handle to `NULL`.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** The result of the operation is returned as a return value.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+[#_EsfMemoryManagerFseek]
+==== EsfMemoryManagerFseek
+* *Function* +
+Performs a file seek operation on memory that was opened via `EsfMemoryManagerFopen`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFseek( EsfMemoryManagerHandle handle, off_t offset, int whence, off_t *result_offset )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle obtained through `EsfMemoryManagerAllocate()`.
+
+**``[IN] off_t offset``**::  
+Specify the seek offset.
+
+**``[IN] int whence``**::  
+Specify the reference position for the seek. +
+`SEEK_SET`: Beginning of the file +  
+`SEEK_CUR`: Current file position +  
+`SEEK_END`: End of the file +
+
+**``[OUT] off_t *result_offset``**::  
+On success: Sets the new position from the beginning of the file after seeking. +  
+On failure: Sets the current file position.
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+
+[#_EsfMemoryManagerFseekの戻り値の説明]
+.Return Values for EsfMemoryManagerFseek
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOperationError
+|Operation error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations based on the specified `EsfMemoryManagerHandle handle`, seek offset, and seek base position:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Get the file descriptor `fd` associated with the handle.
+*** Perform memory file seek via `PlLheap` using the descriptor `fd`, the provided offset, and whence.
+*** Update the current position of the file descriptor within the internal memory management information.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** The result of the seek operation and the updated file position are returned.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+
+[#_EsfMemoryManagerFwrite]
+==== EsfMemoryManagerFwrite
+* *Function* +
+Writes the specified data to the memory file at the current file pointer position, which was previously opened using `EsfMemoryManagerFopen`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFwrite( EsfMemoryManagerHandle handle, const void *buf, size_t size, size_t *rsize )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle obtained via `EsfMemoryManagerAllocate()`.
+
+**``[IN] const void *buf``**::  
+Specify the buffer address that contains the data to be written.
+
+**``[IN] size_t size``**::  
+Specify the number of bytes to write.
+
+**``[OUT] size_t *rsize``**::  
+On success: The number of bytes successfully written. +  
+On failure: Set to "0".
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+
+[#_EsfMemoryManagerFwriteの戻り値の説明]
+.Return Values for EsfMemoryManagerFwrite
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOperationError
+|Operation error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations based on the specified `EsfMemoryManagerHandle handle`, write buffer, and write size:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Obtain the file descriptor `fd` associated with the LargeHeap handle.
+*** Perform the write operation to the memory file via `PlLheap` using the file descriptor `fd`, buffer, and size.
+*** Update the current position of the file descriptor in the internal memory management information.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** The return value includes the operation result and the number of bytes written.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+[#_EsfMemoryManagerFpwrite]
+==== EsfMemoryManagerFpwrite
+* *Function* +
+Writes data to the specified position in the memory file opened with `EsfMemoryManagerFopen`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFpwrite( EsfMemoryManagerHandle handle, const void *buf, size_t size, off_t offset, size_t *rsize )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle used when calling `EsfMemoryManagerFopen()`.
+
+**``[IN] const void *buf``**::  
+Specify the address of the buffer containing the data to write.
+
+**``[IN] size_t size``**::  
+Specify the number of bytes to write.
+
+**``[IN] off_t offset``**::  
+Specify the offset (in bytes) from the beginning of the memory region associated with the handle.
+
+**``[OUT] size_t *rsize``**::  
+On success: The number of bytes successfully written. +  
+On failure: Set to "0".
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+
+[#_EsfMemoryManagerFpwriteの戻り値の説明]
+.Return Values for EsfMemoryManagerFpwrite
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOperationError
+|Operation error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations according to the specified `EsfMemoryManagerHandle handle`, write offset, write buffer, and write size:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Obtain the file descriptor `fd` associated with the LargeHeap handle.
+*** Seek to the specified offset and write the data to the memory file via `PlLheap` using `fd`, buffer, and size.
+*** Update the current position of the file descriptor in the internal memory management information.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** Returns the result of the operation and the number of bytes written.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+[#_EsfMemoryManagerFread]
+==== EsfMemoryManagerFread
+* *Function* +
+Reads data from the position indicated by the file pointer in the memory file opened with `EsfMemoryManagerFopen`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFread( EsfMemoryManagerHandle handle, void *buf, size_t size, size_t *rsize )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle obtained from `EsfMemoryManagerAllocate()`.
+
+**``[OUT] void *buf``**::  
+Specify the buffer address where the read data will be stored.
+
+**``[IN] size_t size``**::  
+Specify the size of the data to read.
+
+**``[OUT] size_t *rsize``**::  
+On success: The number of bytes successfully read. +  
+On failure: Set to "0".
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+
+[#_EsfMemoryManagerFreadの戻り値の説明]
+.Return Values for EsfMemoryManagerFread
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOperationError
+|Operation error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations according to the specified `EsfMemoryManagerHandle handle`, read buffer, and read size:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Obtain the file descriptor `fd` associated with the LargeHeap handle.
+*** Use `fd`, the read buffer, and the read size to perform a memory file read via `PlLheap`.
+*** Update the current position of the file descriptor in the internal memory management information.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** Returns the result of the operation and the number of bytes read.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+[#_EsfMemoryManagerFpread]
+==== EsfMemoryManagerFpread
+* *Function* +
+Reads data from the specified position in the memory file opened with `EsfMemoryManagerFopen`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerFpread( EsfMemoryManagerHandle handle, void *buf, size_t size, off_t offset, size_t *rsize )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle designated via `EsfMemoryManagerFopen()`.
+
+**``[OUT] void *buf``**::  
+Specify the buffer address where the read data will be stored.
+
+**``[IN] size_t size``**::  
+Specify the size of the data to read.
+
+**``[IN] off_t offset``**::  
+Specify the offset from the beginning of the memory region associated with the handle.
+
+**``[OUT] size_t *rsize``**::  
+On success: The number of bytes successfully read. +  
+On failure: Set to "0".
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+
+[#_EsfMemoryManagerFpreadの戻り値の説明]
+.Return Values for EsfMemoryManagerFpread
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultFileIoError
+|File I/O error
+|kEsfMemoryManagerResultNotSupport
+|Unsupported operation
+|kEsfMemoryManagerResultOperationError
+|Operation error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations based on the specified `EsfMemoryManagerHandle handle`, read offset, read buffer, and read size:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information.
+*** Obtain the file descriptor `fd` associated with the LargeHeap handle.
+*** Use `fd`, the read offset, buffer, and size to perform a memory file read via `PlLheap`.
+*** Update the current position of the file descriptor in the internal memory management information.
+
+** For handles targeting the DMA region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** For handles targeting the WasmHeap region:
+*** Returns `kEsfMemoryManagerResultNotSupport`.
+
+** Returns the result of the operation and the number of bytes read.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+
+[#_EsfMemoryManagerIsMapSupport]
+==== EsfMemoryManagerIsMapSupport
+* *Function* +
+Checks whether the Map feature is supported for the handle obtained with `EsfMemoryManagerAllocate`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerIsMapSupport( EsfMemoryManagerHandle handle, EsfMemoryManagerMapSupport *support )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerHandle handle``**::  
+Memory operation handle.  
+Specify the handle obtained via `EsfMemoryManagerAllocate()`.
+
+**``[OUT] EsfMemoryManagerMapSupport *support``**::  
+Returns the Map feature support status. +
+** If Map is supported: `kEsfMemoryManagerMapIsSupport` +  
+** If Map is not supported: `kEsfMemoryManagerMapIsNotSupport`
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+
+[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+.Return Values for EsfMemoryManagerIsMapSupport
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error +
+Invalid handle
+|kEsfMemoryManagerResultOperationError
+|Operation error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following operations based on the specified `EsfMemoryManagerHandle handle`:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the LargeHeap handle from internal memory management information
+*** Check for Map feature support via `PlLheap`
+
+** For handles targeting the DMA region:
+*** Retrieve the DMA handle from internal memory management information
+*** Check for Map feature support via `PlDmaMem`
+
+** For handles targeting the WasmHeap region:
+*** Retrieve the WasmHeap handle from internal memory management information
+*** Check for Map feature support via `PlAppmem`
+
+** Returns the Map support status
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+
+[#_EsfMemoryManagerGetHandleInfo]
+==== EsfMemoryManagerGetHandleInfo
+* *Function* +
+Retrieves the memory region and size information associated with the handle obtained by `EsfMemoryManagerAllocate`.
+
+* *Syntax* +
+``** EsfMemoryManagerResult EsfMemoryManagerGetHandleInfo( uint32_t handle, EsfMemoryManagerHandleInfo *info )**``
+
+* *Parameters* +
+
+**``[IN] uint32_t handle``**::  
+Memory operation handle.  
+Specify the handle obtained via `EsfMemoryManagerAllocate()` or the handle of the memory for which region identification is required.
+
+**``[OUT] EsfMemoryManagerHandleInfo *info``**::  
+Outputs the memory region and size information associated with the handle.  
+See <<#_EsfMemoryManagerHandleInfo>>.
+
+* *Return Value* +
+Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+
+[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+.Return Values for EsfMemoryManagerGetHandleInfo
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kEsfMemoryManagerResultSuccess
+|Operation successful
+|kEsfMemoryManagerResultParamError
+|Parameter error
+|kEsfMemoryManagerResultOtherError
+|Other errors
+|===
+
+* *Description* +
+Performs the following based on the specified `EsfMemoryManagerHandle handle`:
+
+** For handles targeting the LargeHeap region:
+*** Retrieve the allocated size from internal memory management information
+*** Set the memory region to "LargeHeap" and the allocated size in `EsfMemoryManagerHandleInfo`
+
+** For handles targeting the DMA region:
+*** Retrieve the allocated size from internal memory management information
+*** Set the memory region to "Dma" and the allocated size in `EsfMemoryManagerHandleInfo`
+
+** For handles targeting the WasmHeap region:
+*** Set the memory region to "WasmHeap" and allocated size to "0" in `EsfMemoryManagerHandleInfo`
+
+** For all other handles:
+*** Set the memory region to "Other" and allocated size to "0" in `EsfMemoryManagerHandleInfo`
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+
+[#_EsfMemoryManagerWasmAllocate]
+==== EsfMemoryManagerWasmAllocate
+* *Function* +
+Allocates memory of the specified size for a designated region and returns a pointer to the allocated memory block.
+
+* *Syntax* +
+``** EsfMemoryManagerAppMemory EsfMemoryManagerWasmAllocate( EsfMemoryManagerWasmMemoryUsage usage, int32_t size )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerWasmMemoryUsage usage``**::  
+Specifies the intended usage of the allocated memory. +
+- `kEsfMemoryManagerWasmAllocForRuntime`: Allocates memory from the normal heap. +
+- `kEsfMemoryManagerWasmAllocForLinearMemory`: Allocates memory from the AppMemory region.
+
+**``[IN] int32_t size``**::  
+Specifies the size of the memory to be allocated.  
+*Must be non-zero.*
+
+* *Return Value* +
+- On success: Returns a pointer to the allocated memory block. +
+- On failure: Returns NULL.
+
+* *Description* +
+Performs the following based on the specified `usage`:
+** If `kEsfMemoryManagerWasmAllocForRuntime` is specified:
+*** Allocates the specified size of memory from the normal heap region.
+** If `kEsfMemoryManagerWasmAllocForLinearMemory` is specified:
+*** Allocates the specified size of memory from the AppMemory region.
+
+** Concurrency Support:
+*** Concurrent operation is supported.
+
+[#_EsfMemoryManagerWasmReallocate]
+==== EsfMemoryManagerWasmReallocate
+* *Function* +
+Reallocates memory of the specified size for memory obtained using <<#_EsfMemoryManagerWasmAllocate>>, and returns a pointer to the reallocated memory block.
+
+* *Syntax* +
+``** EsfMemoryManagerAppMemory EsfMemoryManagerWasmReallocate( EsfMemoryManagerWasmMemoryUsage usage, const EsfMemoryManagerAppMemory old_memory, int32_t size )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerWasmMemoryUsage usage``**::  
+Must be the same usage type specified in <<#_EsfMemoryManagerWasmAllocate>>.
+
+**``[IN] const EsfMemoryManagerAppMemory old_memory``**::  
+Pointer to the memory block previously allocated by <<#_EsfMemoryManagerWasmAllocate>>.
+
+**``[IN] int32_t size``**::  
+Specifies the new memory size for reallocation.  
+*Must be non-zero.*
+
+* *Return Value* +
+- On success: Returns a pointer to the reallocated memory block. +
+- On failure: Returns NULL.
+
+* *Description* +
+Performs the following based on the specified `usage`:  
+*The same usage as in the original <<#_EsfMemoryManagerWasmAllocate>> call must be specified.*
+
+** If `kEsfMemoryManagerWasmAllocForRuntime` is specified:
+*** Reallocates the specified size of memory from the normal heap region.
+
+** If `kEsfMemoryManagerWasmAllocForLinearMemory` is specified:
+*** Reallocates the specified size of memory from the AppMemory region.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+
+[#_EsfMemoryManagerWasmFree]
+==== EsfMemoryManagerWasmFree
+* *Function* +
+Frees memory allocated by <<#_EsfMemoryManagerWasmAllocate>>.
+
+* *Syntax* +
+``** void EsfMemoryManagerWasmFree( EsfMemoryManagerWasmMemoryUsage usage, EsfMemoryManagerAppMemory memory )**``
+
+* *Parameters* +
+
+**``[IN] EsfMemoryManagerWasmMemoryUsage usage``**::  
+Specify the same memory usage type that was used with <<#_EsfMemoryManagerWasmAllocate>>.
+
+**``[IN] EsfMemoryManagerAppMemory memory``**::  
+Specify the pointer to the memory block allocated by <<#_EsfMemoryManagerWasmAllocate>> or <<#_EsfMemoryManagerWasmReallocate>>.
+
+* *Return Value* +
+None
+
+* *Description* +
+Performs the following based on the specified `usage`:  
+*The same usage type as used in <<#_EsfMemoryManagerWasmAllocate>> must be specified.*
+
+** If `kEsfMemoryManagerWasmAllocForRuntime` is specified:
+*** Frees memory allocated from the normal heap region.
+
+** If `kEsfMemoryManagerWasmAllocForLinearMemory` is specified:
+*** Frees memory allocated from the AppMemory region.
+
+** Concurrency Support:
+*** Concurrent operation is supported. +
+
+<<<
+
+== API Usage Example
+
+This section describes how to use memory operation handles to allocate/free memory and perform map/unmap operations, for each memory region combination.
+
+=== Memory Operation Between LargeHeap Regions (Same applies to DMA regions)
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant lheap as Upper Layer App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: LargeHeap, WASM Module Info: N/A, Size)
+    note over ssf_memutility : Recognizes memory allocation to LargeHeap from "Target: LargeHeap"
+  ssf_memutility ->> +pl : Allocate Memory (Size)
+  note over pl : Allocate memory
+  pl -->> -ssf_memutility : Memory Address (LargeHeap)
+    note over ssf_memutility : Create [Memory Info ①]<br>Set the following:<br>・Region Info (including handle link)<br>・Memory Info
+    note over ssf_memutility : Create [LargeHeap Handle ①]<br>Set the following:<br>・ID=1, offset=0
+  ssf_memutility -->> -lheap : Success, LargeHeap Handle ①
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: LargeHeap, WASM Module Info: N/A, Size)
+    note over ssf_memutility : Recognizes memory allocation to LargeHeap from "Target: LargeHeap"
+  ssf_memutility ->> +pl : Allocate Memory (Size)
+  note over pl : Allocate memory
+  pl -->> -ssf_memutility : Memory Address (LargeHeap)
+    note over ssf_memutility : Create [Memory Info ②]<br>Set the following:<br>・Region Info (including handle link)<br>・Memory Info
+    note over ssf_memutility : Create [LargeHeap Handle ②]<br>Set the following:<br>・ID=2, offset=0
+  ssf_memutility -->> -lheap : Success, LargeHeap Handle ②
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(Handle ①, WASM Module Info: N/A, Map Size)<br>*Supports multiple mapping by specifying arbitrary offset
+    note over ssf_memutility : Recognizes memory map request to LargeHeap<br>Gets "Memory Info" from [Handle ①]
+  ssf_memutility ->> +pl : Map Memory()
+  note over pl : Map memory<br>Memory address → virtual address
+  pl -->> -ssf_memutility : Virtual Memory Address
+    note over ssf_memutility : Set "Mapped" to "Memory Info" of [Memory Info ①]
+  ssf_memutility -->> -lheap : Success, Mapped Address
+
+  note over lheap : Prepare data in mapped memory for Handle ①
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(Handle ②, WASM Module Info: N/A, Map Size)<br>*Supports multiple mapping by specifying arbitrary offset
+    note over ssf_memutility : Recognizes memory map request to LargeHeap<br>Gets "Memory Info" from [Handle ②]
+  ssf_memutility ->> +pl : Map Memory()
+  note over pl : Map memory<br>Memory address → virtual address
+  pl -->> -ssf_memutility : Virtual Memory Address
+    note over ssf_memutility : Set "Mapped" to "Memory Info" of [Memory Info ②]
+  ssf_memutility -->> -lheap : Success, Mapped Address
+
+  note over lheap : Data transfer and processing from LargeHeap Region ① to ②
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(Handle ①, Mapped Address: N/A)<br>*Specify the correct offset handle when multiple maps are active
+    note over ssf_memutility : Recognizes unmap request for LargeHeap<br>Gets "Memory Info" from [Handle ①]
+  ssf_memutility ->> +pl : Unmap Memory()
+  note over pl : Unmap memory<br>Unmap virtual memory address
+  pl -->> -ssf_memutility :
+    note over ssf_memutility : Set "Unmapped" to "Memory Info" of [Memory Info ①]
+  ssf_memutility -->> -lheap : Success, Handle ①
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(Handle ②, Mapped Address: N/A)<br>*Specify the correct offset handle when multiple maps are active
+    note over ssf_memutility : Recognizes unmap request for LargeHeap<br>Gets "Memory Info" from [Handle ②]
+  ssf_memutility ->> +pl : Unmap Memory()
+  note over pl : Unmap memory<br>Unmap virtual memory address
+  pl -->> -ssf_memutility :
+    note over ssf_memutility : Set "Unmapped" to "Memory Info" of [Memory Info ②]
+  ssf_memutility -->> -lheap : Success, Handle ②
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(Handle ①, WASM Module Info: N/A)
+    note over ssf_memutility : Recognizes memory free request for LargeHeap<br>Frees memory held in [Memory Info ①]
+
+  ssf_memutility ->> +pl : Free Memory (Memory Address)
+  note over pl : Free memory
+  pl -->> -ssf_memutility :
+  note over ssf_memutility : Discard [Memory Info ①]
+  note over ssf_memutility : Discard [Handle ①]
+  ssf_memutility -->> -lheap : Success
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(Handle ②, WASM Module Info: N/A)
+    note over ssf_memutility : Recognizes memory free request for LargeHeap<br>Frees memory held in [Memory Info ②]
+
+  ssf_memutility ->> +pl : Free Memory (Memory Address)
+  note over pl : Free memory
+  pl -->> -ssf_memutility :
+  note over ssf_memutility : Discard [Memory Info ②]
+  note over ssf_memutility : Discard [Handle ②]
+  ssf_memutility -->> -lheap : Success
+
+....
+
+=== Example: Memory Operations Between LargeHeap and WasmHeap Regions
+*Same sequence applies for DMA and WasmHeap combinations as well.*
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant lheap as Upper Layer App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+    participant wamr as WAMR
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: LargeHeap, WASM Module Info: N/A, Size)
+    note over ssf_memutility : Recognized as allocation to LargeHeap based on "Target: LargeHeap"
+  ssf_memutility ->> +pl : Allocate memory (size)
+  note over pl : Allocate memory
+  pl -->> -ssf_memutility : Memory address (LargeHeap)
+    note over ssf_memutility : Create [Memory Info ①]<br>Set:<br>・Region Info (incl. handle link)<br>・Memory Info
+    note over ssf_memutility : Create [LargeHeap Handle]<br>Set:<br>・ID = 1, offset = 0
+  ssf_memutility -->> -lheap : Success, LargeHeap Handle ①
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: WasmHeap, WASM Module Info: Specified, Size)
+    note over ssf_memutility : Recognized as allocation to WasmHeap based on "Target: WasmHeap"
+  ssf_memutility ->> +wamr : Allocate memory (size)
+  note over wamr : Allocate memory
+  wamr -->> -ssf_memutility : Memory address (WasmHeap, within WASM)
+    note over ssf_memutility : Create [WasmHeap Handle]<br>Set:<br>・ID = 0, offset = memory address (WasmHeap)
+  ssf_memutility -->> -lheap : Success, WasmHeap Handle
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(LargeHeap Handle, WASM Module Info: N/A, Map Size)<br>*Multiple maps possible via offset*
+    note over ssf_memutility : Recognized as map to LargeHeap using Handle<br>Retrieve "Memory Info" from [Handle]
+  ssf_memutility ->> +pl : Map memory()
+  note over pl : Map memory<br>Physical address → Virtual address
+  pl -->> -ssf_memutility : Virtual memory address
+    note over ssf_memutility : Set "Mapped" in Memory Info ①
+  ssf_memutility -->> -lheap : Success, Mapped Address
+
+  note over lheap : Prepare data on mapped memory from LargeHeap Handle
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap Handle, WASM Module Info: Specified, Map Size)
+    note over ssf_memutility : Retrieve memory address from WasmHeap Handle
+  ssf_memutility ->> +wamr : Map memory()
+  note over wamr : Map memory<br>Physical address → Virtual address
+  wamr -->> -ssf_memutility : Virtual memory address (mapped)
+  ssf_memutility -->> -lheap : Success, Mapped Address
+
+  note over lheap, wamr : Data transfer + processing from LargeHeap to WasmHeap region
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(LargeHeap Handle, Mapped Address: N/A)<br>*Specify handle with offset if multiple maps used*
+    note over ssf_memutility : Recognized as unmap from LargeHeap<br>Retrieve "Memory Info" from Handle
+  ssf_memutility ->> +pl : Unmap memory()
+  note over pl : Unmap virtual memory address
+  pl -->> -ssf_memutility :
+    note over ssf_memutility : Set "Unmapped" in Memory Info ①
+  ssf_memutility -->> -lheap : Success, LargeHeap Handle
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap Handle, Mapped Address: Specified)
+    note over ssf_memutility : Recognized as unmap from WasmHeap<br>Unmap specified address
+  ssf_memutility ->> +wamr : Unmap memory()
+  note over wamr : Unmap virtual memory address
+  wamr -->> -ssf_memutility :
+  ssf_memutility -->> -lheap : Success, WasmHeap Handle
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(LargeHeap Handle, WASM Module Info: N/A)
+    note over ssf_memutility : Recognized as free from LargeHeap<br>Free memory held in Memory Info ①
+  ssf_memutility ->> +pl : Free memory (address)
+  note over pl : Free memory
+  pl -->> -ssf_memutility :
+  note over ssf_memutility : Discard [Memory Info ①] and [LargeHeap Handle]
+  ssf_memutility -->> -lheap : Success
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap Handle, WASM Module Info: Specified)
+    note over ssf_memutility : Recognized as free from WasmHeap<br>Free memory indicated by WasmHeap Handle
+  ssf_memutility ->> +wamr : Free memory (address)
+  note over wamr : Free memory
+  wamr -->> -ssf_memutility :
+  note over ssf_memutility : Discard [Memory Info ②] and [WasmHeap Handle]
+  ssf_memutility -->> -lheap : Success
+
+....
+
+=== Example: Memory Operations Between WasmHeap Regions (Deprecated)
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant wheap as Upper Layer App
+    participant ssf_memutility as MemoryManager
+    participant wamr as WAMR
+
+opt In some environments, map/unmap functions may be unnecessary.<br>This may cause system-wide performance degradation.<br>(If only using WasmHeap, it is recommended to use WAMR’s memory API instead.)
+  wheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: WasmHeap, WASM Module Info: specified, size)
+    note over ssf_memutility : Recognized as allocation to WasmHeap based on "WASM Module Info: specified"
+  ssf_memutility ->> +wamr : Allocate memory (size)
+  note over wamr : Allocate memory
+  wamr -->> -ssf_memutility : Memory address (WasmHeap, inside WASM)
+    note over ssf_memutility : Create [WasmHeap Handle ①]<br>Set:<br>・ID = 1, offset = memory address (WasmHeap)
+  ssf_memutility -->> -wheap : Success, WasmHeap Handle ①
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: WasmHeap, WASM Module Info: specified, size)
+    note over ssf_memutility : Recognized as allocation to WasmHeap based on "WASM Module Info: specified"
+  ssf_memutility ->> +wamr : Allocate memory (size)
+  note over wamr : Allocate memory
+  wamr -->> -ssf_memutility : Memory address (WasmHeap, inside WASM)
+    note over ssf_memutility : Create [WasmHeap Handle ②]<br>Set:<br>・ID = 2, offset = memory address (WasmHeap)
+  ssf_memutility -->> -wheap : Success, WasmHeap Handle ②
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap Handle ①, WASM Module Info: specified, size)
+    note over ssf_memutility : Recognized as mapping to WasmHeap from Handle ①<br>Retrieve memory address from Handle ①
+  ssf_memutility ->> +wamr : Map memory()
+  note over wamr : Map memory<br>Physical address → Virtual address
+  wamr -->> -ssf_memutility : Virtual address (mapped)
+  ssf_memutility -->> -wheap : Success, Mapped Address
+
+  note over wheap : Prepare data on mapped memory of Handle ①
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerMap(WasmHeap Handle ②, WASM Module Info: specified, size)<br>*Multiple mappings possible via offset specification*
+    note over ssf_memutility : Recognized as mapping to WasmHeap from Handle ②<br>Retrieve memory address from Handle ②
+  ssf_memutility ->> +wamr : Map memory()
+  note over wamr : Map memory<br>Physical address → Virtual address
+  wamr -->> -ssf_memutility : Virtual address (mapped)
+  ssf_memutility -->> -wheap : Success, Mapped Address
+
+  note over wheap : Data transfer + processing from WasmHeap ① → ②
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap Handle ①, Mapped Address: specified)
+    note over ssf_memutility : Recognized as unmap from WasmHeap<br>Unmap specified address for Handle ①
+  ssf_memutility ->> +wamr : Unmap memory()
+  note over wamr : Unmap virtual memory address
+  wamr -->> -ssf_memutility : 
+    note over ssf_memutility : Update Memory Info of Handle ① as unmapped
+  ssf_memutility -->> -wheap : Success, Handle ①
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerUnmap(WasmHeap Handle ②, Mapped Address: specified)
+    note over ssf_memutility : Recognized as unmap from WasmHeap<br>Unmap specified address for Handle ②
+  ssf_memutility ->> +wamr : Unmap memory()
+  note over wamr : Unmap virtual memory address
+  wamr -->> -ssf_memutility : 
+    note over ssf_memutility : Update Memory Info of Handle ② as unmapped
+  ssf_memutility -->> -wheap : Success, Handle ②
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap Handle ①, WASM Module Info: specified)
+    note over ssf_memutility : Recognized as free from WasmHeap<br>Free memory indicated by Handle ①
+  ssf_memutility ->> +wamr : Free memory (address)
+  note over wamr : Free memory
+  wamr -->> -ssf_memutility : 
+  note over ssf_memutility : Discard Handle ①
+  ssf_memutility -->> -wheap : Success
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerFree(WasmHeap Handle ②, WASM Module Info: specified)
+    note over ssf_memutility : Recognized as free from WasmHeap<br>Free memory indicated by Handle ②
+  ssf_memutility ->> +wamr : Free memory (address)
+  note over wamr : Free memory
+  wamr -->> -ssf_memutility : 
+  note over ssf_memutility : Discard Handle ②
+  ssf_memutility -->> -wheap : Success
+
+end
+....
+
+=== Example: Map/Unmap Operation Using User-Defined Handle for WasmHeap
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant wheap as Upper Layer App
+    participant ssf_memutility as MemoryManager
+    participant wamr as WAMR
+
+  note over wheap : The upper layer app allocates memory independently
+  wheap ->> +wamr : Allocate memory (size)
+  note over wamr : Allocate memory
+  wamr -->> -wheap : Memory address (WasmHeap, inside WASM)
+
+  note over wheap : The upper layer app prepares a "user-defined handle"<br>Set the following:<br>・ID = 0, offset = memory address (WasmHeap)
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerMap(User-defined handle, WASM Module Info: specified, map size)<br>*Performs mapping to the memory address (WasmHeap) set in the offset of the user-defined handle*
+    note over ssf_memutility : Recognized as mapping to WasmHeap from user-defined handle<br>Retrieve "memory address (WasmHeap)" from the handle
+  ssf_memutility ->> +wamr : Map memory()
+  note over wamr : Map memory<br>Memory address (WasmHeap) → Virtual memory address
+  wamr -->> -ssf_memutility : Virtual memory address
+  ssf_memutility -->> -wheap : Success, mapped address (virtual memory address)
+
+  note over wheap : Perform memory operations using the mapped address
+
+  wheap ->> +ssf_memutility : EsfMemoryManagerUnmap(User-defined handle, mapped address: virtual address)<br>*Use the same user-defined handle as in the map operation,<br>and specify the mapped address (virtual address) returned at map time*
+    note over ssf_memutility : Recognized as unmap from WasmHeap via user-defined handle<br>Retrieve the virtual memory address
+  ssf_memutility ->> +wamr : Unmap memory()
+  note over wamr : Unmap virtual memory address
+  wamr -->> -ssf_memutility : 
+  ssf_memutility -->> -wheap : Success, user-defined handle
+
+  note over wheap : The upper layer app frees the memory independently
+  wheap ->> +wamr : Free memory (address)<br>*Specify the memory address (WasmHeap) obtained during allocation*
+  note over wamr : Free memory
+  wamr -->> -wheap : Success
+
+....
+
+=== Example: FileIO Operations on LargeHeap Region
+[source, mermaid]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant lheap as Upper Layer App
+    participant ssf_memutility as MemoryManager
+    participant pl as PortingLayer
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerAllocate(Target: LargeHeap, WASM Module Info: Not Specified, Allocation Size)
+    note over ssf_memutility : Recognized as allocation request for LargeHeap region<br>based on target info: LargeHeap
+  ssf_memutility ->> +pl : Allocate memory (size)
+  note over pl : Allocate memory
+  pl -->> -ssf_memutility : Memory address (LargeHeap)
+    note over ssf_memutility : Generate [Memory Management Info ①]<br>Set the following:<br>・Region info (including handle linkage)<br>・Memory info
+    note over ssf_memutility : Generate [LargeHeap Handle]<br>Set the following:<br>・ID = 1, offset = 0<br>・File descriptor = "NULL"<br>・File position = "0"
+  ssf_memutility -->> -lheap : Success, memory handle: LargeHeap handle
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerIsMapSupport(Memory handle: LargeHeap handle)
+    note over ssf_memutility : Recognized as map support check<br>for LargeHeap region from the memory handle
+  ssf_memutility ->> +pl : Check map support for PlLheap (LargeHeap handle)
+  note over pl : Check map support
+  pl -->> -ssf_memutility : Map support result (true: supported, false: unsupported)
+  ssf_memutility -->> -lheap : Map support result (true: supported, false: unsupported)
+
+alt Map Supported: Use Map/Unmap for Memory Operation
+    note over lheap,pl : <br>For memory operations with map support, refer to Sections 5.1–5.4<br>
+else Map Not Supported: Use Fopen, Fclose, Fseek, Fwrite, Fread
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFopen(Memory handle: LargeHeap handle)
+    note over ssf_memutility : Recognized as file open request for<br>LargeHeap region based on the memory handle
+  ssf_memutility ->> +pl : Open memory file (LargeHeap handle)
+  note over pl : Open memory file
+  pl -->> -ssf_memutility : File descriptor "fd"
+    note over ssf_memutility : Update [LargeHeap handle]<br>Update [Memory Management Info] with:<br>・File descriptor = "fd"<br>*Handle and memory info are managed as a pair*
+  ssf_memutility -->> lheap : Success
+
+  loop Memory Operations
+    lheap ->> +ssf_memutility : EsfMemoryManagerFseek(LargeHeap handle,..),<br>EsfMemoryManagerFwrite(LargeHeap handle,..),<br>EsfMemoryManagerFread(LargeHeap handle,..)
+    note over ssf_memutility : Recognized as file operations for<br>LargeHeap region using memory handle<br>Retrieve file descriptor "fd" from associated memory info
+    ssf_memutility ->> +pl : Perform seek(), write(), read() on PlLheap
+    pl -->> -ssf_memutility : Execute seek(), write(), read()
+    note over ssf_memutility : Update [LargeHeap handle]<br>Update [Memory Management Info]:<br>・Current file position
+    ssf_memutility -->> -lheap : Success, file position, write size, read size
+  end
+
+  lheap ->> +ssf_memutility : EsfMemoryManagerFclose(Memory handle: LargeHeap handle)
+    note over ssf_memutility : Recognized as file close request<br>for LargeHeap region from the memory handle<br>Retrieve file descriptor "fd" from memory info
+  ssf_memutility ->> +pl : Close memory file (File descriptor "fd")
+  note over pl : Close memory file
+  pl -->> -ssf_memutility : File close successful
+    note over ssf_memutility : Update [LargeHeap handle]<br>Update [Memory Management Info]:<br>・File descriptor = "NULL"<br>・File position = "0"
+  ssf_memutility -->> -lheap : Success
+
+end
+
+....
+
+<<<
+
+== Notes and Component-Specific Information
+
+=== Restrictions
+Memory operation handles support memory operations (allocate/free, map/unmap) for the LargeHeap, DMA, and WasmHeap regions. +
+
+* The maximum number of memory allocations (i.e., memory operation handles) across all regions (LargeHeap, DMA, WasmHeap) is 127. +
+
+=== Expected Memory Region Combinations
+The following table lists the expected combinations of memory regions operated on via the memory manager. +
+
+.Expected Combinations of Memory Regions
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Source Region |Destination Region |Operation Recommendation
+|LargeHeap |LargeHeap |Recommended: All APIs can be used without issue
+|LargeHeap |DMA       |Recommended: All APIs can be used without issue
+|LargeHeap |WasmHeap  |Recommended: All APIs can be used without issue
+|DMA       |LargeHeap |Recommended: All APIs can be used without issue
+|DMA       |DMA       |Recommended: All APIs can be used without issue
+|DMA       |WasmHeap  |Recommended: All APIs can be used without issue
+|WasmHeap  |LargeHeap |Recommended: All APIs can be used without issue
+|WasmHeap  |DMA       |Recommended: All APIs can be used without issue
+|WasmHeap  |WasmHeap  |Not recommended: Although all APIs are available, map/unmap operations may be unnecessary depending on the environment (*1)
+|===
+*1: Performing unnecessary map/unmap operations may degrade system-wide performance. If only WasmHeap is used, it is recommended to use WAMR memory operations.
+
+<<<
+
+== List of OSS Used
+
+None
+
+<<<
+
+== Appendix
+[#_About_EsfMemoryManagerHandle]
+=== About EsfMemoryManagerHandle
+The memory management information associated with `EsfMemoryManagerHandle` is not disclosed to the user. This section provides an overview of how the memory manager internally manages this information. +
+*Note: This is for illustration purposes only.* +
+
+[underline]#Memory Management Information Associated with EsfMemoryManagerHandle#
+
+* Region Information (separately for LargeHeap, DMA, and WasmHeap) +
+  *Includes ID information stored in the EsfMemoryManagerHandle* +
+* Allocated Memory Information (address, size, mapped address, etc.) +
+  *Also includes info for multiple mappings* +
+* File Access Information (file descriptor, file offset) +
+  *Managed only when FileIO access is supported* +
+
+[underline]#Reference and Update Relationship Between Memory Operations and Management Information#
+[#_Relationship_between_MemoryOps_and_ManagementInfo]
+.Relationship Between Memory Operation APIs and Memory Management Information
+[width="100%", cols="20%,20%,20%,20%,20%,20%",options="header"]
+|===
+|EsfMemoryManagerHandle |Allocation |Free |Map |Unmap |FileIO Access
+|Region Info |Initialize region info |Retrieve target region |Retrieve target region |Retrieve target region |Retrieve target region
+|Memory Info (address, size, map addr, etc.) |Store allocated address |Get address to free |Get address to map + Store mapped address |Get address to unmap |－
+|File Access Info (FD, offset) |Initialize access info |Get access info |－ |－ |Update access info
+|===
+
+<<<
+
+== References
+
+None
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1 |Initial release
+|v0.0.2 |Updated diagrams in Section 3.2 +
+Removed `deallocate` state from Section 3.3 +
+Updated sequence diagrams for memory allocate/free/map/unmap in Sections 3.5.1–3.5.4 +
+Added Section 5 use-case examples: +
+　"5.1. Memory operations within LargeHeap" +
+　"5.2. Operations between LargeHeap and WasmHeap" +
+　"5.3. WasmHeap-only operations (Not Recommended)" +
+Added Section 6.2 with memory region combinations
+|v0.0.3 |Renamed SSF to ESF + Renamed Memory Utility to Memory Manager
+|v0.0.4 |Added Wasm memory allocate/free APIs + 
+Updated component diagram and function list +
+Added Sections 3.5.5–3.5.7 and Wasm-specific API tables
+|v0.0.5 |Redefined handle concept: separated "handle" and "memory info" +
+Added support for DMA region +
+Added multiple map support using arbitrary offsets +
+Added mapping/unmapping for externally allocated WasmHeap memory
+|v0.0.6 |Changed from OSAL memory to PortingLayer memory
+|v0.0.7 |Added FileIO-related features + handle info retrieval
+|v0.0.8 |In Section 4.3.1 `EsfMemoryManagerInitialize`: +
+Clarified split count for AppMemory +
+    For T5: arbitrary count allowed +
+    For T3P: count must be "1"
+|v0.0.8.1 
+|Enabled Mermaid diagram rendering in VSCode preview
+|v0.0.9 
+|Fixed typo in 4.3.11 `EsfMemoryManagerFread` +
+Changed signature: `const void *buf` → `void *buf` +
+Changed argument spec: `[IN] void *buf` → `[OUT] void *buf`
+|v0.0.10 
+|Added support for multiple opens via arbitrary offset +
+Added new sections for open/write/read FileIO APIs +
+Added 3.5.7, 3.5.10, 3.5.11 and 4.3.11, 4.3.13
+|v0.0.11 
+|Corrected explanation for 4.3.9 `EsfMemoryManagerFseek`
+|===
