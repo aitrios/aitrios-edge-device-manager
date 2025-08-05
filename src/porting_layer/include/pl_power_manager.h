@@ -23,5 +23,8 @@ PlErrCode PlPowerMgrInitialize(void);
 PlErrCode PlPowerMgrFinalize(void);
 PlErrCode PlPowerMgrGetSupplyType(PlPowerMgrSupplyType *type);
 PlErrCode PlPowerMgrSetupUsb(void);
+PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id);
+PlErrCode PlPowerMgrEnableSwWdt(uint32_t id);
+PlErrCode PlPowerMgrDisableSwWdt(uint32_t id);
 
 #endif /* __PL_POWER_MGR_H */

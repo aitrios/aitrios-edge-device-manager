@@ -59,9 +59,12 @@ struct SYS_stub {
   struct SYS_stub_mstp mstp_data;
   struct SYS_stub_telemetry telemetry_data;
   struct SYS_stub_http http_data;
+  struct SYS_client *c;
 };
 
 static struct SYS_stub sys_stub;
+static struct SYS_stub s_sys_stub_http;
+static struct SYS_stub s_sys_stub_telemetry;
 static int stub_sys_process_event_fail_no = 0;
 static int stub_sys_put_blob_mstp_fail_no = 0;
 
@@ -79,6 +82,8 @@ static uint8_t *static_uploaded_http_blob = NULL;
 
 static bool static_startup_flag = false;
 static bool static_startup_flag_http = false;
+
+static bool stub_backdoor_get_agent_status_disconnected = false;
 
 // define
 #define LOG_MANAGER_BLOB_WORKER_BUFFER_SIZE (2048 + 128)
@@ -130,15 +135,15 @@ enum SYS_result stub_SYS_put_blob(struct SYS_client *c, const char *url,
   static_test_tmp_http_blob = calloc(1, datalen);
   static_test_tmp_http_blob_size = 0;
 
-  sys_stub.http_data.enable = true;
-  sys_stub.http_data.blob_buffer = NULL;
-  sys_stub.http_data.len = 0;
-  sys_stub.http_data.reason = SYS_REASON_MORE_DATA;
-
+  s_sys_stub_http.http_data.enable = true;
+  s_sys_stub_http.http_data.blob_buffer = NULL;
+  s_sys_stub_http.http_data.len = 0;
+  s_sys_stub_http.http_data.reason = SYS_REASON_MORE_DATA;
   // set the information required for blob upload in the stub structure
-  sys_stub.http_data.datalen = datalen;
-  sys_stub.http_data.cb = cb;
-  sys_stub.http_data.user = user;
+  s_sys_stub_http.http_data.datalen = datalen;
+  s_sys_stub_http.http_data.cb = cb;
+  s_sys_stub_http.http_data.user = user;
+  s_sys_stub_http.c = c;
 
   static_startup_flag_http = true;
 
@@ -189,6 +194,7 @@ enum SYS_result stub_SYS_put_blob_mstp(struct SYS_client *c
   sys_stub.mstp_data.datalen = datalen;
   sys_stub.mstp_data.cb = cb;
   sys_stub.mstp_data.user = user;
+  sys_stub.c = c;
 
   static_startup_flag = true;
 
@@ -212,11 +218,14 @@ enum SYS_result stub_SYS_send_telemetry(struct SYS_client *c
   }
 
   // initialization
-  sys_stub.telemetry_data.enable = true;
-  sys_stub.telemetry_data.reason = SYS_REASON_FINISHED;
+  s_sys_stub_telemetry.telemetry_data.enable = true;
+  s_sys_stub_telemetry.telemetry_data.reason = SYS_REASON_FINISHED;
   // set the information required for send telemetry in the stub structure
-  sys_stub.telemetry_data.cb = cb;
-  sys_stub.telemetry_data.user = user;
+  s_sys_stub_telemetry.telemetry_data.cb = cb;
+  s_sys_stub_telemetry.telemetry_data.user = user;
+  s_sys_stub_telemetry.c = c;
+
+  printf("%s:topic=%s, value=%s\n", __func__, topicdup, valuedup);
 
   free(topicdup);
   free(valuedup);
@@ -235,26 +244,28 @@ enum SYS_result stub_http_SYS_process_event(struct SYS_client *c
     return result;
   }
 
-  if (sys_stub.http_data.datalen > 0) {
+  if (s_sys_stub_http.http_data.datalen > 0) {
     reason = SYS_REASON_MORE_DATA;
 
-    if (sys_stub.http_data.datalen < LOG_MANAGER_BLOB_WORKER_BUFFER_SIZE) {
-      blob.len = sys_stub.http_data.datalen;
+    if (s_sys_stub_http.http_data.datalen <
+        LOG_MANAGER_BLOB_WORKER_BUFFER_SIZE) {
+      blob.len = s_sys_stub_http.http_data.datalen;
     } else {
       blob.len = LOG_MANAGER_BLOB_WORKER_BUFFER_SIZE;
     }
 
     blob.blob_buffer = calloc(1, blob.len);
-    sys_stub.http_data.datalen -= blob.len;
+    s_sys_stub_http.http_data.datalen -= blob.len;
   } else {
     reason = SYS_REASON_FINISHED;
   }
 
-  sys_stub.http_data.reason = reason;
+  s_sys_stub_http.http_data.reason = reason;
 
   // callback
-  result = (*sys_stub.http_data.cb)(c, &blob, sys_stub.http_data.reason,
-                                    sys_stub.http_data.user);
+  result = (*s_sys_stub_http.http_data.cb)(c, &blob,
+                                           s_sys_stub_http.http_data.reason,
+                                           s_sys_stub_http.http_data.user);
 
   if (reason == SYS_REASON_MORE_DATA) {
     memcpy(static_test_tmp_http_blob + static_test_tmp_http_blob_size,
@@ -275,6 +286,9 @@ enum SYS_result stub_http_SYS_process_event(struct SYS_client *c
     static_test_tmp_http_blob = NULL;
     static_test_tmp_http_blob_size = 0;
     static_startup_flag_http = false;
+    sys_stub.http_data.enable = false;
+
+    s_sys_stub_http.http_data.enable = false;
   }
 
   return result;
@@ -336,6 +350,8 @@ enum SYS_result stub_mstp_SYS_process_event(struct SYS_client *c
     static_test_tmp_blob = NULL;
     static_test_tmp_blob_size = 0;
     static_startup_flag = false;
+
+    sys_stub.mstp_data.enable = false;
   }
 
   return result;
@@ -350,14 +366,16 @@ enum SYS_result stub_telemetry_SYS_process_event(struct SYS_client *c
 
   // after a callback is raised with reason=SYS_REASON_ERROR
   // prevent callback from being called
-  if (SYS_REASON_ERROR == sys_stub.telemetry_data.reason) {
+  if (SYS_REASON_ERROR == s_sys_stub_telemetry.telemetry_data.reason) {
     printf("%s:return SYS_process_event()\n", __func__);
     return result;
   }
-  (*sys_stub.telemetry_data.cb)(c, sys_stub.telemetry_data.reason,
-                                sys_stub.telemetry_data.user);
+  (*s_sys_stub_telemetry.telemetry_data.cb)(
+      c, s_sys_stub_telemetry.telemetry_data.reason,
+      s_sys_stub_telemetry.telemetry_data.user);
 
-  printf("%s:SYS_telemetry_cb failed with %u\n", __func__, result);
+  s_sys_stub_telemetry.telemetry_data.enable = false;
+
   return result;
 }
 
@@ -378,15 +396,16 @@ enum SYS_result stub_SYS_process_event(struct SYS_client *c, int ms) {
 
   enum SYS_result result = SYS_RESULT_OK;
 
-  if (sys_stub.mstp_data.enable) {
+  if ((c == sys_stub.c) && sys_stub.mstp_data.enable) {
     result = stub_mstp_SYS_process_event(c, ms);
   }
 
-  if (sys_stub.http_data.enable) {
+  if ((c == s_sys_stub_http.c) && s_sys_stub_http.http_data.enable) {
     result = stub_http_SYS_process_event(c, ms);
   }
 
-  if (sys_stub.telemetry_data.enable) {
+  if ((c == s_sys_stub_telemetry.c) &&
+      s_sys_stub_telemetry.telemetry_data.enable) {
     result = stub_telemetry_SYS_process_event(c, ms);
   }
 
@@ -404,7 +423,7 @@ void stub_clear_sys_parameter(void) {
   stub_sys_process_event_fail_no = 0;
   stub_sys_put_blob_mstp_fail_no = 0;
 
-  if(static_test_tmp_blob){
+  if (static_test_tmp_blob) {
     free(static_test_tmp_blob);
     static_test_tmp_blob = NULL;
     static_test_tmp_blob_size = 0;
@@ -493,6 +512,5 @@ process_fin:
   // Free the static_decrypted_test_blob upon normal termination at
   // the end of the test.
 #endif  // LOG_MANAGER_ENCRYPT_ENABLE
-
 }
 void stub_test_set_non_decrypt(void) { static_test_non_decrypted_flag = true; }

@@ -13,6 +13,7 @@
 #include <inttypes.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,9 @@
 #define NETWORK_MANAGER_PL_NETWORK_FINALIZE PlNetworkFinalize
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_HAL_DUMMY
 
+#define DHCP_RENEWAL_TIME_RATIO (0.5)      // T1: Renewal time
+#define DHCP_REBINDING_TIME_RATIO (0.875)  // T2: Rebinding time
+
 // Internal IP information structure.
 typedef struct EsfNetworkManagerInternalIPInfo {
   struct in_addr ip;
@@ -62,6 +66,13 @@ typedef struct EsfNetworkManagerInternalIPInfo {
   struct in_addr gateway;
   struct in_addr dns;
 } EsfNetworkManagerInternalIPInfo;
+
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+typedef struct {
+  sem_t sem;
+  bool done;
+} WaitEventHandle;
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // Invalid IP address definition.
 static const EsfNetworkManagerIPInfo kEsfNetworkManagerInvalidIp = {
@@ -74,6 +85,7 @@ static const EsfNetworkManagerIPInfo kEsfNetworkManagerDefaultApIp = {
 #endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+static WaitEventHandle s_if_down_pre_event_handle = {0};
 static void    *s_dhcp_handle = NULL;
 static uint64_t s_dhcp_lease_time = 0;
 static uint64_t s_dhcp_t1_time = 0;
@@ -484,6 +496,100 @@ static bool ShouldRenewDhcp(uint64_t now_sec, uint64_t previous_sec) {
 }
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+static void WaitEventHandleInit(WaitEventHandle *h) {
+  sem_init(&h->sem, 0, 0);
+  h->done = false;
+  return;
+}
+
+static void WaitEvent(WaitEventHandle *h) {
+  while (!h->done) {
+    sem_wait(&h->sem);
+  }
+  h->done = false;
+  return;
+}
+
+static void CompleteEvent(WaitEventHandle *h) {
+  h->done = true;
+  sem_post(&h->sem);
+  return;
+}
+
+static void WaitEventHandleDeInit(WaitEventHandle *h) {
+  sem_destroy(&h->sem);
+  return;
+}
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+static EsfNetworkManagerResult RequestDhcp(const char *if_name,
+                                           EsfNetworkManagerModeInfo *mode) {
+  s_dhcp_status.lease_time = 0;
+  s_dhcp_status.renewal_time = 0;
+  s_dhcp_status.rebinding_time = 0;
+
+  int plret = PlNetworkDhcpcRequest(s_dhcp_handle, &s_dhcp_status);
+  if (plret != 0) {
+    ESF_NETWORK_MANAGER_ERR("dhcpc_request error.(if=%s, ret=%d, errno=%d)",
+                            if_name, plret, errno);
+    ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_DHCP_FAILURE);
+    return kEsfNetworkManagerResultUtilityIPAddressError;
+  }
+  s_dhcp_lease_time = s_dhcp_status.lease_time;
+  s_dhcp_t1_time = s_dhcp_status.renewal_time;
+  s_dhcp_t2_time = s_dhcp_status.rebinding_time;
+  if (!IsValidDhcpTime()) {
+    s_dhcp_t1_time = s_dhcp_lease_time * DHCP_RENEWAL_TIME_RATIO;
+    s_dhcp_t2_time = s_dhcp_lease_time * DHCP_REBINDING_TIME_RATIO;
+  }
+  ESF_NETWORK_MANAGER_INFO("Lease:%" PRIu64 "[s] T1:%" PRIu64 "[s] T2:%" PRIu64
+                           "[s]\n",
+                           s_dhcp_lease_time, s_dhcp_t1_time, s_dhcp_t2_time);
+  EsfNetworkManagerInternalIPInfo ip_info = {0};
+  ip_info.ip = s_dhcp_status.ipaddr;
+  ip_info.subnet_mask = s_dhcp_status.netmask;
+  ip_info.gateway = s_dhcp_status.default_router;
+  ip_info.dns = s_dhcp_status.dnsaddr;
+  EsfNetworkManagerResult ret;
+  ret = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info, false);
+  if (ret != kEsfNetworkManagerResultSuccess) {
+    ESF_NETWORK_MANAGER_ERR("IP address set error.(if=%s, ret=%u)", if_name,
+                            ret);
+  }
+  if (ret == kEsfNetworkManagerResultSuccess) {
+    ret = EsfNetworkManagerAccessorIpConvertToString(&ip_info, &mode->ip_info);
+    if (ret != kEsfNetworkManagerResultSuccess) {
+      ESF_NETWORK_MANAGER_ERR("IP address save local error.(if=%s)", if_name);
+    }
+  }
+  struct timespec abstime;
+  clock_gettime(CLOCK_MONOTONIC, &abstime);
+  s_dhcp_update_time = abstime.tv_sec;
+
+  ESF_NETWORK_MANAGER_INFO(
+      "DHCPC request done. Next update:%" PRIu64 "[s] later", s_dhcp_t1_time);
+  return ret;
+}
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+static void CloseDhcp(void) {
+  if (s_dhcp_handle == NULL) {
+    return;
+  }
+  PlNetworkDhcpcClose(s_dhcp_handle);
+  s_dhcp_handle = NULL;
+  s_dhcp_lease_time = 0;
+  s_dhcp_update_time = 0;
+  s_t1_fail_time = 0;
+  s_t2_fail_time = 0;
+  memset(&s_dhcp_status, 0, sizeof(s_dhcp_status));
+  return;
+}
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+
 // """Obtain an IP address via DHCP and set it to the specified interface.
 
 // Obtain the IP address to use via DHCP.
@@ -562,51 +668,7 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetDhcpAddress(
           break;
         }
       }
-      s_dhcp_status.lease_time = 0;
-      s_dhcp_status.renewal_time = 0;
-      s_dhcp_status.rebinding_time = 0;
-      ret = PlNetworkDhcpcRequest(s_dhcp_handle, &s_dhcp_status);
-      if (ret != 0) {
-        ESF_NETWORK_MANAGER_ERR("dhcpc_request error.(if=%s, ret=%d)", if_name,
-                                ret);
-        ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_DHCP_FAILURE);
-        ret_network = kEsfNetworkManagerResultUtilityIPAddressError;
-        break;
-      }
-      s_dhcp_lease_time = s_dhcp_status.lease_time;
-      s_dhcp_t1_time = s_dhcp_status.renewal_time;
-      s_dhcp_t2_time = s_dhcp_status.rebinding_time;
-      if (!IsValidDhcpTime()) {
-        s_dhcp_t1_time = s_dhcp_lease_time * 0.5;
-        s_dhcp_t2_time = s_dhcp_lease_time * 0.875;
-      }
-      ESF_NETWORK_MANAGER_INFO(
-          "Lease:%" PRIu64 "[s] T1:%" PRIu64 "[s] T2:%" PRIu64 "[s]\n",
-          s_dhcp_lease_time, s_dhcp_t1_time, s_dhcp_t2_time);
-
-      struct timespec abstime;
-      clock_gettime(CLOCK_MONOTONIC, &abstime);
-      s_dhcp_update_time = abstime.tv_sec;
-      EsfNetworkManagerInternalIPInfo ip_info = {
-          .ip          = s_dhcp_status.ipaddr,
-          .subnet_mask = s_dhcp_status.netmask,
-          .gateway     = s_dhcp_status.default_router,
-          .dns         = s_dhcp_status.dnsaddr,
-      };
-      ret_network = EsfNetworkManagerAccessorIpSetIpAddress(if_name_wk,
-                                                            &ip_info, false);
-      if (ret_network != kEsfNetworkManagerResultSuccess) {
-        ESF_NETWORK_MANAGER_ERR("IP address set error.(if=%s, ret=%u)", if_name,
-                                ret_network);
-      }
-      if (ret_network == kEsfNetworkManagerResultSuccess) {
-        ret_network = EsfNetworkManagerAccessorIpConvertToString(
-            &ip_info, &mode->ip_info);
-        if (ret_network != kEsfNetworkManagerResultSuccess) {
-          ESF_NETWORK_MANAGER_ERR("IP address save local error.(if=%s)",
-                                  if_name);
-        }
-      }
+      ret_network = RequestDhcp(if_name_wk, mode);
     }
   } while (0);
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
@@ -996,15 +1058,7 @@ static void EsfNetworkManagerAccessorEtherIfDownEventOnDisconnecting(
     return;
   }
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
-  if (s_dhcp_handle != NULL) {
-    PlNetworkDhcpcClose(s_dhcp_handle);
-    s_dhcp_handle = NULL;
-    s_dhcp_lease_time = 0;
-    s_dhcp_update_time = 0;
-    s_t1_fail_time = 0;
-    s_t2_fail_time = 0;
-    memset(&s_dhcp_status, 0, sizeof(s_dhcp_status));
-  }
+  CloseDhcp();
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   mode->connect_status = kEsfNetworkManagerConnectStatusDisconnected;
   mode->notify_info = kEsfNetworkManagerNotifyInfoDisconnected;
@@ -1036,15 +1090,7 @@ static void EsfNetworkManagerAccessorEtherLinkdownEventOnConnected(
     return;
   }
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
-  if (s_dhcp_handle != NULL) {
-    PlNetworkDhcpcClose(s_dhcp_handle);
-    s_dhcp_handle = NULL;
-    s_dhcp_lease_time = 0;
-    s_dhcp_update_time = 0;
-    s_t1_fail_time = 0;
-    s_t2_fail_time = 0;
-    memset(&s_dhcp_status, 0, sizeof(s_dhcp_status));
-  }
+  CloseDhcp();
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   mode->connect_status = kEsfNetworkManagerConnectStatusConnecting;
   mode->notify_info = kEsfNetworkManagerNotifyInfoDisconnected;
@@ -1370,7 +1416,7 @@ static void EsfNetworkManagerAccessorWifiApDisconnectedEventOnConnected(
 #endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
-static void RecoveryDhcp(const char *if_name) {
+static void RecoveryDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
   // First, set IPAddr to 0
   EsfNetworkManagerInternalIPInfo ip_info = {
       .ip          = {0},
@@ -1386,60 +1432,38 @@ static void RecoveryDhcp(const char *if_name) {
     ESF_NETWORK_MANAGER_ERR("IP address set error.(if=%s, ret=%u)", if_name,
                             ret_network);
   }
-
-  // Recovery DHCP
-  s_dhcp_status.lease_time = 0;
-  s_dhcp_status.renewal_time = 0;
-  s_dhcp_status.rebinding_time = 0;
-  int ret = PlNetworkDhcpcRequest(s_dhcp_handle, &s_dhcp_status);
-  if (ret != 0) {
-    ESF_NETWORK_MANAGER_ERR("dhcpc_request error.(if=%s, ret=%d, errno=%d)",
-                            if_name, ret, errno);
-    ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_DHCP_FAILURE);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedConnectingWithTLS, false);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP, false);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedNoInternetConnection, true);
+  ret_network = RequestDhcp(if_name, mode);
+  if (ret_network != kEsfNetworkManagerResultSuccess) {
+    ESF_NETWORK_MANAGER_ERR("Dhcp ip address get error.");
     return;
   }
-  s_dhcp_lease_time = s_dhcp_status.lease_time;
-  s_dhcp_t1_time = s_dhcp_status.renewal_time;
-  s_dhcp_t2_time = s_dhcp_status.rebinding_time;
-  if (!IsValidDhcpTime()) {
-    s_dhcp_t1_time = s_dhcp_lease_time * 0.5;
-    s_dhcp_t2_time = s_dhcp_lease_time * 0.875;
-  }
-  ESF_NETWORK_MANAGER_INFO("Lease:%" PRIu64 "[s] T1:%" PRIu64 "[s] T2:%" PRIu64
-                           "[s]\n",
-                           s_dhcp_lease_time, s_dhcp_t1_time, s_dhcp_t2_time);
-
-  ip_info.ip           = s_dhcp_status.ipaddr;
-  ip_info.subnet_mask  = s_dhcp_status.netmask;
-  ip_info.gateway      = s_dhcp_status.default_router;
-  ip_info.dns          = s_dhcp_status.dnsaddr;
-  ret_network = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info,
-                                                        false);
-  if (ret_network != kEsfNetworkManagerResultSuccess) {
-    ESF_NETWORK_MANAGER_ERR("IP address set error.(if=%s, ret=%u)", if_name,
-                            ret_network);
-  }
-  struct timespec abstime;
-  clock_gettime(CLOCK_MONOTONIC, &abstime);
-  s_dhcp_update_time = abstime.tv_sec;
-
-  ESF_NETWORK_MANAGER_INFO(
-      "Recovery DHCPC done. Next update:%" PRIu64 "[s] later", s_dhcp_t1_time);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP, true);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedConnectingWithTLS, true);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusConnectedWithTLS, true);
   return;
 }
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
-static int RenewDhcp(const char *if_name) {
+static int RenewDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
   in_addr_t before_ip     = s_dhcp_status.ipaddr.s_addr;
   in_addr_t before_dns    = s_dhcp_status.dnsaddr.s_addr;
   in_addr_t before_mask   = s_dhcp_status.netmask.s_addr;
   in_addr_t before_router = s_dhcp_status.default_router.s_addr;
 
-  int ret = PlNetworkDhcpcRenew(s_dhcp_handle, &s_dhcp_status);
-  if (ret != 0) {
+  int plret = PlNetworkDhcpcRenew(s_dhcp_handle, &s_dhcp_status);
+  if (plret != 0) {
     ESF_NETWORK_MANAGER_ERR("dhcpc_renew error.(if=%s, ret=%d, errno=%d)",
-                            if_name, ret, errno);
+                            if_name, plret, errno);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_DHCP_FAILURE);
     return errno;
   }
@@ -1448,8 +1472,8 @@ static int RenewDhcp(const char *if_name) {
   s_dhcp_t2_time = s_dhcp_status.rebinding_time;
 
   if (!IsValidDhcpTime()) {
-    s_dhcp_t1_time = s_dhcp_lease_time * 0.5;
-    s_dhcp_t2_time = s_dhcp_lease_time * 0.875;
+    s_dhcp_t1_time = s_dhcp_lease_time * DHCP_RENEWAL_TIME_RATIO;
+    s_dhcp_t2_time = s_dhcp_lease_time * DHCP_REBINDING_TIME_RATIO;
   }
   ESF_NETWORK_MANAGER_INFO("Lease:%" PRIu64 "[s] T1:%" PRIu64 "[s] T2:%" PRIu64
                            "[s]\n",
@@ -1465,12 +1489,18 @@ static int RenewDhcp(const char *if_name) {
         .gateway     = s_dhcp_status.default_router,
         .dns         = s_dhcp_status.dnsaddr,
     };
-    EsfNetworkManagerResult ret_network;
-    ret_network = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info,
-                                                          false);
-    if (ret_network != kEsfNetworkManagerResultSuccess) {
+    EsfNetworkManagerResult ret;
+    ret = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info, false);
+    if (ret != kEsfNetworkManagerResultSuccess) {
       ESF_NETWORK_MANAGER_ERR("IP address set error.(if=%s, ret=%u)", if_name,
-                              ret_network);
+                              ret);
+    }
+    if (ret == kEsfNetworkManagerResultSuccess) {
+      ret = EsfNetworkManagerAccessorIpConvertToString(&ip_info,
+                                                       &mode->ip_info);
+      if (ret != kEsfNetworkManagerResultSuccess) {
+        ESF_NETWORK_MANAGER_ERR("IP address save local error.(if=%s)", if_name);
+      }
     }
   }
 
@@ -1505,7 +1535,7 @@ static void EsfNetworkManagerAccessorLeaseEvent(
 
   if (s_dhcp_lease_time < elapsed_time) {
     ESF_NETWORK_MANAGER_INFO("exec DHCPC recovery.");
-    RecoveryDhcp(if_name);
+    RecoveryDhcp(if_name, mode_info);
     return;
   }
 
@@ -1529,7 +1559,7 @@ static void EsfNetworkManagerAccessorLeaseEvent(
   }
 
   *fail_time = 0;
-  int ret = RenewDhcp(if_name);
+  int ret = RenewDhcp(if_name, mode_info);
   if (ret == ECONNREFUSED) {
     // goto recovery
     ESF_NETWORK_MANAGER_INFO("DHCPC recv NAK.");
@@ -1549,6 +1579,27 @@ static void EsfNetworkManagerAccessorLeaseEvent(
 
   return;
 }
+
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+static void EsfNetworkManagerAccessorIfDownPreEventOnDisconnecting(void) {
+  WaitEventHandle *h = &s_if_down_pre_event_handle;
+  int ret = 0;
+  if (s_dhcp_handle == NULL) {
+    goto finally;
+  }
+  ret = PlNetworkDhcpcRelease(s_dhcp_handle, &s_dhcp_status);
+  if (ret != 0) {
+    ESF_NETWORK_MANAGER_WARN("PlNetworkDhcpcRelease:%d:%d", ret, errno);
+    ESF_NETWORK_MANAGER_ELOG_WARN(ESF_NETWORK_MANAGER_ELOG_DHCP_FAILURE);
+    goto finally;
+  }
+  ESF_NETWORK_MANAGER_INFO("DHCPC release done.");
+
+finally:
+  CompleteEvent(h);
+  return;
+}
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // """HAL event reception processing for connection type Ether.
 
@@ -1574,6 +1625,15 @@ static void EsfNetworkManagerAccessorEtherEventHandler(const char *if_name,
   ESF_NETWORK_MANAGER_DBG(
       "Ether event receive if_name=%s event=%d private_data=%p", if_name, event,
       private_data);
+
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+  // IfDownPreEvent is processed before resource locking to prevent deadlocks
+  if (event == kPlNetworkEventIfDownPre) {
+    EsfNetworkManagerAccessorIfDownPreEventOnDisconnecting();
+    return;
+  }
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+
   EsfNetworkManagerResult ret = EsfNetworkManagerResourceLockResource();
   if (ret != kEsfNetworkManagerResultSuccess) {
     ESF_NETWORK_MANAGER_ERR("Resource lock error.(ret=%u)", ret);
@@ -1664,6 +1724,15 @@ static void EsfNetworkManagerAccessorWifiStationEventHandler(
   ESF_NETWORK_MANAGER_DBG(
       "WiFi station event receive if_name=%s event=%d private_data=%p", if_name,
       event, private_data);
+
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+  // IfDownPreEvent is processed before resource locking to prevent deadlocks
+  if (event == kPlNetworkEventIfDownPre) {
+    EsfNetworkManagerAccessorIfDownPreEventOnDisconnecting();
+    return;
+  }
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+
   EsfNetworkManagerResult ret = EsfNetworkManagerResourceLockResource();
   if (ret != kEsfNetworkManagerResultSuccess) {
     ESF_NETWORK_MANAGER_ERR("Resource lock error.(ret=%u)", ret);
@@ -2097,6 +2166,17 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorStop(
   PlErrCode hal_ret = kPlErrCodeOk;
   const char *if_name =
       handle_internal->mode_info->hal_system_info[interface_kind]->if_name;
+
+  // PlNetworkStopPre sends IfDownPreEvent from pl to esf
+  // IfDownPreEvent is performed to "DHCP Release" before ifdown
+  WaitEventHandle *h = &s_if_down_pre_event_handle;
+  WaitEventHandleInit(h);
+  hal_ret = PlNetworkStopPre(if_name);
+  if (hal_ret == kPlErrCodeOk) {
+    WaitEvent(h);
+  }
+  WaitEventHandleDeInit(h);
+
   hal_ret = NETWORK_MANAGER_PL_NETWORK_STOP(if_name);
   // A stopped response is treated as a success.
   if (hal_ret != kPlErrCodeOk && hal_ret != kPlErrInvalidState) {

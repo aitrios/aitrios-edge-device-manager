@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <assert.h>
 
 
 #include "pl_power_manager.h"
@@ -29,8 +30,13 @@
 
 static pthread_mutex_t s_api_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool s_is_initialized = false;
+static pthread_t s_sw_wdt_thread;
+static bool s_is_sw_wdt_enable[CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM];
+static struct timespec s_sw_wdt_last_keepalive_time[CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM];
+static bool s_is_exit = false;
 
 // Local functions ------------------------------------------------------------
+static void *PlPowerSwWdt(void *arg);
 
 // Functions ------------------------------------------------------------------
 PlErrCode PlPowerMgrInitialize(void) {
@@ -55,6 +61,31 @@ PlErrCode PlPowerMgrInitialize(void) {
     LOG_ERR(0x02, "[ERROR] %s %d\n", __func__, __LINE__);
     goto unlock;
   }
+
+  struct timespec tmp = {0};
+  for (int i = 0; i < CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM; i++) {
+    s_is_sw_wdt_enable[i] = false;
+    s_sw_wdt_last_keepalive_time[i] = tmp;
+  }
+  s_is_exit = false;
+
+#ifdef __NuttX__
+  pthread_attr_t attr = {0};
+  struct sched_param sched_param = {0};
+  pthread_attr_init(&attr);
+  pthread_attr_getschedparam(&attr, &sched_param);
+  sched_param.sched_priority = CONFIG_EXTERNAL_PL_POWER_MGR_SW_WDT_PRIORITY;
+  pthread_attr_setschedparam(&attr, &sched_param);
+
+  ret = pthread_create(&s_sw_wdt_thread, &attr, PlPowerSwWdt, NULL);
+#else
+  ret = pthread_create(&s_sw_wdt_thread, NULL, PlPowerSwWdt, NULL);
+#endif
+  if (ret != 0) {
+    LOG_ERR(0x11, "[ERROR] %s %d\n", __func__, __LINE__);
+    goto unlock;
+  }
+  pthread_setname_np(s_sw_wdt_thread, "PlPowerSwWdt");
 
   s_is_initialized = true;
 
@@ -85,6 +116,8 @@ PlErrCode PlPowerMgrFinalize(void) {
     err_code = kPlErrInvalidState;
     goto unlock;
   }
+  s_is_exit = true;
+  pthread_join(s_sw_wdt_thread, NULL);
 
   err_code = PlPowerMgrFinalizeImpl();
   if (err_code != kPlErrCodeOk) {
@@ -176,6 +209,97 @@ unlock:
 
 fin:
   return err_code;
+}
+
+// ----------------------------------------------------------------------------
+PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id) {
+  PlErrCode pl_ret = kPlErrCodeOk;
+  int ret = 0;
+  ret = pthread_mutex_lock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x12, "[ERROR] %s %d\n", __func__, __LINE__);
+    return kPlErrLock;
+  }
+  if (s_is_sw_wdt_enable[id] == false) {
+    LOG_ERR(0x13, "id=%d wdt not started\n");
+    pl_ret = kPlErrInvalidParam;
+    goto unlock;
+  }
+  struct timespec now;
+  ret = clock_gettime(CLOCK_MONOTONIC, &now);
+  if (ret != 0) {
+    LOG_ERR(0x14, "Failed to clock_gettime:%d", ret);
+  }
+  s_sw_wdt_last_keepalive_time[id] = now;
+
+unlock:
+  ret = pthread_mutex_unlock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x15, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  return pl_ret;
+}
+
+// ----------------------------------------------------------------------------
+PlErrCode PlPowerMgrEnableSwWdt(uint32_t id) {
+  int ret = 0;
+  ret = pthread_mutex_lock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x16, "[ERROR] %s %d\n", __func__, __LINE__);
+    return kPlErrLock;
+  }
+  struct timespec now;
+  ret = clock_gettime(CLOCK_MONOTONIC, &now);
+  if (ret != 0) {
+    LOG_ERR(0x17, "Failed to clock_gettime:%d", ret);
+  }
+  s_sw_wdt_last_keepalive_time[id] = now;
+  s_is_sw_wdt_enable[id] = true;
+  ret = pthread_mutex_unlock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x18, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  return kPlErrCodeOk;
+}
+
+// ----------------------------------------------------------------------------
+PlErrCode PlPowerMgrDisableSwWdt(uint32_t id) {
+  int ret = 0;
+  ret = pthread_mutex_lock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x19, "[ERROR] %s %d\n", __func__, __LINE__);
+    return kPlErrLock;
+  }
+  s_is_sw_wdt_enable[id] = false;
+  ret = pthread_mutex_unlock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x1A, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  return kPlErrCodeOk;
+}
+
+// ----------------------------------------------------------------------------
+static void *PlPowerSwWdt(void *arg) {
+  while (!s_is_exit) {
+    struct timespec now;
+    int ret = clock_gettime(CLOCK_MONOTONIC, &now);
+    if (ret != 0) {
+      LOG_ERR(0x1B, "Failed to clock_gettime:%d", ret);
+    }
+    for (int id = 0; id < CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM; id++) {
+      if (s_is_sw_wdt_enable[id]) {
+        long elapsed = now.tv_sec - s_sw_wdt_last_keepalive_time[id].tv_sec;  //NOLINT
+        elapsed += (now.tv_nsec - s_sw_wdt_last_keepalive_time[id].tv_nsec) / 1000000000;
+
+        if (CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC < elapsed) {
+          LOG_ERR(0x1C, "SW WDT timeout id:%d", id);
+          assert(false); // Restart system with coredump.
+        }
+      }
+    }
+    sleep(1);
+  }
+  return NULL;
 }
 
 // ----------------------------------------------------------------------------

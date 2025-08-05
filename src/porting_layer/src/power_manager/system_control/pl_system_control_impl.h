@@ -13,6 +13,7 @@
 // Functions ------------------------------------------------------------------
 PlErrCode PlSystemCtlGetResetCauseImpl(PlSystemCtlResetCause *cause);
 char* PlSystemCtlGetRtcAddrImpl(void);
+PlErrCode PlSystemCtlRebootCpuImpl(void);
 PlErrCode PlSystemCtlRebootEdgeDeviceImpl(void);
 
 #endif /* __PL_SYSTEM_CONTROL_IMPL_H */

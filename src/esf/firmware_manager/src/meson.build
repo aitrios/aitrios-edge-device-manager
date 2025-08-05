@@ -4,5 +4,7 @@
 
 subdir('common')
 subdir('core')
-# subdir('factory_reset')
+if config_h.get('CONFIG_EXTERNAL_FIRMWARE_MANAGER_ENABLE_FACTORY_RESET')
+  subdir('factory_reset')
+endif
 subdir('submodules')

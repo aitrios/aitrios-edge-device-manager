@@ -1043,6 +1043,13 @@ err_end1:
 }
 
 // -----------------------------------------------------------------------------
+PlErrCode PlNetworkStopPre(const char *if_name) {
+  PlErrCode err = PlNetworkEventSend(if_name, kPlNetworkEventIfDownPre, 0);
+  NETWORK_LOG_DBG("%s:%d", __func__, err);
+  return err;
+}
+
+// -----------------------------------------------------------------------------
 //  PlNetworkStructInitialize
 //
 //  Perform network structure initialize.

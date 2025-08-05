@@ -12,15 +12,23 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <inttypes.h>
-#include <nuttx/board.h>
+
+#ifdef __NuttX__
 #include <sched/sched.h>
+#include <nuttx/board.h>
 #include <nuttx/arch.h>
 #include <nuttx/sched.h>
+#endif // __NuttX__
 
 #include "pl_system_control.h"
 #include "pl_system_control_impl.h"
+#ifdef CONFIG_EXTERNAL_PL_WDT
 #include "pl_wdt_lib.h"
+#endif
+
+#ifdef __NuttX__
 #include "board_crashdump.h"
+#endif // __NuttX__
 
 #include "utility_log_module_id.h"
 #include "utility_log.h"
@@ -40,15 +48,19 @@
 // External functions ----------------------------------------------------------
 
 // Local functions -------------------------------------------------------------
+#ifdef __NuttX__
 static int SafeSnprintf(char *dst, size_t size, const char *fmt, ...);
 static void UpPuts(const char *format, ...);
 static void DumpRegs(uint32_t *regs);
 static void DumpStack(uint32_t stack_end, uint32_t stack_top);
+#endif // __NuttX__
 
 // Global Variables ------------------------------------------------------------
 static bool s_is_initialized = false;
-static pthread_mutex_t s_exception_mutex  = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t s_initialize_mutex = PTHREAD_MUTEX_INITIALIZER;
+#ifdef __NuttX__
+static pthread_mutex_t s_exception_mutex  = PTHREAD_MUTEX_INITIALIZER;
+#endif // __NuttX__
 
 // Functions -------------------------------------------------------------------
 
@@ -75,11 +87,7 @@ PlErrCode PlSystemCtlExecOperation(PlSystemCtlOperation operation) {
 
   switch (operation) {
     case kPlSystemCtlRebootCpu:
-#ifdef CONFIG_BOARDCTL_RESET
-      int ret = board_reset(CONFIG_BOARD_ASSERT_RESET_VALUE);
-      LOG_ERR(0x02, "Reboot error. err=%d", ret);
-#endif
-      ret_code = kPlErrCodeError;
+      ret_code = PlSystemCtlRebootCpuImpl();
       goto unlock;
     case kPlSystemCtlRebootEdgeDevice:
       ret_code = PlSystemCtlRebootEdgeDeviceImpl();
@@ -105,17 +113,22 @@ unlock:
 //    PlSystemCtlGetResetCause
 //------------------------------------------------------------------------------
 PlErrCode PlSystemCtlGetResetCause(PlSystemCtlResetCause *cause) {
+#ifdef __NuttX__
   if (cause == NULL) {
     LOG_ERR(0x05, "Parameter error.");
     return kPlErrInvalidParam;
   }
 
   return PlSystemCtlGetResetCauseImpl(cause);
+#else
+  return kPlErrNoSupported;
+#endif // __NuttX__
 }
 
 //------------------------------------------------------------------------------
 //    PlSystemCtlGetExceptionInfo
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 PlErrCode PlSystemCtlGetExceptionInfo(
                                   struct PlSystemCtlExceptionInfo *info) {
   int lock_ret = pthread_mutex_lock(&s_exception_mutex);
@@ -152,10 +165,12 @@ unlock:
 
   return ret_code;
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    PlSystemCtlSetExceptionInfo
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 PlErrCode PlSystemCtlSetExceptionInfo(void) {
   int lock_ret = pthread_mutex_lock(&s_exception_mutex);
   if (lock_ret != 0) {
@@ -173,10 +188,12 @@ PlErrCode PlSystemCtlSetExceptionInfo(void) {
 
   return kPlErrCodeOk;
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    PlSystemCtlConvExceptionInfo
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 PlErrCode PlSystemCtlConvExceptionInfo(
                                   struct PlSystemCtlExceptionInfo *info,
                                   char *dst, uint32_t dst_size) {
@@ -302,10 +319,12 @@ unlock:
 
   return ret_code;
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    PlSystemCtlClearExceptionInfo
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 PlErrCode PlSystemCtlClearExceptionInfo(void) {
   int lock_ret = pthread_mutex_lock(&s_exception_mutex);
   if (lock_ret != 0) {
@@ -323,10 +342,12 @@ PlErrCode PlSystemCtlClearExceptionInfo(void) {
 
   return kPlErrCodeOk;
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    PlSystemCtlDumpAllStack
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 PlErrCode PlSystemCtlDumpAllStack(void) {
   struct tcb_s *rtcb = this_task();
   if (rtcb->xcp.regs != NULL) {
@@ -384,6 +405,7 @@ PlErrCode PlSystemCtlDumpAllStack(void) {
 
   return kPlErrCodeOk;
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    PlSystemCtlInitialize
@@ -430,6 +452,7 @@ PlErrCode PlSystemCtlFinalize(void) {
 //------------------------------------------------------------------------------
 //    SafeSnprintf
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 static int SafeSnprintf(char *dst, size_t size, const char *fmt, ...) {
   va_list list = {0};
   char src[255] = {0};
@@ -444,10 +467,12 @@ static int SafeSnprintf(char *dst, size_t size, const char *fmt, ...) {
   dst[write_size] = '\0';
   return write_size;
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    UpPuts
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 static void UpPuts(const char *format, ...) {
   va_list list = {0};
   char buf[128] = {0};
@@ -456,10 +481,12 @@ static void UpPuts(const char *format, ...) {
   va_end(list);
   up_puts(buf);
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    DumpRegs
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 static void DumpRegs(uint32_t *regs) {
   UpPuts("   PC: %08lx    PS: %08lx\n",
       (unsigned long)regs[REG_PC], (unsigned long)regs[REG_PS]);  //NOLINT
@@ -479,10 +506,12 @@ static void DumpRegs(uint32_t *regs) {
       (unsigned long)regs[REG_SAR],(unsigned long)regs[REG_EXCCAUSE],  //NOLINT
       (unsigned long)regs[REG_EXCVADDR]);  //NOLINT
 }
+#endif // __NuttX__
 
 //------------------------------------------------------------------------------
 //    DumpStack
 //------------------------------------------------------------------------------
+#ifdef __NuttX__
 static void DumpStack(uint32_t stack_end, uint32_t stack_top) {
     for (uint32_t stack = stack_top & ~0x1f; stack >= stack_end; stack -= 32) {
       uint32_t *ptr = (uint32_t *)stack;
@@ -491,3 +520,4 @@ static void DumpStack(uint32_t stack_end, uint32_t stack_top) {
                 ptr[4], ptr[5], ptr[6], ptr[7]);
     }
 }
+#endif // __NuttX__

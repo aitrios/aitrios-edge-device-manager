@@ -61,27 +61,28 @@ typedef enum {
 
 // PL Network Event
 typedef enum {
-  kPlNetworkEventLinkUp = 0,
-  kPlNetworkEventLinkDown,
-  kPlNetworkEventIfUp,
-  kPlNetworkEventIfDown,
-  kPlNetworkEventWifiReady,
-  kPlNetworkEventWifiApStart,
-  kPlNetworkEventWifiApStop,
-  kPlNetworkEventWifiApConnected,
-  kPlNetworkEventWifiApDisconnected,
-  kPlNetworkEventWifiApProbeReqRecved,
-  kPlNetworkEventWifiStaStart,
-  kPlNetworkEventWifiStaStop,
-  kPlNetworkEventWifiStaConnected,
-  kPlNetworkEventWifiStaDisconnected,
-  kPlNetworkEventWifiStaAuthmodeChange,
-  kPlNetworkEventWifiStaRssiLow,
-  kPlNetworkEventWifiStaBeaconTimeout,
-  kPlNetworkEventPhyIdValid,
-  kPlNetworkEventPhyIdInvalid,
-  kPlNetworkEvent1sec,
-  kPlNetworkEventMax
+  kPlNetworkEventLinkUp = 0,             // 0
+  kPlNetworkEventLinkDown,               // 1
+  kPlNetworkEventIfUp,                   // 2
+  kPlNetworkEventIfDown,                 // 3
+  kPlNetworkEventWifiReady,              // 4
+  kPlNetworkEventWifiApStart,            // 5
+  kPlNetworkEventWifiApStop,             // 6
+  kPlNetworkEventWifiApConnected,        // 7
+  kPlNetworkEventWifiApDisconnected,     // 8
+  kPlNetworkEventWifiApProbeReqRecved,   // 9
+  kPlNetworkEventWifiStaStart,           // 10
+  kPlNetworkEventWifiStaStop,            // 11
+  kPlNetworkEventWifiStaConnected,       // 12
+  kPlNetworkEventWifiStaDisconnected,    // 13
+  kPlNetworkEventWifiStaAuthmodeChange,  // 14
+  kPlNetworkEventWifiStaRssiLow,         // 15
+  kPlNetworkEventWifiStaBeaconTimeout,   // 16
+  kPlNetworkEventPhyIdValid,             // 17
+  kPlNetworkEventPhyIdInvalid,           // 18
+  kPlNetworkEvent1sec,                   // 19
+  kPlNetworkEventIfDownPre,              // 20
+  kPlNetworkEventMax                     // 21
 } PlNetworkEvent;
 
 // PL Network Initializer Type
@@ -193,6 +194,7 @@ PlErrCode PlNetworkRegisterEventHandler(const char *if_name,
 PlErrCode PlNetworkUnregisterEventHandler(const char *if_name);
 PlErrCode PlNetworkStart(const char *if_name);
 PlErrCode PlNetworkStop(const char *if_name);
+PlErrCode PlNetworkStopPre(const char *if_name);
 PlErrCode PlNetworkStructInitialize(void *structure,
                                     PlNetworkStructType type);
 PlErrCode PlNetworkInitialize(void);
@@ -211,6 +213,7 @@ int PlNetworkGetMacAddr(const char *ifname, uint8_t *mac);
 void *PlNetworkDhcpcOpen(const char *ifname, void *mac, int maclen);
 int PlNetworkDhcpcRequest(void *handle, struct PlNetworkDhcpcState *state);
 int PlNetworkDhcpcRenew(void *handle, struct PlNetworkDhcpcState *state);
+int PlNetworkDhcpcRelease(void *handle, struct PlNetworkDhcpcState *state);
 void PlNetworkDhcpcClose(void *handle);
 int PlNetworkResetDnsServer(void);
 

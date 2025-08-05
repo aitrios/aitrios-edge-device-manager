@@ -28,7 +28,11 @@
 #include "parameter_storage_manager.h"
 #include "pl_power_manager.h"
 #include "pl_system_control.h"
+
+#ifdef CONFIG_EXTERNAL_PL_WDT
 #include "pl_wdt.h"
+#endif // CONFIG_EXTERNAL_PL_WDT
+
 #include "power_manager/power_manager_internal.h"
 #include "utility_msg.h"
 #include "utility_timer.h"
@@ -84,14 +88,20 @@ static EsfPwrMgrError LoadHoursMeter(EsfPwrMgrHoursMeter *data);
 static bool HoursMeterStructMaskEnabled(EsfParameterStorageManagerMask mask);
 static EsfPwrMgrError InitStorage(void);
 static EsfPwrMgrError DeinitStorage(void);
+
+#ifdef CONFIG_EXTERNAL_PL_WDT
 static void WdtCallBack(void *private_data);
 static EsfPwrMgrError InitWdt(void);
 static EsfPwrMgrError DeinitWdt(void);
+#endif // CONFIG_EXTERNAL_PL_WDT
+
 static void NotifyReboot(char *str);
 #ifdef CONFIG_EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE
 static EsfPwrMgrSupplyType ConvertGetSupplyType(PlPowerMgrSupplyType pl_type);
 #endif
+#ifdef __NuttX__
 static EsfPwrMgrResetCause ConvertResetCause(PlSystemCtlResetCause pl_cause);
+#endif
 
 // Global Variables -----------------------------------------------------------
 static const EsfParameterStorageManagerMemberInfo kPwrMgrMembersInfo[] = {{
@@ -384,6 +394,7 @@ fin:
 }
 
 // ----------------------------------------------------------------------------
+#ifdef CONFIG_EXTERNAL_PL_WDT
 static void WdtCallBack(void *private_data) {
   (void)private_data;
   uint32_t buf_size = 128;
@@ -402,8 +413,9 @@ static void WdtCallBack(void *private_data) {
 
   return;
 }
-
+#endif // CONFIG_EXTERNAL_PL_WDT
 // ----------------------------------------------------------------------------
+#ifdef CONFIG_EXTERNAL_PL_WDT
 static EsfPwrMgrError InitWdt(void) {
   LOG_TRACE("func start");
   EsfPwrMgrError ret = kEsfPwrMgrOk;
@@ -445,8 +457,10 @@ err:
   }
   return ret;
 }
+#endif // CONFIG_EXTERNAL_PL_WDT
 
 // ----------------------------------------------------------------------------
+#ifdef CONFIG_EXTERNAL_PL_WDT
 static EsfPwrMgrError DeinitWdt(void) {
   LOG_TRACE("func start");
   EsfPwrMgrError ret = kEsfPwrMgrOk;
@@ -475,6 +489,7 @@ static EsfPwrMgrError DeinitWdt(void) {
   LOG_TRACE("func end");
   return ret;
 }
+#endif // CONFIG_EXTERNAL_PL_WDT
 
 // ----------------------------------------------------------------------------
 static void NotifyReboot(char *str) {
@@ -502,6 +517,7 @@ static EsfPwrMgrSupplyType ConvertGetSupplyType(PlPowerMgrSupplyType pl_type) {
 }
 #endif
 // ----------------------------------------------------------------------------
+#ifdef __NuttX__
 static EsfPwrMgrResetCause ConvertResetCause(PlSystemCtlResetCause pl_cause) {
   switch (pl_cause) {
     case kPlSystemCtlResetCauseSysChipPowerOnReset:
@@ -518,6 +534,7 @@ static EsfPwrMgrResetCause ConvertResetCause(PlSystemCtlResetCause pl_cause) {
       return kEsfPwrMgrResetCauseUnknown;
   }
 }
+#endif // __NuttX__
 #endif  // !CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 
 // ----------------------------------------------------------------------------
@@ -554,11 +571,13 @@ EsfPwrMgrError EsfPwrMgrStart(void) {
     goto unlock;
   }
 
+#ifdef CONFIG_EXTERNAL_PL_WDT
   ret = InitWdt();
   if (ret != kEsfPwrMgrOk) {
     LOG_ERR(kEsfPwrMgrElogErrorId0x09EsfPwrMgr, "InitWdt error. ret=%d", ret);
     goto unlock;
   }
+#endif // CONFIG_EXTERNAL_PL_WDT
 
   PlErrCode pl_ret = PlPowerMgrInitialize();
   if (pl_ret != kPlErrCodeOk) {
@@ -632,7 +651,9 @@ storage_err:
   PlPowerMgrFinalize();
 
 pl_power_mgr_err:
+#ifdef CONFIG_EXTERNAL_PL_WDT
   DeinitWdt();
+#endif // CONFIG_EXTERNAL_PL_WDT
 
 unlock:
   if (CommonMutexUnlock() != kEsfPwrMgrOk) {
@@ -674,7 +695,9 @@ EsfPwrMgrError EsfPwrMgrStop(void) {
 
   PlPowerMgrFinalize();
 
+#ifdef CONFIG_EXTERNAL_PL_WDT
   DeinitWdt();
+#endif // CONFIG_EXTERNAL_PL_WDT
 
   if (s_exception_info) {
     free(s_exception_info);
@@ -717,6 +740,7 @@ EsfPwrMgrError EsfPwrMgrStopForReboot(void) {
     goto unlock;
   }
 
+#ifdef CONFIG_EXTERNAL_PL_WDT
   PlErrCode pl_ret = PlWdtTerminate();
   if (pl_ret != kPlErrCodeOk) {
     LOG_ERR(kEsfPwrMgrElogErrorId0x56PlWdt, "PlWdtTerminate error. ret=%u",
@@ -724,6 +748,7 @@ EsfPwrMgrError EsfPwrMgrStopForReboot(void) {
     ret = kEsfPwrMgrErrorExternal;
     goto unlock;
   }
+#endif // CONFIG_EXTERNAL_PL_WDT
 
   // Deinit other than PL WDT.
   DeinitHoursMeter();
@@ -998,7 +1023,7 @@ fin:
 
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrWdtTerminate(void) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+#if defined(CONFIG_EXTERNAL_POWER_MANAGER_DISABLE) || !defined(CONFIG_EXTERNAL_PL_WDT)
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -1114,7 +1139,7 @@ fin:
 }
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrWdtKeepAlive(void) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+#if defined(CONFIG_EXTERNAL_POWER_MANAGER_DISABLE) || !defined(CONFIG_EXTERNAL_PL_WDT)
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -1151,7 +1176,7 @@ fin:
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrGetExceptionInfo(struct EsfPwrMgrExceptionInfo **info,
                                          uint32_t *info_size) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+#if defined(CONFIG_EXTERNAL_POWER_MANAGER_DISABLE) || !defined(__NuttX__)
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -1228,7 +1253,7 @@ fin:
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrConvExceptionInfo(struct EsfPwrMgrExceptionInfo *info,
                                           char *dst, uint32_t dst_size) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+#if defined(CONFIG_EXTERNAL_POWER_MANAGER_DISABLE) || !defined(__NuttX__)
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -1293,7 +1318,7 @@ fin:
 
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrClearExceptionInfo(void) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+#if defined(CONFIG_EXTERNAL_POWER_MANAGER_DISABLE) || !defined(__NuttX__)
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -1348,7 +1373,7 @@ fin:
 
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrGetResetCause(EsfPwrMgrResetCause *reset_cause) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+#if defined(CONFIG_EXTERNAL_POWER_MANAGER_DISABLE) || !defined(__NuttX__)
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -1378,6 +1403,123 @@ EsfPwrMgrError EsfPwrMgrGetResetCause(EsfPwrMgrResetCause *reset_cause) {
     LOG_ERR(kEsfPwrMgrElogErrorId0x15EsfPwrMgr, "ConvertResetCause : ret=%u",
             ret);
     goto fin;
+  }
+
+fin:
+  LOG_TRACE("func end");
+  return ret;
+#endif  // CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+}
+
+static EsfPwrMgrError SwWdtStartStop(uint32_t id, bool is_start) {
+#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+  return kEsfPwrMgrOk;
+#else
+  LOG_TRACE("func start");
+  EsfPwrMgrError ret = kEsfPwrMgrOk;
+
+  ret = CommonMutexLock(CONFIG_EXTERNAL_POWER_MANAGER_LOCKTIME);
+  if (ret != kEsfPwrMgrOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x00EsfPwrMgrCommonMutexLock,
+            "Mutex Lock error. ret=%u", ret);
+    goto fin;
+  }
+
+  if (s_status == kEsfPwrMgrStatusStop ||
+      s_status == kEsfPwrMgrStatusWaitWDTIgnition) {
+    LOG_INFO("PowerManager Stoped.");
+    ret = kEsfPwrMgrErrorStatus;
+    goto unlock;
+  } else if (s_status == kEsfPwrMgrStatusReboot) {
+    LOG_INFO("PowerManager is Rebooting.");
+    // Log output only.
+  } else if (s_status == kEsfPwrMgrStatusShutdown) {
+    LOG_INFO("PowerManager is Shuting down.");
+    // Log output only.
+  }
+
+  if (CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM <= id) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x16EsfPwrMgr, "Invalid id:%u", id);
+    ret = kEsfPwrMgrErrorInvalidArgument;
+    goto unlock;
+  }
+
+  PlErrCode pl_ret = is_start ?
+                      PlPowerMgrEnableSwWdt(id) : PlPowerMgrDisableSwWdt(id);
+  if (pl_ret != kPlErrCodeOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x62PlPowerMgr,
+            "PlPowerMgrEnableSwWdt error. ret=%u", pl_ret);
+    ret = kEsfPwrMgrErrorExternal;
+    goto unlock;
+  }
+
+unlock:
+  if (CommonMutexUnlock() != kEsfPwrMgrOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x01EsfPwrMgrCommonMutexUnlock,
+            "Mutex Unlock error.");
+  }
+
+fin:
+  LOG_TRACE("func end");
+  return ret;
+#endif  // CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+}
+// ----------------------------------------------------------------------------
+EsfPwrMgrError EsfPwrMgrSwWdtStart(uint32_t id) {
+  return SwWdtStartStop(id, true);
+}
+
+// ----------------------------------------------------------------------------
+EsfPwrMgrError EsfPwrMgrSwWdtStop(uint32_t id) {
+  return SwWdtStartStop(id, false);
+}
+
+// ----------------------------------------------------------------------------
+EsfPwrMgrError EsfPwrMgrSwWdtKeepalive(uint32_t id) {
+#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+  return kEsfPwrMgrOk;
+#else
+  LOG_TRACE("func start");
+  EsfPwrMgrError ret = kEsfPwrMgrOk;
+
+  ret = CommonMutexLock(CONFIG_EXTERNAL_POWER_MANAGER_LOCKTIME);
+  if (ret != kEsfPwrMgrOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x00EsfPwrMgrCommonMutexLock,
+            "Mutex Lock error. ret=%u", ret);
+    goto fin;
+  }
+
+  if (s_status == kEsfPwrMgrStatusStop ||
+      s_status == kEsfPwrMgrStatusWaitWDTIgnition) {
+    LOG_INFO("PowerManager Stoped.");
+    ret = kEsfPwrMgrErrorStatus;
+    goto unlock;
+  } else if (s_status == kEsfPwrMgrStatusReboot) {
+    LOG_INFO("PowerManager is Rebooting.");
+    // Log output only.
+  } else if (s_status == kEsfPwrMgrStatusShutdown) {
+    LOG_INFO("PowerManager is Shuting down.");
+    // Log output only.
+  }
+
+  if (CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM <= id) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x17EsfPwrMgr, "Invalid id:%u", id);
+    ret = kEsfPwrMgrErrorInvalidArgument;
+    goto unlock;
+  }
+
+  PlErrCode pl_ret = PlPowerMgrSwWdtKeepalive(id);
+  if (pl_ret != kPlErrCodeOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x63PlPowerMgr,
+            "PlPowerMgrSwWdtKeepalive error. ret=%u", pl_ret);
+    ret = kEsfPwrMgrErrorExternal;
+    goto unlock;
+  }
+
+unlock:
+  if (CommonMutexUnlock() != kEsfPwrMgrOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x01EsfPwrMgrCommonMutexUnlock,
+            "Mutex Unlock error.");
   }
 
 fin:
