@@ -27,6 +27,7 @@ int PlNetworkGetMacAddrImpl(const char *ifname, uint8_t *mac);
 void *PlNetworkDhcpcOpenImpl(const char *ifname, void *mac, int maclen);
 int PlNetworkDhcpcRequestImpl(void *handle, struct PlNetworkDhcpcState *state);
 int PlNetworkDhcpcRenewImpl(void *handle, struct PlNetworkDhcpcState *state);
+int PlNetworkDhcpcReleaseImpl(void *handle, struct PlNetworkDhcpcState *state);
 void PlNetworkDhcpcCloseImpl(void *handle);
 int PlNetworkResetDnsServerImpl(void);
 

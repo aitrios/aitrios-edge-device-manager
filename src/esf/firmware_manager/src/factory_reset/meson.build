@@ -3,9 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 esf_fw_mgr_includes_internal += include_directories('.')
-
-if config_h.get('CONFIG_FIRMWARE_MANAGER_PORTING_LAYER')
-  subdir('processor')
-endif
-
-subdir('sensor')
+esf_fw_mgr_sources += files([
+	'firmware_manager_factory_reset.c'
+])

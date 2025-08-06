@@ -124,7 +124,7 @@ static EsfFwMgrResult EsfFwMgrSensorOpen(
   }
 
   SsfSensorLibResult ret_ssf;
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   // Stop the dummy FW Update that the core block began
   ret_ssf = SsfSensorLibFwUpdateCancel(dummy_update_handle_info->handle);
   if (ret_ssf != kSsfSensorLibResultOk) {
@@ -134,7 +134,7 @@ static EsfFwMgrResult EsfFwMgrSensorOpen(
     return kEsfFwMgrResultUnavailable;
   }
   dummy_update_handle_info->canceled = true;
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   EsfFwMgrSensorContext* ctx =
       (EsfFwMgrSensorContext*)malloc(sizeof(EsfFwMgrSensorContext));

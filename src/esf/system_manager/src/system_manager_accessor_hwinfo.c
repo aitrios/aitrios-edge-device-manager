@@ -114,10 +114,19 @@ EsfSystemManagerResult EsfSystemManagerParseHwInfo(
   PlErrCode err = PlSystemManagerParseHwInfo(
       (char *)(data_struct->hw_info.data), pl_data_struct);
   if (err != kPlErrCodeOk) {
-    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Failed to parse HW info. err=%d",
-                     "system_manager_accessor_hwinfo.c", __LINE__, err);
-    free(pl_data_struct);
-    return kEsfSystemManagerResultInternalError;
+    if (err == kPlErrNotFound) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:HW Info file not found. err=%d",
+                       "system_manager_accessor_hwinfo.c", __LINE__, err);
+      // If the HW Info is not found, return an empty data result.
+      free(pl_data_struct);
+      return kEsfSystemManagerResultEmptyData;
+    } else {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to parse HW info. err=%d",
+                       "system_manager_accessor_hwinfo.c", __LINE__, err);
+      free(pl_data_struct);
+      return kEsfSystemManagerResultInternalError;
+    }
   }
 
   strncpy(data->model_name, pl_data_struct->model_name,

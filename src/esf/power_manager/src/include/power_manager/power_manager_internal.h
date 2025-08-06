@@ -71,6 +71,8 @@ typedef enum EsfPwrMgrElogId {
   kEsfPwrMgrElogErrorId0x13EsfPwrMgr,
   kEsfPwrMgrElogErrorId0x14EsfPwrMgr,
   kEsfPwrMgrElogErrorId0x15EsfPwrMgr,
+  kEsfPwrMgrElogErrorId0x16EsfPwrMgr,
+  kEsfPwrMgrElogErrorId0x17EsfPwrMgr,
   // UtilityTimer
   kEsfPwrMgrElogErrorId0x20UtlTimer = 0x20,
   kEsfPwrMgrElogErrorId0x21UtlTimer,
@@ -97,6 +99,8 @@ typedef enum EsfPwrMgrElogId {
   // PlPowerMgr
   kEsfPwrMgrElogErrorId0x60PlPowerMgr = 0x60,
   kEsfPwrMgrElogErrorId0x61PlPowerMgr,
+  kEsfPwrMgrElogErrorId0x62PlPowerMgr,
+  kEsfPwrMgrElogErrorId0x63PlPowerMgr,
   // HalGetVoltage
   kEsfPwrMgrElogErrorId0x70HalGetVoltage = 0x70,
   // PlSystemCtl

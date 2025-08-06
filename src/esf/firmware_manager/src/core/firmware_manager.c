@@ -12,11 +12,11 @@
 #include <stdlib.h>
 
 #include "firmware_manager_common.h"
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
+#ifdef CONFIG_EXTERNAL_FIRMWARE_MANAGER_ENABLE_FACTORY_RESET
 #include "firmware_manager_factory_reset.h"
 #endif
 #include "firmware_manager_log.h"
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
+#ifdef CONFIG_FIRMWARE_MANAGER_PORTING_LAYER
 #include "firmware_manager_porting_layer.h"
 #endif
 #include "firmware_manager_submodule.h"
@@ -25,9 +25,9 @@
 #include "processor/firmware_manager_processor.h"
 #include "sensor/firmware_manager_sensor.h"
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
 #include "sensor_ai_lib/sensor_ai_lib_fwupdate.h"
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
 #ifdef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_MBEDTLS_V2
 #define ESF_FW_MGR_HANDLE_MBEDTLS_ERROR(operation, error_handling) operation
@@ -83,11 +83,11 @@ typedef struct EsfFwMgrContext {
   int32_t tmp_buffer_size;
   uint8_t* tmp_buffer;
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   // sensor_ai_lib_handle for a dummy update
   bool dummy_update_is_open;
   SsfSensorLibFwUpdateHandle dummy_update_handle;
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   mbedtls_sha256_context sha256_context;
   uint8_t hash[ESF_FIRMWARE_MANAGER_TARGET_HASH_SIZE];
@@ -113,7 +113,7 @@ static EsfFwMgrContext* s_active_context = NULL;
 
 // Internal functions ##########################################################
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
 // Blocking and Unblocking streaming is used to prevent other modules from
 // starting streaming while the firmware update is in progress.
 // This feature is only available for T3P and T5 devices.
@@ -183,7 +183,7 @@ static EsfFwMgrResult UnblockStreaming(EsfFwMgrContext* context) {
   context->dummy_update_is_open = false;
   return kEsfFwMgrResultOk;
 }
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
 // Public functions ############################################################
 // Init ------------------------------------------------------------------------
@@ -425,9 +425,9 @@ static EsfFwMgrResult AllocateAndInitializeContext(EsfFwMgrContext** context) {
   (*context)->tmp_buffer_size = 0;
   (*context)->tmp_buffer = NULL;
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   (*context)->dummy_update_is_open = false;
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   (*context)->sha256_freed = true;
   memset((void*)(*context)->hash, 0, sizeof((*context)->hash));
@@ -739,7 +739,7 @@ static void FreeContext(EsfFwMgrContext* context) {
     // UnmapOrCloseThenFreeInternalBuffer failed)
   }
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   ret = UnblockStreaming(context);
   if (ret != kEsfFwMgrResultOk) {
     ESF_FW_MGR_DLOG_ERROR(
@@ -747,7 +747,7 @@ static void FreeContext(EsfFwMgrContext* context) {
     ESF_FW_MGR_ELOG_ERROR(kEsfFwMgrElogErrorId0x1dCore);
     // Continue to process.
   }
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   if (!context->sha256_freed) {
     mbedtls_sha256_free(&context->sha256_context);
@@ -793,18 +793,18 @@ static EsfFwMgrResult InvokeSubmoduleOpen(
   }
 
   EsfFwMgrDummyUpdateHandleInfo dummy_update_handle_info = {
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
       .handle = context->dummy_update_handle,
       .canceled = false,
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
   };
 
   EsfFwMgrResult ret = context->submodule_ops->open(
       request, p_sub_prepare_write, &dummy_update_handle_info,
       &context->submodule_handle, writable_size);
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   if (dummy_update_handle_info.canceled) context->dummy_update_is_open = false;
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
   if (ret != kEsfFwMgrResultOk) {
     ESF_FW_MGR_DLOG_ERROR("context->submodule_ops->open failed. ret = %u", ret);
     ESF_FW_MGR_ELOG_ERROR(kEsfFwMgrElogErrorId0x21Core);
@@ -842,7 +842,7 @@ EsfFwMgrResult EsfFwMgrOpen(const EsfFwMgrOpenRequest* request,
     goto unlock_mutex_then_exit;
   }
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   // Check Sensor Lib State to avoid allocating memory for the context when FW
   // manager can not be opened. (BlockStreaming succeeds only when Sensor AI
   // Lib state is standby)
@@ -854,7 +854,7 @@ EsfFwMgrResult EsfFwMgrOpen(const EsfFwMgrOpenRequest* request,
     ret = kEsfFwMgrResultUnavailable;
     goto unlock_mutex_then_exit;
   }
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   EsfFwMgrContext* context;
   ret = AllocateAndInitializeContext(&context);
@@ -865,14 +865,14 @@ EsfFwMgrResult EsfFwMgrOpen(const EsfFwMgrOpenRequest* request,
     goto unlock_mutex_then_exit;
   }
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   ret = BlockStreaming(context);
   if (ret != kEsfFwMgrResultOk) {
     ESF_FW_MGR_DLOG_ERROR("BlockStreaming failed. ret = %u", ret);
     ESF_FW_MGR_ELOG_ERROR(kEsfFwMgrElogErrorId0x27Core);
     goto free_context_and_unlock_mutex_then_exit;
   }
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   ret = ChooseSubmoduleOps(request->target, &context->submodule_ops);
   if (ret != kEsfFwMgrResultOk) {
@@ -1031,14 +1031,14 @@ EsfFwMgrResult EsfFwMgrClose(EsfFwMgrHandle handle) {
     goto unlock_mutex_then_exit;
   }
 
-#if defined(CONFIG_EXTERNAL_TARGET_T3P) || defined(CONFIG_EXTERNAL_TARGET_T5)
+#ifndef CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB
   ret = UnblockStreaming(context);
   if (ret != kEsfFwMgrResultOk) {
     ESF_FW_MGR_DLOG_ERROR("UnblockStreaming failed. ret = %u\n", ret);
     ESF_FW_MGR_ELOG_ERROR(kEsfFwMgrElogErrorId0x36Core);
     goto unlock_mutex_then_exit;
   }
-#endif /* CONFIG_EXTERNAL_TARGET_T3P || CONFIG_EXTERNAL_TARGET_T5 */
+#endif /* CONFIG_EXTERNAL_FIRMWARE_MANAGER_USE_SENSOR_FW_UPDATE_LIB */
 
   free(context);
   s_active_context = NULL;
@@ -1664,10 +1664,8 @@ unlock_mutex_then_exit:
 
 // Factory Reset ---------------------------------------------------------------
 EsfFwMgrResult EsfFwMgrStartFactoryReset(EsfFwMgrFactoryResetCause cause) {
-#ifdef CONFIG_EXTERNAL_TARGET_RPI
-  (void)cause;
-  return kEsfFwMgrResultUnimplemented;
-#else
+#ifdef CONFIG_EXTERNAL_FIRMWARE_MANAGER_ENABLE_FACTORY_RESET
+
   ESF_FW_MGR_DLOG_INFO("Called.\n");
   ESF_FW_MGR_ELOG_INFO(kEsfFwMgrElogInfoId0x11CoreFactoryReset);
   if (pthread_mutex_trylock(&s_main_apis_mutex) != 0) {
@@ -1697,6 +1695,9 @@ unlock_mutex_then_exit:
   pthread_mutex_unlock(&s_main_apis_mutex);
 
   return ret;
+#else
+  (void)cause;
+  return kEsfFwMgrResultUnimplemented;
 #endif
 }
 
@@ -1711,12 +1712,12 @@ EsfFwMgrResult EsfFwMgrGetFactoryResetFlag(bool* factory_reset_flag) {
 }
 
 EsfFwMgrResult EsfFwMgrSwitchProcessorFirmwareSlot(void) {
-#ifdef CONFIG_EXTERNAL_TARGET_RPI
-  return kEsfFwMgrResultUnimplemented;
-#else
+#ifdef CONFIG_EXTERNAL_FIRMWARE_MANAGER_ENABLE_SWITCH_PROCESSOR_FIRMWARE_SLOT
   PlErrCode pl_ret = FwMgrPlSwitchFirmwarePartition();
   if (pl_ret != kPlErrCodeOk) return kEsfFwMgrResultUnavailable;
 
   return kEsfFwMgrResultOk;
+#else
+  return kEsfFwMgrResultUnimplemented;
 #endif
 }

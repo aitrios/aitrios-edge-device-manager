@@ -71,6 +71,10 @@ int PlNetworkDhcpcRenew(void *handle, struct PlNetworkDhcpcState *state) {
   return PlNetworkDhcpcRenewImpl(handle, state);
 }
 
+int PlNetworkDhcpcRelease(void *handle, struct PlNetworkDhcpcState *state) {
+  return PlNetworkDhcpcReleaseImpl(handle, state);
+}
+
 void PlNetworkDhcpcClose(void *handle) {
   return PlNetworkDhcpcCloseImpl(handle);
 }
