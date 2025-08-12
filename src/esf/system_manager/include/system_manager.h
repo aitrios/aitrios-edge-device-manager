@@ -9,6 +9,7 @@
 #ifndef ESF_SYSTEM_MANAGER_INCLUDE_SYSTEM_MANAGER_H_
 #define ESF_SYSTEM_MANAGER_INCLUDE_SYSTEM_MANAGER_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -84,6 +85,38 @@ typedef enum {
                                                 // completed.
   kEsfSystemManagerInitialSettingCompleted      // Initial setting completed.
 } EsfSystemManagerInitialSettingFlag;
+
+// This code defines an enumeration type for the reset causes.
+typedef enum {
+  kEsfSystemManagerResetCauseUnknown = -1,
+  kEsfSystemManagerResetCauseSysChipPowerOnReset = 0,
+  kEsfSystemManagerResetCauseSysBrownOut,
+  kEsfSystemManagerResetCauseCoreSoft,
+  kEsfSystemManagerResetCauseCoreDeepSleep,
+  kEsfSystemManagerResetCauseWDT,
+  kEsfSystemManagerResetCauseSoftResetNormal,
+  kEsfSystemManagerResetCauseSoftResetError,
+  kEsfSystemManagerResetCauseDefault,
+  kEsfSystemManagerResetCauseClear,
+  kEsfSystemManagerResetCauseMax
+} EsfSystemManagerResetCause;
+
+// This code defines an enumeration type for the EVP reset causes.
+typedef enum {
+  kEsfSystemManagerEvpResetCauseClear,
+  kEsfSystemManagerEvpResetCauseMemoryAllocFailure,
+  kEsfSystemManagerEvpResetCauseFreezeDetection,
+  kEsfSystemManagerEvpResetCauseMax
+} EsfSystemManagerEvpResetCause;
+
+// This code defines an enumeration type for the system manager reboot types.
+typedef enum {
+  kEsfSystemManagerRebootTypeSystemNormal,
+  kEsfSystemManagerRebootTypeSystemAbnormal,
+  kEsfSystemManagerRebootTypeEvpMemoryAllocFailure,
+  kEsfSystemManagerRebootTypeEvpFreezeDetection,
+  kEsfSystemManagerRebootTypeMax
+} EsfSystemManagerRebootType;
 
 // """Retrieves the Device Manifest from the parameter storage manager.
 // This function retrieves the Device Manifest data from the parameter storage
@@ -645,6 +678,146 @@ EsfSystemManagerResult EsfSystemManagerGetInitialSettingFlag(
 // """
 EsfSystemManagerResult EsfSystemManagerSetInitialSettingFlag(
     EsfSystemManagerInitialSettingFlag data);
+
+// """Retrieves the EVP reset cause from the parameter storage manager.
+// This function retrieves the EVP reset cause stored in the parameter storage
+// manager and converts it to the EsfSystemManagerEvpResetCause enum format.
+// Args:
+//   [OUT] evp_reset_cause (EsfSystemManagerEvpResetCause *): Pointer to a
+//     variable where the EVP reset cause will be stored. The pointer must be
+//     non-null.
+// Returns:
+//   kEsfSystemManagerResultOk: The EVP reset cause was successfully retrieved.
+//   kEsfSystemManagerResultParamError: The provided evp_reset_cause pointer is
+//     null.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as opening/closing the parameter storage manager or
+//     retrieving the reset cause.
+// """
+EsfSystemManagerResult EsfSystemManagerGetEvpResetCause(
+    EsfSystemManagerEvpResetCause *evp_reset_cause);
+
+// """Sets the EVP reset cause in the parameter storage manager.
+// This function saves the provided EVP reset cause to the parameter storage
+// manager. If the reset cause is set to disable, the stored value is cleared.
+// Args:
+//   [IN] evp_reset_cause (EsfSystemManagerEvpResetCause): The EVP reset cause
+//     to be set. Must be a valid value within the EsfSystemManagerEvpResetCause
+//     enum.
+// Returns:
+//   kEsfSystemManagerResultOk: The EVP reset cause was successfully set.
+//   kEsfSystemManagerResultParamError: The provided EVP reset cause is invalid.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as opening/closing the parameter storage manager or
+//     saving the reset cause.
+// """
+EsfSystemManagerResult EsfSystemManagerSetEvpResetCause(
+    EsfSystemManagerEvpResetCause evp_reset_cause);
+
+// """Retrieves the reset cause from the parameter storage manager.
+// This function retrieves the reset cause stored in the parameter storage
+// manager and converts it to the EsfSystemManagerResetCause enum format.
+// Args:
+//   [OUT] reset_cause (EsfSystemManagerResetCause *): Pointer to a variable
+//     where the reset cause will be stored. The pointer must be non-null.
+// Returns:
+//   kEsfSystemManagerResultOk: The reset cause was successfully retrieved.
+//   kEsfSystemManagerResultParamError: The provided reset_cause pointer is
+//   null. kEsfSystemManagerResultInternalError: An internal error occurred
+//   during the
+//     operation, such as opening/closing the parameter storage manager or
+//     retrieving the reset cause.
+// """
+EsfSystemManagerResult EsfSystemManagerGetResetCause(
+    EsfSystemManagerResetCause *reset_cause);
+
+// """Sets the reset cause in the parameter storage manager.
+// This function saves the provided reset cause to the parameter storage
+// manager. The reset cause is converted to a string format before being stored.
+// Args:
+//   [IN] reset_cause (EsfSystemManagerResetCause): The reset cause to be set.
+//     Must be a valid value within the EsfSystemManagerResetCause enum.
+// Returns:
+//   kEsfSystemManagerResultOk: The reset cause was successfully set.
+//   kEsfSystemManagerResultParamError: The provided reset cause is invalid.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as opening/closing the parameter storage manager or
+//     saving the reset cause.
+// """
+EsfSystemManagerResult EsfSystemManagerSetResetCause(
+    EsfSystemManagerResetCause reset_cause);
+
+// """Sets the exception information in the parameter storage manager.
+// This function saves the exception information, including reset causes and
+// additional exception details, to the parameter storage manager. If the
+// exception information already exists, the function does nothing.
+// Args:
+//   None
+// Returns:
+//   kEsfSystemManagerResultOk: The exception information was successfully set
+//     or already exists.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as retrieving or saving the exception information.
+// """
+EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void);
+
+// """Sends the reset cause to the logging system.
+// This function retrieves the reset cause from the parameter storage manager,
+// determines its type (e.g., EVP or general reset cause), and sends it to the
+// logging system. After successfully sending the reset cause, it clears the
+// stored reset cause from the parameter storage manager.
+// Args:
+//   None
+// Returns:
+//   kEsfSystemManagerResultOk: The reset cause was successfully sent.
+//   kEsfSystemManagerResultParamError: Invalid parameters were provided.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as retrieving, sending, or clearing the reset cause.
+// """
+EsfSystemManagerResult EsfSystemManagerSendResetCause(void);
+
+// """Uploads the ExceptionInfo to the logging system.
+// This function retrieves the ExceptionInfo from the parameter storage
+// manager, processes it, and sends it to the logging system. After successful
+// upload, the ExceptionInfo is cleared from the storage.
+// Args:
+//   None
+// Returns:
+//   kEsfSystemManagerResultOk: The ExceptionInfo was successfully uploaded.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as retrieving, processing, or clearing the ExceptionInfo.
+// """
+EsfSystemManagerResult EsfSystemManagerUploadExceptionInfo(void);
+
+// """Checks if a reboot is required based on the reset cause.
+// This function determines whether a reboot is necessary by analyzing the
+// reset cause stored in the parameter storage manager. The result is stored
+// in the provided reset_flag pointer.
+// Args:
+//   [OUT] reset_flag (bool *): Pointer to a boolean variable where the reboot
+//     requirement flag will be stored. The pointer must be non-null.
+// Returns:
+//   kEsfSystemManagerResultOk: The reboot requirement was successfully
+//     determined.
+//   kEsfSystemManagerResultParamError: The provided reset_flag pointer is null.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during the
+//     operation, such as retrieving the reset cause or checking the reboot
+//     flag.
+// """
+EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag);
+
+// """Executes a system reboot with the specified reboot type.
+// This function initiates a system reboot with the provided reboot type.
+// The reboot type determines the reason for the reboot and affects how the
+// system handles the reboot process.
+// Args:
+//   [IN] reboot_type (EsfSystemManagerRebootType): The type of reboot to be
+//     executed. Must be one of the values from the EsfSystemManagerRebootType
+//     enumeration.
+// Returns:
+//   None (void): This function does not return as it performs a system reboot.
+// """
+void EsfSystemManagerExecReboot(EsfSystemManagerRebootType reboot_type);
 
 #ifdef __cplusplus
 }

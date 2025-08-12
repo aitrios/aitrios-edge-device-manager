@@ -475,6 +475,7 @@ static void stub_test_decrypt_data(uint8_t *data, uint32_t data_size,
   }
 
   uint32_t total_length = EsfSecUtilGetBlockFlashDataSize(data_size);
+  printf("%s:total_length:%u\n", __func__, total_length);
   if (data_size < total_length) {
     printf("%s:Parameter error. total_length over than data_size.\n", __func__);
     goto process_fin;

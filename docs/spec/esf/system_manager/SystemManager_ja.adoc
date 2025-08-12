@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.9
+:revnumber: 0.1.10
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -12,6 +12,14 @@
 :table-caption: Table
 :section-refsig:
 :experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
 
 == 目的と適用範囲
 
@@ -35,13 +43,28 @@ Appに対して特定のデータへのアクセスAPIを提供します。
 AppからのAPIコールを受けて、ParameterStorageManagerへのデータ取得、設定を行います。
 
 .コンポーネント図
-[source,mermaid]
+[{mermaid_block}]
 ....
 graph TB;
 direction LR
 
 App --> |Get/Set API| SystemManager
 SystemManager --> |データ取得/保存| ParameterStorageManager
+....
+
+デバイス起動要因通知機能、エクセプション情報アップロード機能に関しては以下の図の構成です。
+
+.コンポーネント図
+[{mermaid_block}]
+....
+graph TB;
+direction LR
+
+EsfMain --> |デバイス起動要因通知/エクセプション情報アップロード/システム再起動の必要性の判定| SystemManager
+SystemManager --> |再起動の必要性の判定| PlSystemManager
+SystemManager --> |起動要因/エクセプション情報取得| PowerManager
+SystemManager --> |起動要因のElog出力| UtilityLog
+SystemManager --> |エクセプション情報のBulkDlog出力| LogManager
 ....
 
 <<<
@@ -67,6 +90,12 @@ SystemManagerは状態を持ちません。
 |データ設定機能
 |指定されたデータをParameterStorageManagerに設定する機能です。
 |<<#_データ設定機能>>
+|デバイス起動要因通知機能
+|デバイス起動要因をElogで通知する機能です。
+|<<#_デバイス起動要因通知機能>>
+|エクセプション情報アップロード機能
+|エクセプション情報をBulkDlogでクラウドにアップロードする機能です。
+|<<#_エクセプション情報アップロード機能>>
 |===
 
 <<<
@@ -96,6 +125,70 @@ SystemManagerは状態を持ちません。
         *** ParameterStorageManagerをオープンしてデータを設定し、ParameterStorageManagerをクローズします。
     ** エラー時の挙動、復帰方法
         *** ParameterStorageManagerのAPI呼び出しに失敗した場合はエラーを返します。
+
+[#_デバイス起動要因通知機能]
+==== デバイス起動要因通知機能
+* 機能概要
+    ** デバイス起動要因をElogで通知する機能です。
+* 前提条件
+    ** ParameterStorageManager/PowerManagerが初期化されていること。
+* 機能詳細
+    ** 詳細挙動
+        *** デバイス起動要因をElogで通知します。 
+    ** エラー時の挙動、復帰方法
+        *** ParameterStorageManagerのAPI呼び出し、またはPowerManagerのAPI呼び出しに失敗した場合はエラーを返します。
+
+[#_デバイス起動要因のElog一覧]
+.デバイス起動要因のElog一覧
+[width="100%",options="header"]
+|===
+|ID |概要
+|0x6001
+|電源供給によるシステム再起動
+
+|0x6002
+|電圧低下によるシステム再起動
+
+|0x6003
+|正常系のソフトウェアリセットによるシステム再起動
+
+|0x6004
+|異常系のソフトウェアリセットによるシステム再起動
+
+|0x6005
+|ディープスリープによるシステム再起動
+
+|0x6006
+|WDTによるシステム再起動
+
+|0x6040
+|EVPメモリ確保失敗によるシステム再起動
+
+|0x6041
+|EVPフリーズ検出によるシステム再起動
+
+|===
+
+
+[#_エクセプション情報アップロード機能]
+==== エクセプション情報アップロード機能
+* 機能概要
+    ** エクセプション情報をBulkDlogでクラウドにアップロードする機能です。
+* 前提条件
+    ** ParameterStorageManager/PowerManager/LogManagerが初期化されていること。
+* 機能詳細
+    ** 詳細挙動
+        *** エクセプション情報の取得とアップロードの2段階があります。
+        *** エクセプション情報の取得
+        **** ``EsfSystemManagerSetExceptionInfo()``を呼び出すことで起動要因を取得します。 +
+             起動要因は、EVPによる起動要因と、PowerManagerによる起動要因があり、EVPによる起動要因の取得が優先されます。 +
+             起動要因が「WDTによるシステム再起動」だった場合、PowerManagerからエクセプション情報を取得し、ParameterStorageManagerに保存します。 +
+        *** エクセプション情報のアップロード
+        **** ``EsfSystemManagerUploadExceptionInfo()``を呼び出すことで、ParameterStorageManagerに保存されているエクセプション情報を取得し、BulkDlogでクラウドにアップロードします。 +
+             アップロード完了後はParameterStorageManagerに保存されているエクセプション情報を削除します。 +
+             エクセプション情報が存在しない場合は何も行いません。
+    ** エラー時の挙動、復帰方法
+        *** ParameterStorageManager/PowerManager/LogManagerのAPI呼び出しに失敗した場合はエラーを返します。
 
 <<<
 
@@ -322,6 +415,18 @@ ParameterStorageManagerからInitialSettingFlagを読みだせなかった際に
 |InitialSettingFlagの設定値を定義する列挙型です。
 |<<#_EsfSystemManagerInitialSettingFlag>>
 
+|EsfSystemManagerResetCause
+|PowerManagerによる起動要因の設定値を定義する列挙型です。
+|<<#_EsfSystemManagerResetCause>>
+
+|EsfSystemManagerEvpResetCause
+|EVPによる起動要因の設定値を定義する列挙型です。
+|<<#_EsfSystemManagerEvpResetCause>>
+
+|EsfSystemManagerRebootType
+|再起動種別の設定値を定義する列挙型です。
+|<<#_EsfSystemManagerRebootType>>
+
 |===
 
 [#_API一覧]
@@ -411,6 +516,16 @@ APIの一覧を示します。
 | 空データを返す
 |<<#_EsfSystemManagerGetHwInfo>>
 
+|EsfSystemManagerGetEvpResetCause
+|EVPによる起動要因を取得します。
+|``kEsfSystemManagerEvpResetCauseClear``
+|<<#_EsfSystemManagerGetEvpResetCause>>
+
+|EsfSystemManagerGetResetCause
+|PowerManagerによる起動要因を取得します。
+|``kEsfSystemManagerResetCauseClear``
+|<<#_EsfSystemManagerGetResetCause>>
+
 |===
 
 
@@ -464,6 +579,41 @@ APIの一覧を示します。
 |EsfSystemManagerSetInitialSettingFlag
 |InitialSettingFlagを設定します。
 |<<#_EsfSystemManagerSetInitialSettingFlag>>
+
+|EsfSystemManagerSetEvpResetCause
+|EVPによる起動要因を設定します。
+|<<#_EsfSystemManagerSetEvpResetCause>>
+
+|EsfSystemManagerSetResetCause
+|PowerManagerによる起動要因を設定します。
+|<<#_EsfSystemManagerSetResetCause>>
+|===
+
+[#_その他API]
+.その他API一覧
+[width="100%",options="header"]
+|===
+|API名 |概要 |節番号
+
+|EsfSystemManagerSetExceptionInfo
+|起動要因とエクセプション情報を保存します。
+|<<#_EsfSystemManagerSetExceptionInfo>>
+
+|EsfSystemManagerSendResetCause
+|起動要因をElogで通知します。
+|<<#_EsfSystemManagerSendResetCause>>
+
+|EsfSystemManagerUploadExceptionInfo
+|エクセプション情報をBulkDlogでクラウドにアップロードします。
+|<<#_EsfSystemManagerUploadExceptionInfo>>
+
+|EsfSystemManagerIsNeedReboot
+|起動要因によるシステム再起動の必要性を判定します。
+|<<#_EsfSystemManagerIsNeedReboot>>
+
+|EsfSystemManagerExecReboot
+|指定されたリブートタイプでシステム再起動を実行します。
+|<<#_EsfSystemManagerExecReboot>>
 
 |===
 
@@ -831,6 +981,150 @@ typedef enum {
 |初期設定済み
 |===
 
+[#_EsfSystemManagerResetCause]
+==== EsfSystemManagerResetCause
+PowerManagerによる起動要因を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerResetCauseUnknown = -1,
+  kEsfSystemManagerResetCauseSysChipPowerOnReset = 0,
+  kEsfSystemManagerResetCauseSysBrownOut,
+  kEsfSystemManagerResetCauseCoreSoft,
+  kEsfSystemManagerResetCauseCoreDeepSleep,
+  kEsfSystemManagerResetCauseWDT,
+  kEsfSystemManagerResetCauseSoftResetNormal,
+  kEsfSystemManagerResetCauseSoftResetError,
+  kEsfSystemManagerResetCauseDefault,
+  kEsfSystemManagerResetCauseClear,
+  kEsfSystemManagerResetCauseMax
+} EsfSystemManagerResetCause;
+....
+
+* *値* 
+
+.EsfSystemManagerResetCauseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfSystemManagerResetCauseUnknown
+|未サポートのリセット要因
+
+|kEsfSystemManagerResetCauseSysChipPowerOnReset
+|電源供給によるシステム再起動
+
+
+|kEsfSystemManagerResetCauseSysBrownOut
+|電圧低下によるシステム再起動
+
+|kEsfSystemManagerResetCauseCoreSoft
+|software core reset
+
+|kEsfSystemManagerResetCauseCoreDeepSleep
+|ディープスリープによるシステム再起動
+
+
+|kEsfSystemManagerResetCauseWDT
+|WDTによるシステム再起動
+
+|kEsfSystemManagerResetCauseSoftResetNormal
+|正常系のソフトウェアリセットによるシステム再起動
+
+|kEsfSystemManagerResetCauseSoftResetError
+|異常系のソフトウェアリセットによるシステム再起動
+
+|kEsfSystemManagerResetCauseDefault
+|起動要因が設定されていないデフォルト状態
+
+|kEsfSystemManagerResetCauseClear
+a|
+* 設定時：PowerManagerによる起動要因を削除する
+* 取得時：PowerManagerによる起動要因が存在しない
+
+|kEsfSystemManagerResetCauseMax
+|要素最大数
+|===
+
+
+[#_EsfSystemManagerEvpResetCause]
+==== EsfSystemManagerEvpResetCause
+EVPによる起動要因を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerEvpResetCauseClear,
+  kEsfSystemManagerEvpResetCauseMemoryAllocFailure,
+  kEsfSystemManagerEvpResetCauseFreezeDetection,
+  kEsfSystemManagerEvpResetCauseMax,
+} EsfSystemManagerEvpResetCause;
+....
+
+* *値* 
+
+.EsfSystemManagerEvpResetCauseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfSystemManagerEvpResetCauseClear
+a|
+* 設定時：EVPによる起動要因の無効化
+* 取得時：EVPによる起動要因無し
+
+|kEsfSystemManagerEvpResetCauseMemoryAllocFailure
+|メモリ確保失敗
+
+|kEsfSystemManagerEvpResetCauseFreezeDetection
+|フリーズ検知
+
+|kEsfSystemManagerEvpResetCauseMax
+|要素最大数
+|===
+
+
+[#_EsfSystemManagerRebootType]
+==== EsfSystemManagerRebootType
+再起動種別の設定値を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerRebootTypeSystemNormal,
+  kEsfSystemManagerRebootTypeSystemAbnormal,
+  kEsfSystemManagerRebootTypeEvpMemoryAllocFailure,
+  kEsfSystemManagerRebootTypeEvpFreezeDetection,
+  kEsfSystemManagerRebootTypeMax
+} EsfSystemManagerRebootType;
+....
+
+* *値*
+
+.EsfSystemManagerRebootTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfSystemManagerRebootTypeSystemNormal
+|正常系のシステム再起動
+
+|kEsfSystemManagerRebootTypeSystemAbnormal
+|異常系のシステム再起動
+
+|kEsfSystemManagerRebootTypeEvpMemoryAllocFailure
+|EVPによるメモリ確保失敗
+
+|kEsfSystemManagerRebootTypeEvpFreezeDetection
+|EVPによるフリーズ検知
+
+|kEsfSystemManagerRebootTypeMax
+|要素最大数
+|===
 
 <<<
 
@@ -2310,6 +2604,414 @@ a|
 |デバイスにHW情報が格納されていない場合です。
 |変更されません。
 |デバイスに正しくHW情報を設定してください。
+|===
+
+
+[#_EsfSystemManagerGetEvpResetCause]
+==== EsfSystemManagerGetEvpResetCause
+* *機能* 
++
+EVPによる起動要因を取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetEvpResetCause( EsfSystemManagerEvpResetCause *evp_reset_cause )**``  
+
+* *引数の説明* +
++
+**``[OUT] EsfSystemManagerEvpResetCause *evp_reset_cause``**:: 
+取得したEVPによる起動要因が格納されます。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVPによる起動要因を取得し、``evp_reset_cause``に格納します。
+** ``evp_reset_cause``に``kEsfSystemManagerEvpResetCauseClear``が格納されている場合、EVPによる起動要因が保存されていないことを示します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetEvpResetCauseの戻り値の説明]
+.EsfSystemManagerGetEvpResetCauseの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``evp_reset_cause == NULL``の場合です。
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerSetEvpResetCause]
+==== EsfSystemManagerSetEvpResetCause
+* *機能*
++
+EVPによる起動要因を設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpResetCause( EsfSystemManagerEvpResetCause evp_reset_cause )**``
+
+* *引数の説明* +
+**``[IN] EsfSystemManagerEvpResetCause evp_reset_cause``**::
+EVPによる起動要因です。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** EVPによる起動要因を設定します。
+** ``evp_reset_cause``に``kEsfSystemManagerEvpResetCauseClear``を指定した場合、保存されているEVPによる起動要因を削除します。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetEvpResetCauseの戻り値の説明]
+.EsfSystemManagerSetEvpResetCauseの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+``evp_reset_cause >= kEsfSystemManagerEvpResetCauseMax``
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerGetResetCause]
+==== EsfSystemManagerGetResetCause
+* *機能* 
++
+PowerManagerによる起動要因を取得します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetResetCause( EsfSystemManagerResetCause *reset_cause )**``  
+
+* *引数の説明* +
++
+**``[OUT] EsfSystemManagerResetCause *reset_cause``**:: 
+取得したPowerManagerによる起動要因が格納されます。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** PowerManagerによる起動要因を取得し、``reset_cause``に格納します。
+** ``reset_cause``に``kEsfSystemManagerResetCauseClear``が格納されている場合、PowerManagerによる起動要因が保存されていないことを示します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerGetResetCauseの戻り値の説明]
+.EsfSystemManagerGetResetCauseの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+|``reset_cause == NULL``の場合です。
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerSetResetCause]
+==== EsfSystemManagerSetResetCause
+* *機能*
++
+PowerManagerによる起動要因を設定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetResetCause( EsfSystemManagerResetCause reset_cause )**``
+
+* *引数の説明* +
+**``[IN] EsfSystemManagerResetCause reset_cause``**::
+PowerManagerによる起動要因です。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** PowerManagerによる起動要因を設定します。
+** ``reset_cause``に``kEsfSystemManagerResetCauseClear``を指定した場合、保存されているPowerManagerによる起動要因を削除します。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetResetCauseの戻り値の説明]
+.EsfSystemManagerSetResetCauseの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``reset_cause <= kEsfSystemManagerResetCauseUnknown``
+* ``reset_cause >= kEsfSystemManagerResetCauseMax``
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|復旧できません。
+
+|===
+
+
+[#_EsfSystemManagerSetExceptionInfo]
+==== EsfSystemManagerSetExceptionInfo
+* *機能*
++
+起動要因とエクセプション情報を保存します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetExceptionInfo( void )**``
+
+* *引数の説明* +
+引数指定はありません。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** 起動要因とエクセプション情報を保存します。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSetExceptionInfoの戻り値の説明]
+.EsfSystemManagerSetExceptionInfoの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合。 +
+ PowerManagerでエラーが発生した場合。
+| -
+|復旧できません。
+
+|===
+
+[#_EsfSystemManagerSendResetCause]
+==== EsfSystemManagerSendResetCause
+* *機能*
++
+起動要因をElogで通知します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerSendResetCause( void )**``
+
+* *引数の説明* +
+引数指定はありません。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** ParameterStorageManagerからEVPによる起動要因又はPowerManagerによる起動要因を取得し、Elogで通知します。
+** 通知するElogの詳細は<<#_デバイス起動要因のElog一覧>>を参照してください。
+** EVPによる起動要因の通知が優先されます。
+** Elog通知完了後、ParameterStorageManagerに保存されているEVPによる起動要因は削除。PowerManagerによる起動要因は``kEsfSystemManagerResetCauseDefault``が書き込まれます。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerSendResetCauseの戻り値の説明]
+.EsfSystemManagerSendResetCauseの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | 復旧方法
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合です。
+|復旧できません。
+
+|===
+
+[#_EsfSystemManagerUploadExceptionInfo]
+==== EsfSystemManagerUploadExceptionInfo
+* *機能*
++
+エクセプション情報をBulkDlogでクラウドにアップロードします。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerUploadExceptionInfo( void )**``
+
+* *引数の説明* +
+引数指定はありません。 +
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** エクセプション情報をBulkDlogでクラウドにアップロードします。
+** アップロード完了後、ParameterStorageManagerに保存されているエクセプション情報は削除されます。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerUploadExceptionInfoの戻り値の説明]
+.EsfSystemManagerUploadExceptionInfoの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 |  復旧方法
+
+|kEsfSystemManagerResultInternalError
+|ParameterStorageManagerでエラーが発生した場合。 +
+PowerManagerでエラーが発生した場合。 +
+LogManagerでエラーが発生した場合。
+|復旧できません。
+
+|===
+
+[#_EsfSystemManagerIsNeedReboot]
+==== EsfSystemManagerIsNeedReboot
+* *機能*
++
+起動要因によるシステム再起動の必要性を判定します。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerIsNeedReboot( bool *reset_flag )**``
+
+* *引数の説明* +
+**``[IN] bool *reset_flag``**::
+再起動の必要性を返すポインタです。 +
+``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返して終了します。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** 起動要因によるシステム再起動の必要性を判定します。
+** ``reset_flag``が``true``で返ってきた場合は、システム再起動を行ってください。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerIsNeedRebootの戻り値の説明]
+.EsfSystemManagerIsNeedRebootの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+
+|kEsfSystemManagerResultParamError
+a|
+* ``reset_flag == NULL``の場合
+|-
+|正しい引数を設定してリトライしてください。
+
+|kEsfSystemManagerResultInternalError
+|PlSystemManagerでエラーが発生した場合です。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|===
+
+[#_EsfSystemManagerExecReboot]
+==== EsfSystemManagerExecReboot
+* *機能*
++
+指定されたリブートタイプでシステム再起動を実行します。
+
+* *書式* +
++
+``** void EsfSystemManagerExecReboot( EsfSystemManagerRebootType reboot_type )**``
+
+* *引数の説明* +
+**``[IN] EsfSystemManagerRebootType reboot_type``**::
+実行するリブートのタイプです。EsfSystemManagerRebootTypeの列挙値のいずれかを指定してください。
+
+* *戻り値* +
++
+なし（void）。この関数はシステム再起動を実行するため、正常時は戻りません。
+
+* *説明* +
+** 指定されたリブートタイプでシステム再起動を実行します。
+** リブートタイプによって、再起動の理由と処理が決定されます。
+** この関数は再起動を実行するため、正常時は呼び出し元に戻りません。
+
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerExecRebootの戻り値の説明]
+.EsfSystemManagerExecRebootの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | 復旧方法
+
+|戻り値なし
+|正常時はシステム再起動を実行するため、この関数は戻りません。
+|該当なし
 
 |===
 
@@ -2320,7 +3022,10 @@ a|
 
 各APIを使用する場合の呼び出し例を以下に示します。
 
-[source, mermaid]
+=== Set/Get系API
+
+
+[{mermaid_block}]
 ....
 %%{init: {'noteAlign':'left'}}%%
 sequenceDiagram
@@ -2356,6 +3061,153 @@ SystemManager ->> +ParameterStorageManager: ハンドル解放
 ParameterStorageManager -->> -SystemManager: -
 
 SystemManager -->> -App: データ
+....
+
+=== デバイス起動要因通知シーケンス
+
+
+[{mermaid_block}]
+....
+sequenceDiagram
+participant sc as Some Component
+participant evp as EVP
+participant main as EsfMain
+participant SystemManager
+participant PlSystemManager
+participant ParameterStorageManager
+participant PowerManager
+participant UtilityLog
+participant LogManager
+autonumber
+
+alt 正常系のソフトウェアリセットによるシステム再起動をする場合
+    sc ->> +SystemManager: EsfSystemManagerExecReboot(kEsfSystemManagerRebootTypeSystemNormal)
+    SystemManager ->> +ParameterStorageManager: 起動要因を保存
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> -PowerManager: EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
+    Note over PowerManager: 【システム起動】に戻る
+
+else 異常系のソフトウェアリセットによるシステム再起動をする場合
+    sc ->> +SystemManager: EsfSystemManagerExecReboot(kEsfSystemManagerRebootTypeSystemAbnormal)
+    SystemManager ->> +ParameterStorageManager: 起動要因を保存
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> -PowerManager: EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeHW);
+    Note over PowerManager: 【システム起動】に戻る
+
+else EVPによるシステム再起動をする場合
+    evp ->> +SystemManager: EsfSystemManagerExecReboot(kEsfSystemManagerRebootTypeEvpMemoryAllocFailure or kEsfSystemManagerRebootTypeEvpFreezeDetection)
+    SystemManager ->> +ParameterStorageManager: EVPによる起動要因を保存
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> -PowerManager: EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeHW);
+    Note over PowerManager: 【システム起動】に戻る
+
+else WDTによるシステム再起動をする場合
+	PowerManager ->> PowerManager: WDTによるシステム再起動
+    Note over PowerManager: 【システム起動】に戻る
+end
+
+%%-----------------------------------------------------------------------------%%
+
+Note over sc, LogManager: 【システム起動】
+Note over main: ParameterStorageManager, PowerManager初期化後
+
+main ->> +SystemManager: EsfSystemManagerSetExceptionInfo()
+
+%%---PowerMangerから起動要因取得
+SystemManager ->> +PowerManager: EsfPwrMgrGetResetCause()
+PowerManager -->> -SystemManager: 起動要因
+
+alt 起動要因がkEsfPwrMgrResetCauseWDTの場合
+	SystemManager ->> +PowerManager: EsfPwrMgrGetExceptionInfo()
+    PowerManager -->> -SystemManager: エクセプション情報
+    SystemManager ->> +ParameterStorageManager: エクセプション情報を保存
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> +PowerManager: EsfPwrMgrClearExceptionInfo()
+    PowerManager -->> -SystemManager: kEsfPwrMgrOk
+
+    SystemManager ->> +ParameterStorageManager: EVPによる起動要因
+    ParameterStorageManager -->> -SystemManager: -
+
+else
+    SystemManager ->> +ParameterStorageManager: EVPによる起動要因が保存されているか確認
+    ParameterStorageManager -->> -SystemManager: EVPによる起動要因
+    opt EVPによる起動要因が保存されている場合
+        Note over SystemManager: EVPによる起動要因が優先されるためリターンで処理終了
+        SystemManager -->> main: kEsfSystemManagerResultOk
+    end
+
+    SystemManager ->> +ParameterStorageManager: 起動要因が保存されているか確認
+    ParameterStorageManager -->> -SystemManager: 起動要因
+    opt 起動要因が保存されている場合
+        SystemManager -->> main: kEsfSystemManagerResultOk
+    end
+end
+
+SystemManager ->> +ParameterStorageManager: 起動要因を保存する
+Note over SystemManager: 起動要因が存在しない(kEsfSystemManagerResetCauseClear)場合は、kEsfSystemManagerResetCauseSysChipPowerOnResetを保存する。（起動要因が存在しないのは初回起動のため正常）
+Note over SystemManager: kEsfPwrMgrResetCauseSysChipPowerOnReset or kEsfPwrMgrResetCauseCoreSoft の場合は、kEsfSystemManagerResetCauseSoftResetErrorを保存する。（起動要因が設定されずに行われた再起動を異常系とするため）
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager -->> -main: kEsfSystemManagerResultOk
+
+%%-----------------------------------------------------------------------------%%
+
+%%---Reboot判定処理
+main ->> +SystemManager: EsfSystemManagerIsNeedReboot()
+SystemManager ->> +PlSystemManager: PlSystemManagerIsNeedReboot()
+PlSystemManager -->> -SystemManager: リブート判断結果(true or false) 
+SystemManager -->> -main: リブート判断結果(true or false) 
+
+opt リブート判断結果 == true
+    main ->> main:システム再起動
+    Note over main: 【システム起動】に戻る
+end
+
+%%-----------------------------------------------------------------------------%%
+main ->> +SystemManager: EsfSystemManagerSendResetCause()
+
+SystemManager ->> +ParameterStorageManager: EVPによる起動要因が保存されているか確認
+ParameterStorageManager -->> -SystemManager: EVPによる起動要因
+
+alt EVPによる起動要因が保存されている場合
+	Note over SystemManager: EVPによる起動要因が優先
+    SystemManager ->> +ParameterStorageManager: EVPによる起動要因を取得
+    ParameterStorageManager -->> -SystemManager: EVPによる起動要因
+else EVPによる起動要因が保存されていない場合
+    SystemManager ->> +ParameterStorageManager: 起動要因を取得
+    ParameterStorageManager -->> -SystemManager: 起動要因
+end
+
+SystemManager ->> SystemManager: EVPによる起動要因 or 起動要因をElogのIDに変換
+SystemManager ->> +UtilityLog: WRITE_ELOG_CRITICAL(0x60XX)
+UtilityLog -->> -SystemManager: -
+
+SystemManager ->> +ParameterStorageManager: EVPによる起動要因を削除 and 起動要因をkEsfSystemManagerResetCauseDefaultに設定
+ParameterStorageManager -->> -SystemManager: -
+SystemManager -->> -main: kEsfSystemManagerResultOk
+
+%%-----------------------------------------------------------------------------%%
+main ->> +SystemManager: EsfSystemManagerUploadExceptionInfo()
+
+SystemManager ->> +ParameterStorageManager: エクセプション情報が保存されているか確認
+ParameterStorageManager -->> -SystemManager: エクセプション情報のサイズ
+alt エクセプション情報が保存されている場合
+  SystemManager ->> +ParameterStorageManager: エクセプション情報を取得
+  ParameterStorageManager -->> -SystemManager: エクセプション情報
+else エクセプション情報が保存されていない場合
+  Note over SystemManager: 正常起動のため何もせずreturnする
+  SystemManager -->> main: kEsfSystemManagerResultOk
+end
+
+SystemManager ->> +PowerManager: EsfPwrMgrConvExceptionInfo(エクセプション情報)
+PowerManager -->> -SystemManager: 文字列変換後のエクセプション情報
+SystemManager ->> +LogManager: EsfLogManagerSendBulkDlog(文字列変換後のエクセプション情報)
+Note over LogManager: アップロード先Blob設定がFlashに書かれていれば<br>UART設定でも強制アップロード
+LogManager -->> -SystemManager: -
+SystemManager ->> +ParameterStorageManager: エクセプション情報を削除
+ParameterStorageManager -->> -SystemManager: kEsfParameterStorageManagerStatusOk
+SystemManager -->> -main: kEsfSystemManagerResultOk
+
 ....
 
 <<<
@@ -2455,4 +3307,21 @@ a|
 |v0.1.9
 a|
 * ``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE``のサイズを64に変更
+|v0.1.10
+a|
+* データ型追加
+** ``EsfSystemManagerResetCause``を追加
+** ``EsfSystemManagerEvpResetCause``を追加
+** ``EsfSystemManagerRebootType``を追加
+
+* API追加
+** ``EsfSystemManagerGetEvpResetCause``を追加
+** ``EsfSystemManagerSetEvpResetCause``を追加
+** ``EsfSystemManagerGetResetCause``を追加
+** ``EsfSystemManagerSetResetCause``を追加
+** ``EsfSystemManagerSetExceptionInfo``を追加
+** ``EsfSystemManagerSendResetCause``を追加
+** ``EsfSystemManagerUploadExceptionInfo``を追加
+** ``EsfSystemManagerIsNeedReboot``を追加
+** ``EsfSystemManagerExecReboot``を追加
 |===

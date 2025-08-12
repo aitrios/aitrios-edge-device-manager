@@ -975,9 +975,17 @@ STATIC void *EsfLogManagerInternalWriteDlogThread(void *p
   }
 
   for (;;) {
-    UtilityMsgRecv(s_dlog_msg_passing.m_handle, (void *)&msg,
-                   sizeof(struct MessagePassingObjT),
-                   LOG_MANAGER_INTERNAL_MSG_TIMEOUT, (int32_t *)&recv_size);
+    UtilityMsgErrCode utility_ret =
+        UtilityMsgRecv(s_dlog_msg_passing.m_handle, (void *)&msg,
+                       sizeof(struct MessagePassingObjT),
+                       LOG_MANAGER_INTERNAL_MSG_TIMEOUT, (int32_t *)&recv_size);
+    if (utility_ret != kUtilityMsgOk) {
+      ESF_LOG_MANAGER_ERROR(
+          "Failed to UtilityMsgRecv. Handle is s_dlog_msg_passing.m_handle. "
+          "ret=%d\n",
+          utility_ret);
+      continue;
+    }
 
     if (msg.m_cmd == kCmdIsFinDlogCollector) {
       ESF_LOG_MANAGER_DEBUG("EsfLogManagerInternalWriteDlogThread Fin\n");

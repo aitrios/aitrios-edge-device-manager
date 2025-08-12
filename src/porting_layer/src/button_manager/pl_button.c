@@ -359,7 +359,7 @@ PlErrCode PlButtonInitialize(void) {
   err_code = PlButtonInitializeImpl();
   if (err_code != 0) {
     LOG_ERR(kPlButtonEventErrorId0x1B,
-            "PlButtonInitializeImpl(%d). err_code=%d", err_code);
+            "PlButtonInitializeImpl err_code=%d", err_code);
     err_code = kPlErrInternal;
     goto release_unlock;
   }
@@ -473,7 +473,7 @@ PlErrCode PlButtonFinalize(void) {
   err_code = PlButtonFinalizeImpl();
   if (err_code != 0) {
     LOG_ERR(kPlButtonEventErrorId0x22,
-            "PlButtonFinalizeImpl(%d). err_code=%d", err_code);
+            "PlButtonFinalizeImpl err_code=%d", err_code);
     err_code = kPlErrInternal;
     goto unlock;
   }

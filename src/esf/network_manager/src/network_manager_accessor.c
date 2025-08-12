@@ -1432,23 +1432,30 @@ static void RecoveryDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
     ESF_NETWORK_MANAGER_ERR("IP address set error.(if=%s, ret=%u)", if_name,
                             ret_network);
   }
+  // To achieve the desired lighting pattern, disable high priority patterns.
   EsfNetworkManagerAccessorSetLedManagerStatusService(
-      kEsfLedManagerLedStatusDisconnectedConnectingWithTLS, false);
+      kEsfLedManagerLedStatusDisconnectedNoInternetConnection, true);
   EsfNetworkManagerAccessorSetLedManagerStatusService(
       kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP, false);
   EsfNetworkManagerAccessorSetLedManagerStatusService(
-      kEsfLedManagerLedStatusDisconnectedNoInternetConnection, true);
+      kEsfLedManagerLedStatusDisconnectedConnectingProxy, false);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS, false);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusDisconnectedConnectingWithTLS, false);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusConnectedWithoutTLS, false);
+  EsfNetworkManagerAccessorSetLedManagerStatusService(
+      kEsfLedManagerLedStatusConnectedWithTLS, false);
   ret_network = RequestDhcp(if_name, mode);
   if (ret_network != kEsfNetworkManagerResultSuccess) {
     ESF_NETWORK_MANAGER_ERR("Dhcp ip address get error.");
     return;
   }
+  // The LED transition after “ConnectingDNSAndNTP” is handled by the EVP agent.
+  // (This is the same as what NetworkManager does at startup.)
   EsfNetworkManagerAccessorSetLedManagerStatusService(
       kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP, true);
-  EsfNetworkManagerAccessorSetLedManagerStatusService(
-      kEsfLedManagerLedStatusDisconnectedConnectingWithTLS, true);
-  EsfNetworkManagerAccessorSetLedManagerStatusService(
-      kEsfLedManagerLedStatusConnectedWithTLS, true);
   return;
 }
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE

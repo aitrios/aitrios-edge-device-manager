@@ -5,6 +5,7 @@
  */
 
 #include "led_manager.h"
+#include <stdio.h>
 
 EsfLedManagerResult EsfLedManagerInit(void) { return kEsfLedManagerSuccess; }
 EsfLedManagerResult EsfLedManagerDeinit(void) { return kEsfLedManagerSuccess; }

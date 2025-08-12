@@ -8,6 +8,7 @@
 
 #include "network_manager.h"
 #include "network_manager/network_manager_accessor_parameter_storage_manager.h"
+#include "network_manager/network_manager_resource.h"
 #include "parameter_storage_manager.h"
 
 static EsfNetworkManagerParameterInternal *parameter = NULL;

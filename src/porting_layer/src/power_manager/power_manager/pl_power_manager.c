@@ -221,7 +221,7 @@ PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id) {
     return kPlErrLock;
   }
   if (s_is_sw_wdt_enable[id] == false) {
-    LOG_ERR(0x13, "id=%d wdt not started\n");
+    LOG_ERR(0x13, "id=%u wdt not started\n", id);
     pl_ret = kPlErrInvalidParam;
     goto unlock;
   }

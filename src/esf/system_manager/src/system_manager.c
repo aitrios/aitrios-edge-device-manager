@@ -11,14 +11,19 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "log_manager.h"
 #include "parameter_storage_manager.h"
+#include "pl_system_control.h"
 #include "pl_system_manager.h"
+#include "power_manager.h"
 #include "system_manager_accessor_device_manifest.h"
 #include "system_manager_accessor_enrollment.h"
 #include "system_manager_accessor_evp.h"
+#include "system_manager_accessor_exception_info.h"
 #include "system_manager_accessor_hwinfo.h"
 #include "system_manager_accessor_initial_setting_flag.h"
 #include "system_manager_accessor_qr_mode_timeout_value.h"
+#include "system_manager_accessor_reset_cause.h"
 #include "system_manager_accessor_root_auth.h"
 #include "utility_log.h"
 #include "utility_log_module_id.h"
@@ -1983,4 +1988,735 @@ EsfSystemManagerResult EsfSystemManagerGetHwInfo(EsfSystemManagerHwInfo *data) {
   }
 
   return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerGetEvpResetCause(
+    EsfSystemManagerEvpResetCause *evp_reset_cause) {
+  if (evp_reset_cause == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Parameter error. evp_reset_cause is NULL.",
+                     "system_manager.c", __LINE__);
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfParameterStorageManagerHandle handle =
+      ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+  EsfParameterStorageManagerStatus status =
+      EsfParameterStorageManagerOpen(&handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to open parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  EsfParameterStorageManagerResetCauseMask mask = {.evp_reset_cause = 1};
+  EsfParameterStorageManagerResetCause data_struct = {.evp_reset_cause = ""};
+
+  EsfSystemManagerResult result =
+      EsfSystemManagerLoadResetCauseFromPsm(handle, &mask, &data_struct);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to load EvpResetCause from parameter storage "
+        "manager. result=%d",
+        "system_manager.c", __LINE__, result);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  status = EsfParameterStorageManagerClose(handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to close parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  result = EsfSystemManagerConvertStringToEvpResetCause(
+      data_struct.evp_reset_cause, evp_reset_cause);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to convert string to EvpResetCause. "
+                     "result=%d",
+                     "system_manager.c", __LINE__, result);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerSetEvpResetCause(
+    EsfSystemManagerEvpResetCause evp_reset_cause) {
+  if ((evp_reset_cause < kEsfSystemManagerEvpResetCauseClear) ||
+      (evp_reset_cause >= kEsfSystemManagerEvpResetCauseMax)) {
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfParameterStorageManagerHandle handle =
+      ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+  EsfParameterStorageManagerStatus status =
+      EsfParameterStorageManagerOpen(&handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to open parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  /* write flash EvpResetCause */
+  EsfParameterStorageManagerResetCauseMask mask = {.evp_reset_cause = 1};
+  EsfParameterStorageManagerResetCause data_struct = {.evp_reset_cause = ""};
+
+  if (evp_reset_cause != kEsfSystemManagerEvpResetCauseClear) {
+    // If the evp_reset_cause is not disable, the value is set to the
+    // evp_reset_cause.
+    // If the evp_reset_cause is disable, the value is set to empty.
+    data_struct.evp_reset_cause[0] = '0' + (evp_reset_cause % 10);
+    data_struct.evp_reset_cause[1] = '\0';
+  }
+
+  EsfSystemManagerResult result =
+      EsfSystemManagerSaveResetCauseToPsm(handle, &mask, &data_struct);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to save EvpResetCause to parameter storage "
+                     "manager. result=%d",
+                     "system_manager.c", __LINE__, result);
+    (void)EsfParameterStorageManagerClose(handle);
+    return result;
+  }
+
+  status = EsfParameterStorageManagerClose(handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to close parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerGetResetCause(
+    EsfSystemManagerResetCause *reset_cause) {
+  if (reset_cause == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Parameter error. reset_cause is NULL.",
+                     "system_manager.c", __LINE__);
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfParameterStorageManagerHandle handle =
+      ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+  EsfParameterStorageManagerStatus status =
+      EsfParameterStorageManagerOpen(&handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to open parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  EsfParameterStorageManagerResetCauseMask mask = {.reset_cause = 1};
+  EsfParameterStorageManagerResetCause data_struct = {.reset_cause = ""};
+
+  EsfSystemManagerResult result =
+      EsfSystemManagerLoadResetCauseFromPsm(handle, &mask, &data_struct);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to load ResetCause from parameter storage "
+                     "manager. result=%d",
+                     "system_manager.c", __LINE__, result);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  status = EsfParameterStorageManagerClose(handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to close parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  result = EsfSystemManagerConvertStringToResetCause(data_struct.reset_cause,
+                                                     reset_cause);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to convert string to ResetCause. "
+                     "result=%d",
+                     "system_manager.c", __LINE__, result);
+    return result;
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerSetResetCause(
+    EsfSystemManagerResetCause reset_cause) {
+  if ((reset_cause <= kEsfSystemManagerResetCauseUnknown) ||
+      (reset_cause >= kEsfSystemManagerResetCauseMax)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Parameter error. reset_cause=%d",
+                     "system_manager.c", __LINE__, reset_cause);
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfParameterStorageManagerHandle handle =
+      ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+  EsfParameterStorageManagerStatus status =
+      EsfParameterStorageManagerOpen(&handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to open parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  EsfParameterStorageManagerResetCauseMask mask = {.reset_cause = 1};
+  EsfParameterStorageManagerResetCause data_struct = {.reset_cause = ""};
+
+  EsfSystemManagerResult result = EsfSystemManagerConvertResetCauseToString(
+      reset_cause, data_struct.reset_cause, sizeof(data_struct.reset_cause));
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to convert ResetCause to string. result=%d",
+                     "system_manager.c", __LINE__, result);
+    (void)EsfParameterStorageManagerClose(handle);
+    return result;
+  }
+
+  result = EsfSystemManagerSaveResetCauseToPsm(handle, &mask, &data_struct);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to save ResetCause to parameter storage "
+                     "manager. result=%d",
+                     "system_manager.c", __LINE__, result);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  status = EsfParameterStorageManagerClose(handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to close parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
+  EsfSystemManagerResult result = kEsfSystemManagerResultOk;
+
+  /* get PowerManager ResetCause */
+  EsfPwrMgrResetCause pm_reset_cause = kEsfPwrMgrResetCauseUnknown;
+  EsfPwrMgrError pm_result = EsfPwrMgrGetResetCause(&pm_reset_cause);
+  if (pm_result != kEsfPwrMgrOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to get ResetCause. pm_result=%d",
+                     "system_manager.c", __LINE__, pm_result);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:ResetCause is %d.",
+                  "system_manager.c", __LINE__, pm_reset_cause);
+
+  EsfSystemManagerResetCause get_sm_reset_cause =
+      kEsfSystemManagerResetCauseUnknown;
+
+  if (pm_reset_cause == kEsfPwrMgrResetCauseWDT) {
+    WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                    "%s-%d:Save ExceptionInfo to parameter storage manager.",
+                    "system_manager.c", __LINE__);
+
+    /* get ExceptionInfo */
+    struct EsfPwrMgrExceptionInfo *info = NULL;
+    uint32_t info_size = 0;
+    pm_result = EsfPwrMgrGetExceptionInfo(&info, &info_size);
+    if (pm_result != kEsfPwrMgrOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to set ExceptionInfo. pm_result=%d",
+                       "system_manager.c", __LINE__, pm_result);
+      return kEsfSystemManagerResultInternalError;
+    }
+
+    {
+      /* write flash ExceptionInfo */
+      EsfParameterStorageManagerHandle handle =
+          ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+      EsfParameterStorageManagerStatus status =
+          EsfParameterStorageManagerOpen(&handle);
+      if (status != kEsfParameterStorageManagerStatusOk) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:Failed to open parameter storage manager. status=%d",
+            "system_manager.c", __LINE__, status);
+        return kEsfSystemManagerResultInternalError;
+      }
+
+      EsfParameterStorageManagerExceptionInfoMask mask = {.exception_info = 1};
+      EsfParameterStorageManagerExceptionInfo data_struct = {
+          .exception_info = {.size = info_size, .data = (uint8_t *)info}};
+
+      result = EsfSystemManagerSaveExceptionInfoToPsm(handle, &mask,
+                                                      &data_struct);
+      if (result != kEsfSystemManagerResultOk) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:Failed to save ExceptionInfo to parameter storage "
+            "manager. result=%d",
+            "system_manager.c", __LINE__, result);
+        (void)EsfPwrMgrClearExceptionInfo();
+        (void)EsfParameterStorageManagerClose(handle);
+        return result;
+      }
+
+      status = EsfParameterStorageManagerClose(handle);
+      if (status != kEsfParameterStorageManagerStatusOk) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:Failed to close parameter storage manager. status=%d",
+            "system_manager.c", __LINE__, status);
+        return kEsfSystemManagerResultInternalError;
+      }
+    }
+
+    /* clear ExceptionInfo */
+    pm_result = EsfPwrMgrClearExceptionInfo();
+    if (pm_result != kEsfPwrMgrOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to clear ExceptionInfo. pm_result=%d",
+                       "system_manager.c", __LINE__, pm_result);
+      return kEsfSystemManagerResultInternalError;
+    }
+
+  } else {
+    /* get EvpResetCause */
+    EsfSystemManagerEvpResetCause evp_reset_cause =
+        kEsfSystemManagerEvpResetCauseClear;
+
+    result = EsfSystemManagerGetEvpResetCause(&evp_reset_cause);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to get EvpResetCause. result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+
+    if (evp_reset_cause != kEsfSystemManagerEvpResetCauseClear) {
+      // EvpResetCause is already saved. Do nothing.
+      WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                      "%s-%d:Evp Reset Cause is already saved. Do nothing.",
+                      "system_manager.c", __LINE__);
+      goto normal_exit;
+    }
+
+    /* get ResetCause */
+    result = EsfSystemManagerGetResetCause(&get_sm_reset_cause);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to get ResetCause. result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+
+    if ((get_sm_reset_cause != kEsfSystemManagerResetCauseDefault) &&
+        (get_sm_reset_cause != kEsfSystemManagerResetCauseClear)) {
+      // ResetCause is already saved. Do nothing.
+      WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                      "%s-%d:Reset Cause is already saved. Do nothing.",
+                      "system_manager.c", __LINE__);
+      goto normal_exit;
+    }
+  }
+
+  {
+    WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                    "%s-%d:Save ResetCause to parameter storage manager.",
+                    "system_manager.c", __LINE__);
+
+    /* write flash ResetCause */
+    EsfSystemManagerResetCause save_sm_reset_cause =
+        kEsfSystemManagerResetCauseUnknown;
+
+    if (get_sm_reset_cause == kEsfSystemManagerResetCauseClear) {
+      // During initial startup, nothing is set in ResetCause, so PowerOnReset
+      // is set.
+      save_sm_reset_cause = kEsfSystemManagerResetCauseSysChipPowerOnReset;
+    } else {  // kEsfSystemManagerResetCauseDefault
+      switch (pm_reset_cause) {
+        case kEsfPwrMgrResetCauseSysChipPowerOnReset:
+          // fall through
+
+        case kEsfPwrMgrResetCauseCoreSoft:
+          // Booting without a saved ResetCause is treated as SoftResetError.
+          save_sm_reset_cause = kEsfSystemManagerResetCauseSoftResetError;
+          break;
+
+        default:
+          save_sm_reset_cause =
+              EsfSystemManagerConvertResetCausePmToSm(pm_reset_cause);
+          break;
+      }
+    }
+
+    result = EsfSystemManagerSetResetCause(save_sm_reset_cause);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to set ResetCause. result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+  }
+
+normal_exit:
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerSendResetCause(void) {
+  EsfSystemManagerResetCauseType cause_type =
+      kEsfSystemManagerResetCauseTypeNone;
+
+  EsfSystemManagerResult result = EsfSystemManagerSelectResetCause(&cause_type);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to select ResetCause. result=%d",
+                     "system_manager.c", __LINE__, result);
+    return result;
+  }
+
+  if (cause_type == kEsfSystemManagerResetCauseTypeNone) {
+    WRITE_DLOG_WARN(MODULE_ID_SYSTEM, "%s-%d:Reset cause not found.",
+                    "system_manager.c", __LINE__);
+    return kEsfSystemManagerResultOk;
+  }
+
+  char reset_cause_str[ESF_SYSTEM_MANAGER_RESET_CAUSE_MAX_SIZE] = {0};
+
+  if (cause_type == kEsfSystemManagerResetCauseTypeEvp) {
+    EsfSystemManagerEvpResetCause evp_reset_cause =
+        kEsfSystemManagerEvpResetCauseClear;
+
+    result = EsfSystemManagerGetEvpResetCause(&evp_reset_cause);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to get EvpResetCause. result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+
+    result = EsfSystemManagerConvertEvpResetCauseToString(
+        evp_reset_cause, reset_cause_str, sizeof(reset_cause_str));
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to convert EvpResetCause to string. "
+                       "result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+
+  } else {
+    EsfSystemManagerResetCause get_sm_reset_cause =
+        kEsfSystemManagerResetCauseUnknown;
+
+    result = EsfSystemManagerGetResetCause(&get_sm_reset_cause);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM, "%s-%d:Failed to get ResetCause. result=%d",
+          "system_manager_accessor_reset_cause.c", __LINE__, result);
+      return result;
+    }
+
+    result = EsfSystemManagerConvertResetCauseToString(
+        get_sm_reset_cause, reset_cause_str, sizeof(reset_cause_str));
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to convert ResetCause to string. "
+                       "result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+  }
+
+  {
+    /* send ResetCause elog */
+    uint16_t event_id_base = 0x6000;
+    uint8_t event_id_reset_cause = 0x00;
+
+    result = EsfSystemManagerGetResetCauseEventId(reset_cause_str, cause_type,
+                                                  &event_id_reset_cause);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to get ResetCause event id. result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+
+    WRITE_ELOG_CRITICAL(MODULE_ID_SYSTEM,
+                        (uint16_t)(event_id_base + event_id_reset_cause));
+    WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                    "%s-%d:Send ResetCause to elog. event_id=%x",
+                    "system_manager.c", __LINE__,
+                    (uint16_t)(event_id_base + event_id_reset_cause));
+  }
+
+  if (cause_type == kEsfSystemManagerResetCauseTypeEvp) {
+    // Delete EvpResetCause
+    result =
+        EsfSystemManagerSetEvpResetCause(kEsfSystemManagerEvpResetCauseClear);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to set EvpResetCause to disable. "
+                       "result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+
+  } else {
+    // Set empty ResetCause value
+    result = EsfSystemManagerSetResetCause(kEsfSystemManagerResetCauseDefault);
+    if (result != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to set ResetCause to empty. "
+                       "result=%d",
+                       "system_manager.c", __LINE__, result);
+      return result;
+    }
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerUploadExceptionInfo(void) {
+  EsfParameterStorageManagerHandle handle =
+      ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+  EsfParameterStorageManagerStatus status =
+      EsfParameterStorageManagerOpen(&handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to open parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  /* get ExceptionInfo size */
+  EsfParameterStorageManagerItemID id =
+      kEsfParameterStorageManagerItemExceptionInfo;
+  uint32_t loadable_size = 0;
+  status = EsfParameterStorageManagerGetSize(handle, id, &loadable_size);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to get size of ExceptionInfo. status=%d",
+                     "system_manager.c", __LINE__, status);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  if (loadable_size == 0) {
+    status = EsfParameterStorageManagerClose(handle);
+    if (status != kEsfParameterStorageManagerStatusOk) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:Failed to close parameter storage manager. status=%d",
+          "system_manager.c", __LINE__, status);
+      return kEsfSystemManagerResultInternalError;
+    }
+    // No ExceptionInfo
+    WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:No ExceptionInfo.",
+                    "system_manager.c", __LINE__);
+    return kEsfSystemManagerResultOk;
+  }
+
+  struct EsfPwrMgrExceptionInfo *info = calloc(1, loadable_size);
+  if (info == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Failed to calloc.",
+                     "system_manager.c", __LINE__);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  EsfParameterStorageManagerExceptionInfoMask info_mask = {.exception_info = 1};
+  EsfParameterStorageManagerExceptionInfo info_data = {
+      .exception_info = {.size = loadable_size, .data = (uint8_t *)info}};
+
+  /* read flash ExceptionInfo */
+  EsfSystemManagerResult result =
+      EsfSystemManagerLoadExceptionInfoFromPsm(handle, &info_mask, &info_data);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to load ExceptionInfo from parameter storage "
+        "manager. result=%d",
+        "system_manager.c", __LINE__, result);
+    free(info);
+    (void)EsfParameterStorageManagerClose(handle);
+    return result;
+  }
+
+  /* Convert ExceptionInfo */
+  uint32_t dst_size = ESF_POWER_MANAGER_EXCEPTION_INFO_SIZE;
+  char *dst = (char *)calloc(1, dst_size);
+  if (dst == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Failed to calloc.",
+                     "system_manager.c", __LINE__);
+    free(info);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+  EsfPwrMgrError ret = EsfPwrMgrConvExceptionInfo(
+      (struct EsfPwrMgrExceptionInfo *)(info_data.exception_info.data), dst,
+      dst_size);
+  if (ret != kEsfPwrMgrOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to convert ExceptionInfo.  ret=%d",
+                     "system_manager.c", __LINE__, ret);
+    free(dst);
+    free(info);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  free(info);
+  info = NULL;
+
+  /* Send Dlog */
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:Send ExceptionInfo to dlog.",
+                  "system_manager.c", __LINE__);
+
+#ifndef CONFIG_EXTERNAL_DLOG_DISABLE
+  uint32_t module_id = MODULE_ID_MAIN;
+  EsfLogManagerStatus sts = EsfLogManagerSendBulkDlog(
+      module_id, dst_size, (uint8_t *)dst, NULL, NULL);
+  if (sts != kEsfLogManagerStatusOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to send bulk dlog.  ret=%d",
+                     "system_manager.c", __LINE__, sts);
+    free(dst);
+    (void)EsfParameterStorageManagerClose(handle);
+    return kEsfSystemManagerResultInternalError;
+  }
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE
+
+  free(dst);
+  dst = NULL;
+
+  /* delete flash ExceptionInfo */
+  info_mask.exception_info = 1;
+
+  result = EsfSystemManagerClearExceptionInfoOfPsm(handle, &info_mask);
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to delete ExceptionInfo to parameter storage "
+        "manager. result=%d",
+        "system_manager.c", __LINE__, result);
+    (void)EsfParameterStorageManagerClose(handle);
+    return result;
+  }
+
+  status = EsfParameterStorageManagerClose(handle);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to close parameter storage manager. status=%d",
+        "system_manager.c", __LINE__, status);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag) {
+  if (reset_flag == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Parameter error. reset_flag=%p",
+                     "system_manager.c", __LINE__, reset_flag);
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfPwrMgrResetCause pm_reset_cause = kEsfPwrMgrResetCauseUnknown;
+  EsfPwrMgrError pm_result = EsfPwrMgrGetResetCause(&pm_reset_cause);
+  if (pm_result != kEsfPwrMgrOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to get ResetCause. pm_result=%d",
+                     "system_manager.c", __LINE__, pm_result);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  // Convert PowerManager ResetCause to SystemManager ResetCause
+  EsfSystemManagerResetCause sm_reset_cause =
+      EsfSystemManagerConvertResetCausePmToSm(pm_reset_cause);
+
+  // Convert SystemManager ResetCause to PlSystemManager ResetCause
+  PlSystemManagerResetCause pl_sm_reset_cause =
+      EsfSystemManagerConvertResetCauseSmToPlSm(sm_reset_cause);
+
+  PlErrCode error_code = PlSystemManagerIsNeedReboot(pl_sm_reset_cause,
+                                                     reset_flag);
+  if (error_code != kPlErrCodeOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to check reboot flag. error_code=%d",
+                     "system_manager.c", __LINE__, error_code);
+    return kEsfSystemManagerResultInternalError;
+  }
+
+  return kEsfSystemManagerResultOk;
+}
+
+void EsfSystemManagerExecReboot(EsfSystemManagerRebootType reboot_type) {
+  EsfSystemManagerResult result = kEsfSystemManagerResultOk;
+  EsfPwrMgrRebootType reboot_type_pm = EsfPwrMgrRebootTypeSW;
+
+  switch (reboot_type) {
+    case kEsfSystemManagerRebootTypeSystemNormal:
+      reboot_type_pm = EsfPwrMgrRebootTypeSW;
+      result = EsfSystemManagerSetResetCause(
+          kEsfSystemManagerResetCauseSoftResetNormal);
+      break;
+
+    case kEsfSystemManagerRebootTypeSystemAbnormal:
+      reboot_type_pm = EsfPwrMgrRebootTypeHW;
+      result = EsfSystemManagerSetResetCause(
+          kEsfSystemManagerResetCauseSoftResetError);
+      break;
+
+    case kEsfSystemManagerRebootTypeEvpMemoryAllocFailure:
+      reboot_type_pm = EsfPwrMgrRebootTypeHW;
+      result = EsfSystemManagerSetEvpResetCause(
+          kEsfSystemManagerEvpResetCauseMemoryAllocFailure);
+      break;
+
+    case kEsfSystemManagerRebootTypeEvpFreezeDetection:
+      reboot_type_pm = EsfPwrMgrRebootTypeHW;
+      result = EsfSystemManagerSetEvpResetCause(
+          kEsfSystemManagerEvpResetCauseFreezeDetection);
+      break;
+
+    default:
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Unknown reboot type. reboot_type=%d",
+                       "system_manager.c", __LINE__, reboot_type);
+      result = kEsfSystemManagerResultParamError;
+      break;
+  }
+
+  if (result != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to set ResetCause. result=%d reboot_type=%d",
+                     "system_manager.c", __LINE__, result, reboot_type);
+    // not return here, continue to reboot.
+  }
+
+  EsfPwrMgrExecuteRebootEx(reboot_type_pm);
 }
