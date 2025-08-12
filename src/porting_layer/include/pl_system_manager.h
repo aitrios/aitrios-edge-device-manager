@@ -51,12 +51,27 @@ typedef struct PlSystemManagerHwInfo {
                                                               // Name.
 } PlSystemManagerHwInfo;
 
+typedef enum {
+  kPlSystemManagerResetCauseUnknown = -1,
+  kPlSystemManagerResetCauseSysChipPowerOnReset = 0,
+  kPlSystemManagerResetCauseSysBrownOut,
+  kPlSystemManagerResetCauseCoreSoft,
+  kPlSystemManagerResetCauseCoreDeepSleep,
+  kPlSystemManagerResetCauseWDT,
+  kPlSystemManagerResetCauseDefault,
+  kPlSystemManagerResetCauseClear,
+  kPlSystemManagerResetCauseMax
+} PlSystemManagerResetCause;
+
 size_t PlSystemManagerGetHwInfoSize(void);
 
 PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
                                      PlSystemManagerHwInfo *data);
 
 bool PlSystemManagerIsHwInfoSupported(void);
+
+PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
+                                      bool *reset_flag);
 
 #ifdef __cplusplus
 }

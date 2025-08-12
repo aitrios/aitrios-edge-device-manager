@@ -107,3 +107,15 @@ static PlErrCode PlSystemManagerGetSerialNumber(char *serial_number) {
 }
 
 bool PlSystemManagerIsHwInfoSupported(void) { return false; }
+
+PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
+                                      bool *reset_flag) {
+  if (reset_flag == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Parameter error. reset_flag=%p.",
+                     "pl_system_manager.c", __LINE__, reset_flag);
+    return kPlErrInvalidParam;
+  }
+  (void)reset_cause;
+  *reset_flag = false;
+  return kPlErrCodeOk;
+}

@@ -37,6 +37,7 @@ typedef enum EsfLedManagerTargetLed {
 // An enumerated type that defines the state of Led.
 typedef enum EsfLedManagerLedStatus {
   kEsfLedManagerLedStatusForcedOff,
+  kEsfLedManagerLedStatusResetting,
   kEsfLedManagerLedStatusAbleToAcceptInputs,
   kEsfLedManagerLedStatusUnableToAcceptInputs,
   kEsfLedManagerLedStatusConnectedWithTLS,
@@ -46,14 +47,22 @@ typedef enum EsfLedManagerLedStatus {
   kEsfLedManagerLedStatusDisconnectedNoInternetConnection,
   kEsfLedManagerLedStatusDisconnectedConnectingWithTLS,
   kEsfLedManagerLedStatusDisconnectedConnectingWithoutTLS,
+  kEsfLedManagerLedStatusDisconnectedConnectingProxy,
   kEsfLedManagerLedStatusWaitingForInputsToConnectConsole,
   kEsfLedManagerLedStatusWaitingForInputsToConnectConsoleGlobalProvisioner,
   kEsfLedManagerLedStatusLoadingSSIDPassword,
   kEsfLedManagerLedStatusSearchingAP,
   kEsfLedManagerLedStatusAPFoundAndDoingAuthentication,
   kEsfLedManagerLedStatusLinkEstablished,
-  kEsfLedManagerLedStatusErrorRebootDevice,
-  kEsfLedManagerLedStatusErrorConfirmSettingParameterData,
+  kEsfLedManagerLedStatusErrorPeripheralDriversInitializationFailed,
+  kEsfLedManagerLedStatusErrorNetworkInitializationFailed,
+  kEsfLedManagerLedStatusErrorLegacyUSB,
+  kEsfLedManagerLedStatusErrorInvalidQRCode,
+  kEsfLedManagerLedStatusErrorUploadFailed,
+  kEsfLedManagerLedStatusErrorDownloadFailed,
+  kEsfLedManagerLedStatusErrorAuthProxyFailed,
+  kEsfLedManagerLedStatusErrorUpdateMemoryAllocateFailed,
+  kEsfLedManagerLedStatusErrorDataFlashFailed,
   kEsfLedManagerLedStatusNum,
 } EsfLedManagerLedStatus;
 
