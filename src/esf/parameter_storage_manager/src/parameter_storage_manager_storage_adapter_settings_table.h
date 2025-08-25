@@ -873,6 +873,11 @@ static const EsfParameterStorageManagerStorageAdapterDataInfo
       .data_id = {.pl_storage = PlStorageDataEvpExceptionFactor},
       .factory_reset_required = true,
     },
+    [kEsfParameterStorageManagerItemMigrationDone] = {
+      .storage = kEsfParameterStorageManagerStoragePl,
+      .data_id = {.pl_storage = PlStorageDataMigrationDone},
+      .factory_reset_required = false,
+    },
 };
 
 #endif  // ESF_PARAMETER_STORAGE_MANAGER_SRC_PARAMETER_STORAGE_MANAGER_STORAGE_ADAPTER_SETTINGS_TABLE_H_  /* NOLINT */

@@ -33,7 +33,7 @@
                   (0x00FF & (EVENT_ID_START + event_id))));
 // Variables ------------------------------------------------------------------
 
-#define DEFAULT_SQLITE3_DATABASE_PATH "/var/lib/edge-device-core/db.sqlite3"
+#define DEFAULT_SQLITE3_DATABASE_PATH "/misc/smartcamera/edc/db.sqlite3"
 
 TAILQ_HEAD(PlStorageSqlite3HandleList, PlStorageSqlite3Handle);
 

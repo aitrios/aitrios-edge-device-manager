@@ -35,6 +35,7 @@
 #include "main.h"
 #include "main_internal.h"
 #include "main_log.h"
+#include "main_migration.h"
 #include "memory_manager.h"
 #include "network_manager.h"
 #include "parameter_storage_manager.h"
@@ -68,6 +69,7 @@
 #define ESF_MAIN_SYSTEMAPP_PRIORITY (0)
 #define ESF_MAIN_SYSTEMAPP_STACKSIZE (0)
 #endif  // CONFIG_EXTERNAL_SYSTEMAPP || CONFIG_EXTERNAL_MAIN_SYSTEMAPP_STUB
+#define ESF_MAIN_MIGRATION_RETRY_MAX (3)
 
 // Global variables to hold resources.
 static EsfMainInfo resource = {PTHREAD_MUTEX_INITIALIZER, false, 0, NULL, 4L};
@@ -90,6 +92,11 @@ static pid_t system_app_pid = ERROR;
   MAIN_EsfFwMgrSwitchProcessorFirmwareSlot
 #endif  // CONFIG_EXTERNAL_MAIN_FIRMWARE_MANAGER_STUB
 
+static void EsfMainHwReboot(void);
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
 // function
 // """Convert EsfMainMsgType to PlMainFeatureType.
 
@@ -586,6 +593,42 @@ static EsfMainError EsfMainBoot(void) {
       }
       ESF_MAIN_INFO("EsfPwrMgrStart Init finish.");
     }
+    do {  // Reboot Cause Related Processing
+      EsfSystemManagerResult system_manager_result =
+          EsfSystemManagerSetExceptionInfo();
+      if (system_manager_result != kEsfSystemManagerResultOk) {
+        ESF_MAIN_ERR("EsfSystemManagerSetExceptionInfo ret=%d",
+                     system_manager_result);
+        // Continue boot process, skip RebootCause-related processing.
+        break;
+      }
+      bool need_reboot = false;
+      system_manager_result = EsfSystemManagerIsNeedReboot(&need_reboot);
+      if (system_manager_result != kEsfSystemManagerResultOk) {
+        ESF_MAIN_ERR("EsfSystemManagerIsNeedReboot ret=%d",
+                     system_manager_result);
+        // Continue boot process, skip RebootCause-related processing.
+        break;
+      }
+      if (need_reboot) {
+        ESF_MAIN_INFO("Need reboot.");
+        // System HW reboot in function.
+        // Subsequent processing does not work.
+        EsfMainHwReboot();
+      }
+      system_manager_result = EsfSystemManagerSendResetCause();
+      if (system_manager_result != kEsfSystemManagerResultOk) {
+        ESF_MAIN_ERR("EsfSystemManagerSendResetCause ret=%d",
+                     system_manager_result);
+        // continue
+      }
+      system_manager_result = EsfSystemManagerUploadExceptionInfo();
+      if (system_manager_result != kEsfSystemManagerResultOk) {
+        ESF_MAIN_ERR("EsfSystemManagerUploadExceptionInfo ret=%d",
+                     system_manager_result);
+        // continue
+      }
+    } while (0);
     {
       ESF_MAIN_DBG("EsfNetworkManagerInit Init start.");
       EsfNetworkManagerResult ext_ret = EsfNetworkManagerInit();
@@ -643,6 +686,21 @@ static EsfMainError EsfMainBoot(void) {
         // CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB)
     }
     {
+      bool need_migration = false;
+      ret = EsfMainIsNeedMigration(&need_migration);
+      if ((ret == kEsfMainOk) && need_migration) {
+        ESF_MAIN_INFO("Need migration.");
+        for (int i = 0; i < ESF_MAIN_MIGRATION_RETRY_MAX; i++) {
+          if (EsfMainExecMigration() == kEsfMainOk) {
+            EsfMainDisableMigrationFlag();
+            break;
+          }
+        }
+      } else {
+        ESF_MAIN_INFO("No need migration.");
+      }
+    }
+    {
 #if defined(CONFIG_EXTERNAL_SYSTEMAPP) || \
     defined(CONFIG_EXTERNAL_MAIN_SYSTEMAPP_STUB)
       ESF_MAIN_DBG("SystemApp boot start.");
@@ -655,7 +713,7 @@ static EsfMainError EsfMainBoot(void) {
         ESF_MAIN_ELOG_ERR(ESF_MAIN_ELOG_INIT_FAILURE);
         break;
       }
-#else // __NuttX__
+#else   // __NuttX__
       extern int SystemApp_main(int argc, char *argv[]);
 
       system_app_pid = task_create("SystemApp", ESF_MAIN_SYSTEMAPP_PRIORITY,
@@ -666,7 +724,7 @@ static EsfMainError EsfMainBoot(void) {
         ESF_MAIN_ELOG_ERR(ESF_MAIN_ELOG_INIT_FAILURE);
         break;
       }
-#endif // __NuttX__
+#endif  // __NuttX__
       ESF_MAIN_INFO("SystemApp boot finish.");
 #endif  // CONFIG_EXTERNAL_SYSTEMAPP || CONFIG_EXTERNAL_MAIN_SYSTEMAPP_STUB
     }
@@ -1118,6 +1176,138 @@ static EsfMainError EsfMainFinishLed(void) {
   return kEsfMainOk;
 }
 
+// """Hardware reboot with finalize esf.
+
+// This operation is performed only when EsfSystemManagerIsNeedReboot in
+// EsfMainBoot is true.
+// In EsfMainBoot, the initialized functions up to that
+// point are terminated before performing a hardware reset.
+
+// Args: none
+
+// Returns: none
+
+// Yields: none
+
+// Note:
+//     This is an internal API and cannot be used externally.
+
+// """
+static void EsfMainHwReboot(void) {
+  ESF_MAIN_TRACE("func start");
+  {
+    ESF_MAIN_DBG("EsfPwrMgrStopForReboot start.");
+    EsfPwrMgrError ext_ret = EsfPwrMgrStopForReboot();
+    if (kEsfPwrMgrOk != ext_ret) {
+      ESF_MAIN_ERR("EsfPwrMgrStopForReboot ret=%d", ext_ret);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("EsfPwrMgrStopForReboot finish.");
+  }
+  {
+    ESF_MAIN_DBG("EsfLedManagerDeinit start.");
+    EsfLedManagerResult ext_ret = EsfLedManagerDeinit();
+    if (kEsfLedManagerSuccess != ext_ret) {
+      ESF_MAIN_ERR("EsfLedManagerDeinit ret=%d", ext_ret);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("EsfLedManagerDeinit finish.");
+  }
+  {
+    ESF_MAIN_DBG("EsfParameterStorageManagerDeinit start.");
+    // Deinitialize ParameterStorageManager
+    EsfParameterStorageManagerStatus result =
+        EsfParameterStorageManagerDeinit();
+    if (result != kEsfParameterStorageManagerStatusOk) {
+      ESF_MAIN_ERR("EsfParameterStorageManagerDeinit return=%d", result);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("EsfParameterStorageManagerDeinit finish.");
+  }
+  {
+    ESF_MAIN_DBG("EsfMemoryManagerFinalize start.");
+    EsfMemoryManagerResult ext_ret = EsfMemoryManagerFinalize();
+    if (kEsfMemoryManagerResultSuccess != ext_ret) {
+      ESF_MAIN_ERR("EsfMemoryManagerFinalize ret=%d", ext_ret);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("EsfMemoryManagerFinalize finish.");
+  }
+#ifdef CONFIG_EXTERNAL_HAL_IOEXP
+  {
+    ESF_MAIN_DBG("HalIoexpFinalize start.");
+    HalErrCode ext_ret = HalIoexpFinalize();
+    if (kHalErrCodeOk != ext_ret) {
+      ESF_MAIN_ERR("HalIoexpFinalize ret=%d", ext_ret);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("HalIoexpFinalize finish.");
+  }
+#endif  // CONFIG_EXTERNAL_HAL_IOEXP
+#ifdef CONFIG_EXTERNAL_HAL_DRIVER
+  {
+    ESF_MAIN_DBG("HalDriverFinalize start.");
+    HalErrCode ext_ret = HalDriverFinalize();
+    if (kHalErrCodeOk != ext_ret) {
+      ESF_MAIN_ERR("HalDriverFinalize ret=%d", ext_ret);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("HalDriverFinalize finish.");
+  }
+#endif  // CONFIG_EXTERNAL_HAL_DRIVER
+#ifdef CONFIG_EXTERNAL_HAL_I2C
+  {
+    ESF_MAIN_DBG("HalI2cFinalize start.");
+    HalErrCode ext_ret = HalI2cFinalize();
+    if (kHalErrCodeOk != ext_ret) {
+      ESF_MAIN_ERR("HalI2cFinalize ret=%d", ext_ret);
+      ESF_MAIN_ELOG_WARN(ESF_MAIN_ELOG_TERM_FAILURE);
+    }
+    ESF_MAIN_INFO("HalI2cFinalize finish.");
+  }
+#endif  // CONFIG_EXTERNAL_HAL_I2C
+  {
+    ESF_MAIN_DBG("UtilityLogDeinit start.");
+    UtilityLogStatus ext_ret = UtilityLogDeinit();
+    if (kUtilityLogStatusOk != ext_ret) {
+      ESF_MAIN_LOG_ERR("UtilityLogDeinit ret=%u", ext_ret);
+    }
+    ESF_MAIN_LOG_INFO("UtilityLogDeinit finish.");
+  }
+  {
+    ESF_MAIN_LOG_DBG("EsfLogManagerDeinit start.");
+    EsfLogManagerStatus ext_ret = EsfLogManagerDeinit();
+    if (kEsfLogManagerStatusOk != ext_ret) {
+      ESF_MAIN_LOG_ERR("EsfLogManagerDeinit ret=%u", ext_ret);
+    }
+    ESF_MAIN_LOG_INFO("EsfLogManagerDeinit finish.");
+  }
+  {
+    ESF_MAIN_LOG_DBG("UtilityTimerFinalize start.");
+    UtilityTimerErrCode ext_ret = UtilityTimerFinalize();
+    if (kUtilityTimerOk != ext_ret) {
+      ESF_MAIN_LOG_ERR("UtilityTimerFinalize ret=%u", ext_ret);
+    }
+    ESF_MAIN_LOG_INFO("UtilityTimerFinalize finish.");
+  }
+  {
+    ESF_MAIN_LOG_DBG("UtilityMsgFinalize start.");
+    UtilityMsgErrCode utility_ret = UtilityMsgFinalize();
+    if (kUtilityMsgOk != utility_ret) {
+      // Continue processing even if an error occurs.
+      ESF_MAIN_LOG_ERR("UtilityMsgFinalize ret=%u", utility_ret);
+    }
+    ESF_MAIN_LOG_INFO("UtilityMsgFinalize finish.");
+  }
+
+  // Don't set ResetCause here.
+  // It is set already in SetExceptionInfo() in EsfMainBoot.
+  EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeHW);
+
+  ESF_MAIN_LOG_TRACE("func end");
+  return;
+}
+
 // """Reboot process.
 
 // Reboot process.
@@ -1141,6 +1331,13 @@ static EsfMainError EsfMainProcessReboot(void) {
   ESF_MAIN_TRACE("func start");
   ESF_MAIN_INFO("EsfMainProcessReboot called.");
 
+  EsfSystemManagerResult system_manager_ret =
+      EsfSystemManagerSetResetCause(kEsfSystemManagerResetCauseSoftResetNormal);
+  if (system_manager_ret != kEsfSystemManagerResultOk) {
+    ESF_MAIN_LOG_ERR("EsfSystemManagerSetResetCause ret=%u",
+                     system_manager_ret);
+  }
+
   int32_t ret = 0;
 
   //
@@ -1153,7 +1350,6 @@ static EsfMainError EsfMainProcessReboot(void) {
     ESF_MAIN_LOG_ERR("EsfMainFinish ret=%d", ret);
   }
 
-  // TODO Future changes api.
   EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
 
   ESF_MAIN_LOG_TRACE("func end");
@@ -1226,7 +1422,8 @@ static EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
 
   int32_t ret = 0;
   bool is_failed = false;
- 
+  EsfSystemManagerResult system_manager_ret = kEsfSystemManagerResultOk;
+
   //
   // Execute processing for each module.
   //
@@ -1234,7 +1431,6 @@ static EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
 #if (defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
      defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB))
     ESF_MAIN_DBG("EsfSensorUtilityResetFiles start.");
-    EsfSystemManagerResult system_manager_ret = kEsfSystemManagerResultOk;
     EsfSensorErrCode sensor_ret = EsfSensorUtilityResetFiles();
     if (sensor_ret != kEsfSensorOk) {
       ESF_MAIN_ERR("EsfSensorUtilityResetFiles ret=%d", sensor_ret);
@@ -1296,6 +1492,13 @@ static EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
     ESF_MAIN_ELOG_ERR(ESF_MAIN_ELOG_FACTORY_RESET_FAILURE);
   }
 
+  system_manager_ret =
+      EsfSystemManagerSetResetCause(kEsfSystemManagerResetCauseSoftResetNormal);
+  if (system_manager_ret != kEsfSystemManagerResultOk) {
+    ESF_MAIN_LOG_ERR("EsfSystemManagerSetResetCause ret=%u",
+                     system_manager_ret);
+  }
+
   ret = EsfMainFinish(false);
   if (ret != kEsfMainOk) {
     // Continue processing even if an error occurs.
@@ -1328,7 +1531,6 @@ static EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
     ESF_MAIN_LOG_ERR("EsfMainFinishLed ret=%d", ret);
   }
 
-  // Future changes api.
   EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
 
   ESF_MAIN_LOG_TRACE("func end");

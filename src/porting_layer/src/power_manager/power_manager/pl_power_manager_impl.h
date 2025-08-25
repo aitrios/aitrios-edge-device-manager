@@ -15,5 +15,8 @@ PlErrCode PlPowerMgrInitializeImpl(void);
 PlErrCode PlPowerMgrFinalizeImpl(void);
 PlErrCode PlPowerMgrGetSupplyTypeImpl(PlPowerMgrSupplyType *type);
 PlErrCode PlPowerMgrSetupUsbImpl(void);
+PlErrCode PlPowerMgrGetMigrationDataImpl(PlPowerMgrMigrationDataId id,
+                                         void *dst, size_t dst_size);
+PlErrCode PlPowerMgrEraseMigrationDataImpl(PlPowerMgrMigrationDataId id);
 
 #endif /* __PL_POWER_MGR_IMPL_H */

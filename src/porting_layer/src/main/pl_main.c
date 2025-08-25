@@ -40,3 +40,11 @@ PlErrCode PlMainIsFeatureSupported(PlMainFeatureType type) {
   return PlMainInternalIsFeatureSupported(kFeatureTypes, kFeatureTypesSize,
                                           type);
 }
+// -----------------------------------------------------------------------------
+bool PlMainIsMigrationSupported(void) {
+#ifdef CONFIG_EXTERNAL_TARGET_T4R
+  return true;
+#else
+  return false;
+#endif
+}

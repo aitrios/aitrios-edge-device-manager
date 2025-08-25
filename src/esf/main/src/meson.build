@@ -5,5 +5,6 @@
 esf_sources += files([
 	'main_internal.h',
 	'main_log.h',
+	'main_migration.c',
 	'main.c'
 ])

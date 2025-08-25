@@ -101,6 +101,7 @@ typedef enum EsfPwrMgrElogId {
   kEsfPwrMgrElogErrorId0x61PlPowerMgr,
   kEsfPwrMgrElogErrorId0x62PlPowerMgr,
   kEsfPwrMgrElogErrorId0x63PlPowerMgr,
+  kEsfPwrMgrElogErrorId0x64PlPowerMgr,
   // HalGetVoltage
   kEsfPwrMgrElogErrorId0x70HalGetVoltage = 0x70,
   // PlSystemCtl

@@ -1099,6 +1099,7 @@ typedef enum EsfParameterStorageManagerItemID {
   kEsfParameterStorageManagerItemExceptionFactor,
   kEsfParameterStorageManagerItemExceptionInfo,
   kEsfParameterStorageManagerItemEvpExceptionFactor,
+  kEsfParameterStorageManagerItemMigrationDone,
   kEsfParameterStorageManagerItemCustom,
   kEsfParameterStorageManagerItemMax
 } EsfParameterStorageManagerItemID;
@@ -1448,6 +1449,8 @@ typedef enum EsfParameterStorageManagerItemID {
 |Exception 情報です。
 |kEsfParameterStorageManagerItemEvpExceptionFactor
 |EVP が原因の Exception 要因です。
+|kEsfParameterStorageManagerItemMigrationDone
+|FWのMigration実施有無を表します。
 |kEsfParameterStorageManagerItemCustom
 |カスタム動作用の識別子です。
 |kEsfParameterStorageManagerItemMax
@@ -6863,6 +6866,14 @@ Parameter Storage Manager で扱うデータは、T5, T5_EVT, T3R-S3ではlittle
 |戻す
 |×
 
+|kEsfParameterStorageManagerItemMigrationDone
+|PlStorageDataMigrationDone
+|/camera_data_norm/MigrationDone
+|Read/Write
+|×
+|戻さない
+|×
+
 |kEsfParameterStorageManagerItemCustom
 |PlStorageDataCustom
 |
@@ -7140,5 +7151,12 @@ a|ESF PowerManager Exception情報出力対応
 * ``**kEsfParameterStorageManagerItemExceptionFactor**``
 * ``**kEsfParameterStorageManagerItemExceptionInfo**``
 * ``**kEsfParameterStorageManagerItemEvpExceptionFactor**``
+
+|v0.3.4
+a|Migration情報出力対応
+
+以下のItemIDを追加
+
+* ``**kEsfParameterStorageManagerItemMigrationDone**``
 
 |===

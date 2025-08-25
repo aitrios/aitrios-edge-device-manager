@@ -151,6 +151,10 @@ config_h.set('CONFIG_EXTERNAL_POWER_MANAGER_DISABLE', true)
 config_h.set('CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM', 3)
 config_h.set('CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC', 60)
 
+# system manager
+config_h.set('CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE', true)
+config_h.set('CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE', true)
+
 
 #####################
 # porting layer

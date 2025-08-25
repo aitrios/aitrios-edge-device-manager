@@ -116,7 +116,7 @@ EVP_RESULT EVP_setConnectionMode(bool enable);
  *
  * @returns evp_agent status
  */
-enum evp_agent_status EVP_getAgentStatus(void);
+enum evp_agent_status stub_EVP_getAgentStatus(void);
 
 void StubSetupDisconnectedStatus(void);
 

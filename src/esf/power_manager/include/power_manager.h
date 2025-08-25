@@ -352,6 +352,7 @@ EsfPwrMgrError EsfPwrMgrGetResetCause(EsfPwrMgrResetCause *reset_cause);
 EsfPwrMgrError EsfPwrMgrSwWdtStart(uint32_t id);
 EsfPwrMgrError EsfPwrMgrSwWdtStop(uint32_t id);
 EsfPwrMgrError EsfPwrMgrSwWdtKeepalive(uint32_t id);
+EsfPwrMgrError EsfPwrMgrExecMigration(void);
 
 #ifdef __cplusplus
 }

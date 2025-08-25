@@ -235,7 +235,7 @@ static EsfPwrMgrError InitHoursMeter(void) {
   } else {
     s_resource.hours_meter = hour;
   }
-  LOG_DBG("s_resource.hours_meter=[%d]", s_resource.hours_meter);
+  LOG_INFO("s_resource.hours_meter=[%d]", s_resource.hours_meter);
 
   UtilityTimerErrCode utility_ret =
       UtilityTimerCreate(HoursMeterCallBack, NULL, &s_resource.timer_handle);
@@ -1526,6 +1526,71 @@ fin:
   LOG_TRACE("func end");
   return ret;
 #endif  // CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+}
+
+static EsfPwrMgrError MigrateHoursMeter(void) {
+#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+  return kEsfPwrMgrOk;
+#else
+  EsfPwrMgrError ret = kEsfPwrMgrOk;
+  char hours_meter_str[ESF_PWR_MGR_HOURS_METER_MAX_SIZE] = {0};
+  PlErrCode pl_ret = PlPowerMgrGetMigrationData(
+                        kPlPowerMgrMigrationDataIdHoursMeter,
+                        hours_meter_str,
+                        ESF_PWR_MGR_HOURS_METER_MAX_SIZE);
+  if ((pl_ret == kPlErrNoSupported) || (pl_ret == kPlErrAlready)) {
+    // do nothing
+    goto end;
+  }
+  if (pl_ret != kPlErrCodeOk) {
+    LOG_ERR(kEsfPwrMgrElogErrorId0x64PlPowerMgr,
+            "PlPowerMgrGetMigrationData hours meter error. ret=%u", pl_ret);
+    ret = kEsfPwrMgrErrorExternal;
+    goto end;
+  }
+  EsfPwrMgrHoursMeter data;
+  memcpy(data.hours_meter_str, hours_meter_str, ESF_PWR_MGR_HOURS_METER_MAX_SIZE);
+  ret = SaveHoursMeter(&data);
+
+  char *endp;
+  int32_t hour = strtol(hours_meter_str, &endp, 10);
+  if ((hours_meter_str[0] == '\0') || (*endp != '\0')) {
+    LOG_WARN(kEsfPwrMgrElogWarningId0x81EsfPwrMgr, "strtol convert failure %s",
+             data.hours_meter_str);
+    s_resource.hours_meter = 0;
+  } else {
+    s_resource.hours_meter = hour;
+  }
+end:
+  LOG_INFO("s_resource.hours_meter=[%d]", s_resource.hours_meter);
+  return ret;
+#endif
+}
+
+EsfPwrMgrError EsfPwrMgrExecMigration(void) {
+#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+  return kEsfPwrMgrOk;
+#else
+  LOG_INFO("PowerManager migration start.");
+  if (s_status == kEsfPwrMgrStatusStop ||
+      s_status == kEsfPwrMgrStatusWaitWDTIgnition) {
+    LOG_INFO("PowerManager Stoped.");
+    return kEsfPwrMgrErrorStatus;
+  } else if (s_status == kEsfPwrMgrStatusReboot) {
+    LOG_INFO("PowerManager is Rebooting.");
+    return kEsfPwrMgrErrorStatus;
+  } else if (s_status == kEsfPwrMgrStatusShutdown) {
+    LOG_INFO("PowerManager is Shuting down.");
+    return kEsfPwrMgrErrorStatus;
+  }
+
+  EsfPwrMgrError ret = MigrateHoursMeter();
+  if (ret == kEsfPwrMgrOk) {
+    PlPowerMgrEraseMigrationData(kPlPowerMgrMigrationDataIdHoursMeter);
+  }
+  LOG_INFO("PowerManager migration end:%d", ret);
+  return ret;
+#endif
 }
 
 // ----------------------------------------------------------------------------
