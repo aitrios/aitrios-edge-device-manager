@@ -758,9 +758,10 @@ sequenceDiagram
       HAL -->> -esf_main : 再起動メッセージ
       rect rgba(200, 150, 255,0.5)
         Note left of esf_main: 再起動処理(EsfMainProcessReboot)
+        esf_main ->> +esf_modules : EsfSystemManagerSetResetCause(kEsfSystemManagerResetCauseSoftResetNormal);
         Note over esf_main : 各モジュールで記載した処理を実行
         esf_main ->> esf_main : EsfMainFinish(終了処理)
-        esf_main ->> +esf_modules : EsfPwrMgrExecuteReboot(再起動実行)
+        esf_main ->> +esf_modules : EsfPwrMgrExecuteRebootEx(再起動実行)
         Note over OS, HAL : OS再起動
         Deactivate  esf_main
       end
@@ -928,7 +929,7 @@ EsfMainError EsfMainProcessReboot(void) {
     // fallthrough
   }
 
-  EsfPwrMgrExecuteReboot();
+  EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
 
   return kEsfMainOk;
 }
@@ -988,7 +989,7 @@ EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
     // fallthrough
   }
 
-  EsfPwrMgrExecuteReboot();
+  EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
 
   return kEsfMainOk;
 }

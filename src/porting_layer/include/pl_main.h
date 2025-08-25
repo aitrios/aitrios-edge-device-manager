@@ -7,6 +7,7 @@
 #ifndef PL_MAIN_H__
 #define PL_MAIN_H__
 
+#include <stdbool.h>
 #include "pl.h"
 
 // Typedef ---------------------------------------------------------------------
@@ -158,5 +159,6 @@ PlErrCode PlMainFlashUnmount(void);
 //         - All features are supported.
 // """
 PlErrCode PlMainIsFeatureSupported(PlMainFeatureType type);
+bool PlMainIsMigrationSupported(void);
 
 #endif /* PL_MAIN_H__ */

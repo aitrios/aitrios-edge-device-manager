@@ -303,3 +303,46 @@ static void *PlPowerSwWdt(void *arg) {
 }
 
 // ----------------------------------------------------------------------------
+
+PlErrCode PlPowerMgrGetMigrationData(PlPowerMgrMigrationDataId id,
+                                     void *dst, size_t dst_size) {
+  PlErrCode pl_ret = kPlErrCodeOk;
+  int ret = 0;
+  ret = pthread_mutex_lock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x1D, "[ERROR] %s %d\n", __func__, __LINE__);
+    return kPlErrLock;
+  }
+  pl_ret = PlPowerMgrGetMigrationDataImpl(id, dst, dst_size);
+  if ((pl_ret != kPlErrCodeOk) &&
+      (pl_ret != kPlErrNoSupported) &&
+      (pl_ret != kPlErrAlready)) {
+    LOG_ERR(0x1E, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  ret = pthread_mutex_unlock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x1F, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  return pl_ret;
+}
+
+// ----------------------------------------------------------------------------
+
+PlErrCode PlPowerMgrEraseMigrationData(PlPowerMgrMigrationDataId id) {
+  PlErrCode pl_ret = kPlErrCodeOk;
+  int ret = 0;
+  ret = pthread_mutex_lock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x20, "[ERROR] %s %d\n", __func__, __LINE__);
+    return kPlErrLock;
+  }
+  pl_ret = PlPowerMgrEraseMigrationDataImpl(id);
+  if ((pl_ret != kPlErrCodeOk) && (pl_ret != kPlErrNoSupported)) {
+    LOG_ERR(0x21, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  ret = pthread_mutex_unlock(&s_api_mutex);
+  if (ret) {
+    LOG_ERR(0x22, "[ERROR] %s %d\n", __func__, __LINE__);
+  }
+  return pl_ret;
+}

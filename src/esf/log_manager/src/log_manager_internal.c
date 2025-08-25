@@ -63,6 +63,7 @@
 #define EVP_Agent_register_sys_client stub_EVP_Agent_register_sys_client
 #define EVP_Agent_unregister_sys_client stub_EVP_Agent_unregister_sys_client
 #define SYS_send_telemetry stub_SYS_send_telemetry
+#define EVP_getAgentStatus stub_EVP_getAgentStatus
 #endif /* LOG_MANAGER_EVP_ENABLE */
 
 /****************************************************************************

@@ -7,6 +7,7 @@
 #ifndef __PL_POWER_MGR_H
 #define __PL_POWER_MGR_H
 
+#include <stddef.h>
 #include "pl.h"
 
 // Typedef ---------------------------------------------------------------------
@@ -18,6 +19,10 @@ typedef enum {
   kPlPowerMgrSupplyTypeMax
 } PlPowerMgrSupplyType;
 
+typedef enum {
+  kPlPowerMgrMigrationDataIdHoursMeter = 0,
+} PlPowerMgrMigrationDataId;
+
 // Public API-------------------------------------------------------------------
 PlErrCode PlPowerMgrInitialize(void);
 PlErrCode PlPowerMgrFinalize(void);
@@ -26,5 +31,9 @@ PlErrCode PlPowerMgrSetupUsb(void);
 PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id);
 PlErrCode PlPowerMgrEnableSwWdt(uint32_t id);
 PlErrCode PlPowerMgrDisableSwWdt(uint32_t id);
+PlErrCode PlPowerMgrGetMigrationData(PlPowerMgrMigrationDataId id,
+                                     void *dst,
+                                     size_t dst_size);
+PlErrCode PlPowerMgrEraseMigrationData(PlPowerMgrMigrationDataId id);
 
 #endif /* __PL_POWER_MGR_H */

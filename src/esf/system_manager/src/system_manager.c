@@ -1992,6 +1992,9 @@ EsfSystemManagerResult EsfSystemManagerGetHwInfo(EsfSystemManagerHwInfo *data) {
 
 EsfSystemManagerResult EsfSystemManagerGetEvpResetCause(
     EsfSystemManagerEvpResetCause *evp_reset_cause) {
+#ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
+  return kEsfSystemManagerResultOk;
+#else
   if (evp_reset_cause == NULL) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:Parameter error. evp_reset_cause is NULL.",
@@ -2046,10 +2049,14 @@ EsfSystemManagerResult EsfSystemManagerGetEvpResetCause(
   }
 
   return kEsfSystemManagerResultOk;
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
 }
 
 EsfSystemManagerResult EsfSystemManagerSetEvpResetCause(
     EsfSystemManagerEvpResetCause evp_reset_cause) {
+#ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
+  return kEsfSystemManagerResultOk;
+#else
   if ((evp_reset_cause < kEsfSystemManagerEvpResetCauseClear) ||
       (evp_reset_cause >= kEsfSystemManagerEvpResetCauseMax)) {
     return kEsfSystemManagerResultParamError;
@@ -2100,10 +2107,14 @@ EsfSystemManagerResult EsfSystemManagerSetEvpResetCause(
   }
 
   return kEsfSystemManagerResultOk;
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
 }
 
 EsfSystemManagerResult EsfSystemManagerGetResetCause(
     EsfSystemManagerResetCause *reset_cause) {
+#ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
+  return kEsfSystemManagerResultOk;
+#else
   if (reset_cause == NULL) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:Parameter error. reset_cause is NULL.",
@@ -2157,10 +2168,14 @@ EsfSystemManagerResult EsfSystemManagerGetResetCause(
   }
 
   return kEsfSystemManagerResultOk;
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
 }
 
 EsfSystemManagerResult EsfSystemManagerSetResetCause(
     EsfSystemManagerResetCause reset_cause) {
+#ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
+  return kEsfSystemManagerResultOk;
+#else
   if ((reset_cause <= kEsfSystemManagerResetCauseUnknown) ||
       (reset_cause >= kEsfSystemManagerResetCauseMax)) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Parameter error. reset_cause=%d",
@@ -2213,6 +2228,7 @@ EsfSystemManagerResult EsfSystemManagerSetResetCause(
   }
 
   return kEsfSystemManagerResultOk;
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
 }
 
 EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
@@ -2235,6 +2251,7 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
       kEsfSystemManagerResetCauseUnknown;
 
   if (pm_reset_cause == kEsfPwrMgrResetCauseWDT) {
+#ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
     WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
                     "%s-%d:Save ExceptionInfo to parameter storage manager.",
                     "system_manager.c", __LINE__);
@@ -2299,8 +2316,9 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
                        "system_manager.c", __LINE__, pm_result);
       return kEsfSystemManagerResultInternalError;
     }
-
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
   } else {
+#ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
     /* get EvpResetCause */
     EsfSystemManagerEvpResetCause evp_reset_cause =
         kEsfSystemManagerEvpResetCauseClear;
@@ -2338,8 +2356,10 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
                       "system_manager.c", __LINE__);
       goto normal_exit;
     }
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
   }
 
+#ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
   {
     WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
                     "%s-%d:Save ResetCause to parameter storage manager.",
@@ -2380,11 +2400,15 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
   }
 
 normal_exit:
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
 
   return kEsfSystemManagerResultOk;
 }
 
 EsfSystemManagerResult EsfSystemManagerSendResetCause(void) {
+#ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
+  return kEsfSystemManagerResultOk;
+#else
   EsfSystemManagerResetCauseType cause_type =
       kEsfSystemManagerResetCauseTypeNone;
 
@@ -2496,9 +2520,13 @@ EsfSystemManagerResult EsfSystemManagerSendResetCause(void) {
   }
 
   return kEsfSystemManagerResultOk;
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
 }
 
 EsfSystemManagerResult EsfSystemManagerUploadExceptionInfo(void) {
+#ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
+  return kEsfSystemManagerResultOk;
+#else  // CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
   EsfParameterStorageManagerHandle handle =
       ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
   EsfParameterStorageManagerStatus status =
@@ -2636,6 +2664,7 @@ EsfSystemManagerResult EsfSystemManagerUploadExceptionInfo(void) {
   }
 
   return kEsfSystemManagerResultOk;
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
 }
 
 EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag) {
@@ -2645,7 +2674,7 @@ EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag) {
     return kEsfSystemManagerResultParamError;
   }
 
-  EsfPwrMgrResetCause pm_reset_cause = kEsfPwrMgrResetCauseUnknown;
+  EsfPwrMgrResetCause pm_reset_cause = kEsfPwrMgrResetCauseSysChipPowerOnReset;
   EsfPwrMgrError pm_result = EsfPwrMgrGetResetCause(&pm_reset_cause);
   if (pm_result != kEsfPwrMgrOk) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,

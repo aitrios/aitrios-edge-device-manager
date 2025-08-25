@@ -286,7 +286,6 @@ enum SYS_result stub_http_SYS_process_event(struct SYS_client *c
     static_test_tmp_http_blob = NULL;
     static_test_tmp_http_blob_size = 0;
     static_startup_flag_http = false;
-    sys_stub.http_data.enable = false;
 
     s_sys_stub_http.http_data.enable = false;
   }
@@ -515,3 +514,18 @@ process_fin:
 #endif  // LOG_MANAGER_ENCRYPT_ENABLE
 }
 void stub_test_set_non_decrypt(void) { static_test_non_decrypted_flag = true; }
+
+enum evp_agent_status stub_EVP_getAgentStatus(void) {
+  if (stub_backdoor_get_agent_status_disconnected) {
+    return EVP_AGENT_STATUS_DISCONNECTED;
+  }
+  return EVP_AGENT_STATUS_CONNECTED;
+}
+
+void StubSetupDisconnectedStatus(void) {
+  stub_backdoor_get_agent_status_disconnected = true;
+}
+
+void StubClearBackdoorParameter(void) {
+  stub_backdoor_get_agent_status_disconnected = false;
+}
