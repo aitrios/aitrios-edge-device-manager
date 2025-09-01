@@ -367,7 +367,7 @@ PlErrCode PlLedStartSeq(uint32_t led_id,
   }
   ret = RegisterSeq(led_id, seq, seq_len);
   if (ret != kPlErrCodeOk) {
-    LOG_E(0x23, "Failed to PlLedStartSeq_. ret:%u led_id:%u seq:%p len:%u",
+    LOG_E(0x23, "Failed to RegisterSeq. ret:%u led_id:%u seq:%p len:%u",
                   ret, led_id, seq, seq_len);
     goto unlock_ctrlinfo;
   }

@@ -119,8 +119,10 @@ static const EsfParameterStorageManagerStructInfo kPwrMgrStructInfo = {
     .items = kPwrMgrMembersInfo,
 };
 
+#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 static EsfPwrMgrResource s_resource = {
     ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE, NULL, 0};
+#endif  // !CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 
 static EsfPwrMgrStatus s_status = kEsfPwrMgrStatusStop;
 static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1528,10 +1530,8 @@ fin:
 #endif  // CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 }
 
+#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 static EsfPwrMgrError MigrateHoursMeter(void) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
-  return kEsfPwrMgrOk;
-#else
   EsfPwrMgrError ret = kEsfPwrMgrOk;
   char hours_meter_str[ESF_PWR_MGR_HOURS_METER_MAX_SIZE] = {0};
   PlErrCode pl_ret = PlPowerMgrGetMigrationData(
@@ -1564,8 +1564,8 @@ static EsfPwrMgrError MigrateHoursMeter(void) {
 end:
   LOG_INFO("s_resource.hours_meter=[%d]", s_resource.hours_meter);
   return ret;
-#endif
 }
+#endif  // !CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 
 EsfPwrMgrError EsfPwrMgrExecMigration(void) {
 #ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE

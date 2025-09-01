@@ -93,6 +93,20 @@ typedef enum {
   kPlNetworkStructTypeMax
 } PlNetworkStructType;
 
+typedef enum {
+  kPlNetworkMigrationDataIdIPAddress = 0,
+  kPlNetworkMigrationDataIdSubnetMask,
+  kPlNetworkMigrationDataIdGateway,
+  kPlNetworkMigrationDataIdDNS,
+  kPlNetworkMigrationDataIdIPMethod,
+  kPlNetworkMigrationDataIdNetifKind,
+  kPlNetworkMigrationDataIdProxyURL,
+  kPlNetworkMigrationDataIdProxyPort,
+  kPlNetworkMigrationDataIdProxyUserName,
+  kPlNetworkMigrationDataIdProxyPassword,
+  kPlNetworkMigrationDataIdMax
+} PlNetworkMigrationDataId;
+
 // PL Network System Information
 typedef struct {
   char          if_name[PL_NETWORK_IFNAME_LEN];
@@ -162,6 +176,7 @@ typedef void (*PlNetworkEventHandler)(const char *if_name,
                                       PlNetworkEvent event,
                                       void *private_data);
 
+typedef void *PlNetworkMigrationHandle;
 struct PlNetworkDhcpcState {
   struct in_addr serverid;
   struct in_addr ipaddr;
@@ -177,6 +192,11 @@ typedef struct {
   uint32_t use_external_dhcpc : 1;
   uint32_t reserve : 31;
 } PlNetworkCapabilities;
+
+typedef struct {
+  // Currently only netif_kind
+  int32_t netif_kind;
+} PlNetworkMigrationNeedParam;
 
 // Functions -------------------------------------------------------------------
 PlErrCode PlNetworkGetSystemInfo(uint32_t *info_total_num,
@@ -199,6 +219,13 @@ PlErrCode PlNetworkStructInitialize(void *structure,
                                     PlNetworkStructType type);
 PlErrCode PlNetworkInitialize(void);
 PlErrCode PlNetworkFinalize(void);
+PlErrCode PlNetworkInitMigration(PlNetworkMigrationHandle *handle);
+PlErrCode PlNetworkFinMigration(PlNetworkMigrationHandle handle);
+PlErrCode PlNetworkGetMigrationData(PlNetworkMigrationHandle handle,
+                                    PlNetworkMigrationDataId id, void *dst,
+                                    size_t dst_size);
+PlErrCode PlNetworkIsNeedMigration(PlNetworkMigrationNeedParam *param,
+                                   bool *need_migration);
 PlNetworkCapabilities PlNetworkGetCapabilities(void);
 int PlNetworkSetIpv4Addr(const char *ifname, const struct in_addr *addr,
                          const struct in_addr *mask);

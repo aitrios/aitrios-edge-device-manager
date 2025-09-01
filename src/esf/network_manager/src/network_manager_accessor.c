@@ -27,6 +27,8 @@
 #include "network_manager/network_manager_internal.h"
 #include "network_manager/network_manager_log.h"
 
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
+
 #ifdef CONFIG_EXTERNAL_NETWORK_MANAGER_HAL_DUMMY
 #define NETWORK_MANAGER_DHCPC_REQUEST dhcpc_request_stub
 #define NETWORK_MANAGER_PL_NETWORK_GET_SYSTEM_INFO PlNetworkGetSystemInfoStub
@@ -67,12 +69,10 @@ typedef struct EsfNetworkManagerInternalIPInfo {
   struct in_addr dns;
 } EsfNetworkManagerInternalIPInfo;
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 typedef struct {
   sem_t sem;
   bool done;
 } WaitEventHandle;
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // Invalid IP address definition.
 static const EsfNetworkManagerIPInfo kEsfNetworkManagerInvalidIp = {
@@ -84,7 +84,6 @@ static const EsfNetworkManagerIPInfo kEsfNetworkManagerDefaultApIp = {
     {"192.168.4.1"}, {"255.255.255.0"}, {"192.168.4.1"}, {"0.0.0.0"}};
 #endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static WaitEventHandle s_if_down_pre_event_handle = {0};
 static void    *s_dhcp_handle = NULL;
 static uint64_t s_dhcp_lease_time = 0;
@@ -94,7 +93,6 @@ static uint64_t s_dhcp_update_time = 0;
 static uint64_t s_t1_fail_time = 0;
 static uint64_t s_t2_fail_time = 0;
 static const uint64_t kDhcpcRenewRetrySec = 60;
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 struct PlNetworkDhcpcState s_dhcp_status = {0};
 
 static void EsfNetworkManagerShowPlSystemInfo(uint32_t info_total_num,
@@ -102,11 +100,9 @@ static void EsfNetworkManagerShowPlSystemInfo(uint32_t info_total_num,
 static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertIpAddress(
     const EsfNetworkManagerIPInfo *string_ip,
     EsfNetworkManagerInternalIPInfo *converted_ip);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
     const EsfNetworkManagerInternalIPInfo *src_ip,
     EsfNetworkManagerIPInfo *converted_string_ip);
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
     const char *if_name, const EsfNetworkManagerInternalIPInfo *set_ip_address,
     bool is_ap);
@@ -257,7 +253,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertIpAddress(
   return kEsfNetworkManagerResultSuccess;
 }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 // """Convert IP address from binary to string.
 
 // Convert IP address from binary to string.
@@ -330,7 +325,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // """Set the IP address for the specified interface.
 
@@ -357,7 +351,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
 static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
     const char *if_name, const EsfNetworkManagerInternalIPInfo *set_ip_address,
     bool is_ap) {
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("START if_name=%p set_ip_address=%p", if_name,
                             set_ip_address);
   if (if_name == NULL || set_ip_address == NULL) {
@@ -374,8 +367,9 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
                             if_name, set_ip_address->ip.s_addr);
   ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s ipv4netmask=0x%x",
                             if_name, set_ip_address->subnet_mask.s_addr);
-  if ((ret = PlNetworkSetIpv4Addr(if_name, &set_ip_address->ip,
-                                  &set_ip_address->subnet_mask)) != 0) {
+  ret = PlNetworkSetIpv4Addr(if_name, &set_ip_address->ip,
+                             &set_ip_address->subnet_mask);
+  if (ret != 0) {
     ESF_NETWORK_MANAGER_ERR("netlib_set_ipv4addr failed. ret=%d errno=%d", ret,
                             errno);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_IP_FAILURE);
@@ -383,7 +377,8 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
   }
   ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s gateway=0x%x", if_name,
                             set_ip_address->gateway.s_addr);
-  if ((ret = PlNetworkSetIpv4Gateway(if_name, &set_ip_address->gateway)) != 0) {
+  ret = PlNetworkSetIpv4Gateway(if_name, &set_ip_address->gateway);
+  if (ret != 0) {
     ESF_NETWORK_MANAGER_ERR("netlib_set_dripv4addr failed. ret=%d errno=%d",
                             ret, errno);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_IP_FAILURE);
@@ -396,7 +391,8 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
     ESF_NETWORK_MANAGER_TRACE("dns_default_nameserver ret=%d", ret);
     ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s dns=0x%x", if_name,
                               set_ip_address->dns.s_addr);
-    if ((ret = PlNetworkSetIpv4Dns(if_name, &set_ip_address->dns)) != 0) {
+    ret = PlNetworkSetIpv4Dns(if_name, &set_ip_address->dns);
+    if (ret != 0) {
       ESF_NETWORK_MANAGER_ERR("netlib_set_ipv4dnsaddr failed. ret=%d errno=%d",
                               ret, errno);
       ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_IP_FAILURE);
@@ -405,9 +401,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
   }
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
-#else
-  return kEsfNetworkManagerResultSuccess;
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 }
 
 // """Set the specified IP address to dhcpd.
@@ -477,16 +470,13 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetDhcpdAddress(
 }
 #endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static bool IsValidDhcpTime(void) {
   // Valid check of server value
   // expect: (t1 < t2 < lease)
   return (s_dhcp_status.renewal_time < s_dhcp_status.rebinding_time) &&
          (s_dhcp_status.rebinding_time < s_dhcp_status.lease_time);
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static bool ShouldRenewDhcp(uint64_t now_sec, uint64_t previous_sec) {
   if (previous_sec == 0) {
     return true;
@@ -494,9 +484,7 @@ static bool ShouldRenewDhcp(uint64_t now_sec, uint64_t previous_sec) {
   uint64_t elapsed = now_sec - previous_sec;
   return elapsed > kDhcpcRenewRetrySec;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static void WaitEventHandleInit(WaitEventHandle *h) {
   sem_init(&h->sem, 0, 0);
   h->done = false;
@@ -521,9 +509,7 @@ static void WaitEventHandleDeInit(WaitEventHandle *h) {
   sem_destroy(&h->sem);
   return;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static EsfNetworkManagerResult RequestDhcp(const char *if_name,
                                            EsfNetworkManagerModeInfo *mode) {
   s_dhcp_status.lease_time = 0;
@@ -572,9 +558,7 @@ static EsfNetworkManagerResult RequestDhcp(const char *if_name,
       "DHCPC request done. Next update:%" PRIu64 "[s] later", s_dhcp_t1_time);
   return ret;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static void CloseDhcp(void) {
   if (s_dhcp_handle == NULL) {
     return;
@@ -588,7 +572,6 @@ static void CloseDhcp(void) {
   memset(&s_dhcp_status, 0, sizeof(s_dhcp_status));
   return;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // """Obtain an IP address via DHCP and set it to the specified interface.
 
@@ -626,7 +609,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetDhcpAddress(
   snprintf(if_name_wk, sizeof(if_name_wk), "%s", if_name);
   if_name_wk[PL_NETWORK_IFNAME_LEN] = '\0';
   EsfNetworkManagerResult ret_network = kEsfNetworkManagerResultSuccess;
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   do {
     PlNetworkCapabilities capabilities = PlNetworkGetCapabilities();
     if (capabilities.use_external_dhcpc) {
@@ -671,7 +653,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetDhcpAddress(
       ret_network = RequestDhcp(if_name_wk, mode);
     }
   } while (0);
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
   ESF_NETWORK_MANAGER_TRACE("END");
   return ret_network;
@@ -718,7 +699,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorStartHal(
     return kEsfNetworkManagerResultInternalError;
   }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   do {
     hal_ret = NETWORK_MANAGER_PL_NETWORK_SET_CONFIG(if_name, pl_config);
@@ -755,7 +735,6 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorStartHal(
   if (hal_ret != kPlErrCodeOk) {
     return kEsfNetworkManagerResultHWIFError;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
@@ -858,13 +837,11 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorNormalStart(
   // between ip_method and the IP address.
   if (is_dhcp) {
     // You cannot clear the IP address when ip_method = "manual"
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     int r = PlNetworkSetIpv4Method(if_name, is_dhcp);
     if (r != 0) {
       ESF_NETWORK_MANAGER_ERR("Set ip method error.");
       return kEsfNetworkManagerResultInternalError;
     }
-#endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     ret = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &converted_ip,
                                                   false);
     if (ret != kEsfNetworkManagerResultSuccess) {
@@ -879,13 +856,11 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorNormalStart(
       ESF_NETWORK_MANAGER_ERR("Set ip address error.");
       return ret;
     }
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     int r = PlNetworkSetIpv4Method(if_name, is_dhcp);
     if (r != 0) {
       ESF_NETWORK_MANAGER_ERR("Set ip method error.");
       return kEsfNetworkManagerResultInternalError;
     }
-#endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   ret = EsfNetworkManagerAccessorStartHal(
       if_name, &pl_config, handle_internal->mode_info, pl_event_handler);
@@ -1057,9 +1032,7 @@ static void EsfNetworkManagerAccessorEtherIfDownEventOnDisconnecting(
     ESF_NETWORK_MANAGER_ERR("parameter error.(mode=%p)", mode);
     return;
   }
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   CloseDhcp();
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   mode->connect_status = kEsfNetworkManagerConnectStatusDisconnected;
   mode->notify_info = kEsfNetworkManagerNotifyInfoDisconnected;
   ESF_NETWORK_MANAGER_DBG("UPDATE STATUS connect_status=%d notify_info=%d",
@@ -1089,9 +1062,7 @@ static void EsfNetworkManagerAccessorEtherLinkdownEventOnConnected(
     ESF_NETWORK_MANAGER_ERR("parameter error.(mode=%p)", mode);
     return;
   }
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   CloseDhcp();
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   mode->connect_status = kEsfNetworkManagerConnectStatusConnecting;
   mode->notify_info = kEsfNetworkManagerNotifyInfoDisconnected;
   ESF_NETWORK_MANAGER_DBG("UPDATE STATUS connect_status=%d notify_info=%d",
@@ -1178,7 +1149,6 @@ static void EsfNetworkManagerAccessorWifiStationDisconnectedEventOnConnected(
     return;
   }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_STOP(if_name);
   if (hal_ret != kPlErrCodeOk) {
@@ -1191,7 +1161,6 @@ static void EsfNetworkManagerAccessorWifiStationDisconnectedEventOnConnected(
         kEsfNetworkManagerNetifKindWiFi);
     return;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
   mode->connect_status = kEsfNetworkManagerConnectStatusConnecting;
   mode->notify_info = kEsfNetworkManagerNotifyInfoDisconnected;
@@ -1233,7 +1202,6 @@ static void EsfNetworkManagerAccessorWifiStationDisconnectedEventOnConnecting(
     return;
   }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_STOP(if_name);
   if (hal_ret != kPlErrCodeOk) {
@@ -1246,7 +1214,6 @@ static void EsfNetworkManagerAccessorWifiStationDisconnectedEventOnConnecting(
         kEsfNetworkManagerNetifKindWiFi);
     return;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
   return;
 }
@@ -1270,7 +1237,6 @@ static void EsfNetworkManagerAccessorWifiStationStopEventOnConnecting(
                             mode);
     return;
   }
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_START(if_name);
   if (hal_ret != kPlErrCodeOk) {
@@ -1282,7 +1248,6 @@ static void EsfNetworkManagerAccessorWifiStationStopEventOnConnecting(
         kEsfNetworkManagerAccessorLedManagerStatusStartError,
         kEsfNetworkManagerNetifKindWiFi);
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
   return;
 }
@@ -1415,7 +1380,6 @@ static void EsfNetworkManagerAccessorWifiApDisconnectedEventOnConnected(
 }
 #endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static void RecoveryDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
   // First, set IPAddr to 0
   EsfNetworkManagerInternalIPInfo ip_info = {
@@ -1458,9 +1422,7 @@ static void RecoveryDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
       kEsfLedManagerLedStatusDisconnectedConnectingDNSAndNTP, true);
   return;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static int RenewDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
   in_addr_t before_ip     = s_dhcp_status.ipaddr.s_addr;
   in_addr_t before_dns    = s_dhcp_status.dnsaddr.s_addr;
@@ -1518,11 +1480,9 @@ static int RenewDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
                            s_dhcp_t1_time);
   return 0;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 static void EsfNetworkManagerAccessorLeaseEvent(
     const char *if_name, EsfNetworkManagerModeInfo *mode_info) {
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlNetworkCapabilities capabilities = PlNetworkGetCapabilities();
   if (capabilities.use_external_dhcpc) {
     return;
@@ -1582,12 +1542,9 @@ static void EsfNetworkManagerAccessorLeaseEvent(
     // Do DHCPC renew after 1 second.
   }
 
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
-
   return;
 }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 static void EsfNetworkManagerAccessorIfDownPreEventOnDisconnecting(void) {
   WaitEventHandle *h = &s_if_down_pre_event_handle;
   int ret = 0;
@@ -1606,7 +1563,6 @@ finally:
   CompleteEvent(h);
   return;
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // """HAL event reception processing for connection type Ether.
 
@@ -1633,13 +1589,11 @@ static void EsfNetworkManagerAccessorEtherEventHandler(const char *if_name,
       "Ether event receive if_name=%s event=%d private_data=%p", if_name, event,
       private_data);
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   // IfDownPreEvent is processed before resource locking to prevent deadlocks
   if (event == kPlNetworkEventIfDownPre) {
     EsfNetworkManagerAccessorIfDownPreEventOnDisconnecting();
     return;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
   EsfNetworkManagerResult ret = EsfNetworkManagerResourceLockResource();
   if (ret != kEsfNetworkManagerResultSuccess) {
@@ -1732,13 +1686,11 @@ static void EsfNetworkManagerAccessorWifiStationEventHandler(
       "WiFi station event receive if_name=%s event=%d private_data=%p", if_name,
       event, private_data);
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   // IfDownPreEvent is processed before resource locking to prevent deadlocks
   if (event == kPlNetworkEventIfDownPre) {
     EsfNetworkManagerAccessorIfDownPreEventOnDisconnecting();
     return;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
   EsfNetworkManagerResult ret = EsfNetworkManagerResourceLockResource();
   if (ret != kEsfNetworkManagerResultSuccess) {
@@ -1885,7 +1837,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetSystemInfo(
                             info_total_num, infos);
     return kEsfNetworkManagerResultInternalError;
   }
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_GET_SYSTEM_INFO(info_total_num, infos);
   if (hal_ret != kPlErrCodeOk) {
@@ -1894,14 +1845,12 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetSystemInfo(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
     return kEsfNetworkManagerResultHWIFError;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_DBG("PL system information.");
   EsfNetworkManagerShowPlSystemInfo(*info_total_num, *infos);
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 EsfNetworkManagerResult EsfNetworkManagerAccessorGetIFInfo(
     const EsfNetworkManagerModeInfo *mode, EsfNetworkManagerIPInfo *ip_info) {
   PlNetworkCapabilities capabilities = PlNetworkGetCapabilities();
@@ -1935,7 +1884,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetIFInfo(
   ESF_NETWORK_MANAGER_TRACE("END");
   return EsfNetworkManagerAccessorIpConvertToString(&wk, ip_info);
 }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 EsfNetworkManagerResult EsfNetworkManagerAccessorGetStatusInfo(
     const char *if_name, EsfNetworkManagerStatusInfo *status) {
@@ -1949,7 +1897,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetStatusInfo(
       .is_link_up = false,
       .is_if_up = false,
   };
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_GET_STATUS(if_name, &pl_status);
   if (hal_ret != kPlErrCodeOk) {
@@ -1957,7 +1904,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetStatusInfo(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
     return kEsfNetworkManagerResultHWIFError;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   status->is_link_up = pl_status.is_link_up;
   status->is_if_up = pl_status.is_if_up;
   ESF_NETWORK_MANAGER_TRACE("END");
@@ -1975,7 +1921,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetRssi(const char *if_name,
   PlNetworkStatus pl_status = {
       .is_if_up = false,
   };
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_GET_STATUS(if_name, &pl_status);
   if (hal_ret != kPlErrCodeOk) {
@@ -1983,7 +1928,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetRssi(const char *if_name,
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
     return kEsfNetworkManagerResultHWIFError;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   *rssi = pl_status.network.wifi.rssi;
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
@@ -1999,7 +1943,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetNetstat(
         netstat_buf_size, netstat_buf);
     return kEsfNetworkManagerResultInternalError;
   }
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   hal_ret = NETWORK_MANAGER_PL_NETWORK_GET_NET_STAT(netstat_buf,
                                                     netstat_buf_size);
@@ -2008,7 +1951,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetNetstat(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
     return kEsfNetworkManagerResultHWIFError;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
@@ -2019,12 +1961,9 @@ void EsfNetworkManagerAccessorUnregisterAllEventHandler(
   ESF_NETWORK_MANAGER_TRACE(
       "START if_name_ether=%p if_name_wifist=%p if_name_wifiap=%p",
       if_name_ether, if_name_wifist, if_name_wifiap);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   if (if_name_ether != NULL) {
     ESF_NETWORK_MANAGER_DBG("Unregister if_name_ether=%s", if_name_ether);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     hal_ret =
         NETWORK_MANAGER_PL_NETWORK_UNREGISTER_EVENT_HANDLER(if_name_ether);
     if (hal_ret != kPlErrCodeOk) {
@@ -2033,10 +1972,8 @@ void EsfNetworkManagerAccessorUnregisterAllEventHandler(
           if_name_ether, hal_ret);
       // Ignore errors.
     }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   if (if_name_wifist != NULL) {
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     ESF_NETWORK_MANAGER_DBG("Unregister if_name_wifist=%s", if_name_wifist);
     hal_ret =
         NETWORK_MANAGER_PL_NETWORK_UNREGISTER_EVENT_HANDLER(if_name_wifist);
@@ -2046,11 +1983,9 @@ void EsfNetworkManagerAccessorUnregisterAllEventHandler(
           if_name_wifist, hal_ret);
       // Ignore errors.
     }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   if (if_name_wifiap != NULL) {
     ESF_NETWORK_MANAGER_DBG("Unregister if_name_wifiap=%s", if_name_wifiap);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     hal_ret =
         NETWORK_MANAGER_PL_NETWORK_UNREGISTER_EVENT_HANDLER(if_name_wifiap);
     if (hal_ret != kPlErrCodeOk) {
@@ -2059,7 +1994,6 @@ void EsfNetworkManagerAccessorUnregisterAllEventHandler(
           if_name_wifiap, hal_ret);
       // Ignore errors.
     }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   ESF_NETWORK_MANAGER_TRACE("END");
   return;
@@ -2071,41 +2005,33 @@ void EsfNetworkManagerAccessorStopAllNetwork(const char *if_name_ether,
   ESF_NETWORK_MANAGER_TRACE(
       "START if_name_ether=%p if_name_wifist=%p if_name_wifiap=%p",
       if_name_ether, if_name_wifist, if_name_wifiap);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   if (if_name_ether != NULL) {
     ESF_NETWORK_MANAGER_DBG("Stop if_name_ether=%s", if_name_ether);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     hal_ret = NETWORK_MANAGER_PL_NETWORK_STOP(if_name_ether);
     if (hal_ret != kPlErrCodeOk) {
       ESF_NETWORK_MANAGER_DBG("HAL(PlNetworkStop) error.(if=%s ret=%d)",
                               if_name_ether, hal_ret);
       // Ignore errors.
     }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   if (if_name_wifist != NULL) {
     ESF_NETWORK_MANAGER_DBG("Stop if_name_wifist=%s", if_name_wifist);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     hal_ret = NETWORK_MANAGER_PL_NETWORK_STOP(if_name_wifist);
     if (hal_ret != kPlErrCodeOk) {
       ESF_NETWORK_MANAGER_DBG("HAL(PlNetworkStop) error.(if=%s ret=%d)",
                               if_name_wifist, hal_ret);
       // Ignore errors.
     }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   if (if_name_wifiap != NULL) {
     ESF_NETWORK_MANAGER_DBG("Stop if_name_wifiap=%s", if_name_wifiap);
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
     hal_ret = NETWORK_MANAGER_PL_NETWORK_STOP(if_name_wifiap);
     if (hal_ret != kPlErrCodeOk) {
       ESF_NETWORK_MANAGER_DBG("HAL(PlNetworkStop) error.(if=%s ret=%d)",
                               if_name_wifiap, hal_ret);
       // Ignore errors.
     }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   }
   ESF_NETWORK_MANAGER_TRACE("END");
   return;
@@ -2150,14 +2076,12 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorStop(
     return kEsfNetworkManagerResultInternalError;
   }
 
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   EsfNetworkManagerInterfaceKind interface_kind =
       kEsfNetworkManagerInterfaceKindEther;
   if (handle_internal->mode_info->connect_info.normal_mode.netif_kind ==
       kEsfNetworkManagerNetifKindWiFi) {
     interface_kind = kEsfNetworkManagerInterfaceKindWifi;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
   if (handle_internal->mode == kEsfNetworkManagerModeAccessPoint) {
@@ -2169,7 +2093,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorStop(
     }
   }
 #endif
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode hal_ret = kPlErrCodeOk;
   const char *if_name =
       handle_internal->mode_info->hal_system_info[interface_kind]->if_name;
@@ -2192,7 +2115,6 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorStop(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
     return kEsfNetworkManagerResultHWIFError;
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
@@ -2298,6 +2220,7 @@ void EsfNetworkManagerAccessorSetLedManagerStatusService(
   }
   ESF_NETWORK_MANAGER_TRACE("END");
 }
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 void EsfNetworkManagerAccessorCallCallback(
     EsfNetworkManagerMode mode, const EsfNetworkManagerModeInfo *mode_info) {
@@ -2316,28 +2239,26 @@ void EsfNetworkManagerAccessorCallCallback(
   ESF_NETWORK_MANAGER_TRACE("END");
 }
 
+#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 void EsfNetworkManagerAccessorInit(void) {
   ESF_NETWORK_MANAGER_TRACE("START");
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode pl_error = NETWORK_MANAGER_PL_NETWORK_INITIALIZE();
   if (pl_error != kPlErrCodeOk) {
     // Nothing to do.
     ESF_NETWORK_MANAGER_ERR("PlNetworkInitialize error %u.", pl_error);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
 }
 
 void EsfNetworkManagerAccessorDeinit(void) {
   ESF_NETWORK_MANAGER_TRACE("START");
-#ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   PlErrCode pl_error = NETWORK_MANAGER_PL_NETWORK_FINALIZE();
   if (pl_error != kPlErrCodeOk) {
     // Nothing to do.
     ESF_NETWORK_MANAGER_ERR("PlNetworkFinalize error %u.", pl_error);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_PL_FAILURE);
   }
-#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
   ESF_NETWORK_MANAGER_TRACE("END");
 }
+#endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE

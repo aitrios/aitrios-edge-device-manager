@@ -1001,6 +1001,8 @@ EsfNetworkManagerResult EsfNetworkManagerLoadVariantParameter(
     const EsfNetworkManagerVariantParameterMask *mask,
     EsfNetworkManagerVariantParameter *parameter);
 
+EsfNetworkManagerResult EsfNetworkManagerExecMigration(void);
+
 #ifdef __cplusplus
 }
 #endif
