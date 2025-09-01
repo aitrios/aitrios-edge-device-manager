@@ -7,6 +7,8 @@
 #ifndef ESF_MAIN_MAIN_MIGRATION_H_
 #define ESF_MAIN_MAIN_MIGRATION_H_
 
+#include <stdbool.h>
+
 #include "main.h"
 
 EsfMainError EsfMainIsNeedMigration(bool *ret);

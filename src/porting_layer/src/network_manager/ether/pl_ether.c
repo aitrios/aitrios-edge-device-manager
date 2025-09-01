@@ -55,8 +55,7 @@
 #define PL_ETHER_ELOG_SIOCGMIIREG_ERROR     (EVENT_UID_START + 0x02)
 #define PL_ETHER_ELOG_OS_ERROR              (EVENT_UID_START + 0x03)
 
-#define ETH_SHOW_STATE(state)           ((state < kPlEtherStateMax) ? \
-                                        kEtherState[state] : "Unknown")
+#define ETH_SHOW_STATE(state)           kEtherState[state]
 #define ETH_SHOW_IF(status)             ((status == true) ? "Up" : "Down")
 #define ETH_SHOW_LINK(status)           ((status == true) ? "Up" : "Down")
 
