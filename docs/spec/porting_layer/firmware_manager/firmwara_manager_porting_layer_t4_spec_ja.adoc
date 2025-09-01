@@ -779,9 +779,7 @@ NULL が指定された場合はエラーを返します。
 ** 本API は複数回に分けて実行することが可能です。書き込む AP バイナリのサイズの合計が FwMgrPlOpen 時に指定した total_write_size に一致するようにしてください。
 ** 「これまでに本 API で書き込んだ AP バイナリのサイズの合計」と write_size の和が、FwMgrPlOpen 時に指定した total_write_size を超えるとエラーを返します。
 ** 他コンテキストで Firmware Manager Porting Layer API が実行中の場合、何も実行せずにエラーを返します。
-** 本 API が成功しても、write_size よりも小さいサイズのデータしか書き込まれていない可能性があります。**必ず *written_size の値を確認してください**。
-*written_size < write_size の場合は、書き込めていない部分の AP バイナリの書き込みを再度 (本 API を呼び出して) 行ってください。
-*written_size は 0 になることもあり得ます。*written_size == 0 が複数回続いた場合は、呼び出し側で書き込みを中断するなどの措置を講じてください。(**無限ループになる可能性があります。**)
+** 本 API が成功した場合、*written_size には常に write_size が設定されます。
 
 .API 詳細情報
 [width="100%", cols="30%,70%",options="header"]

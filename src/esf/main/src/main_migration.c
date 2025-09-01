@@ -4,10 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "main_migration.h"
+
+#include <stdbool.h>
+
 #include "main.h"
 #include "main_log.h"
+#include "network_manager.h"
 #include "power_manager.h"
 #include "parameter_storage_manager.h"
+#include "parameter_storage_manager_common.h"
 #include "pl_main.h"
 
 // ----------------------------------------------------------------------------
@@ -112,6 +118,11 @@ EsfMainError EsfMainExecMigration(void) {
   EsfPwrMgrError pwr_ret = EsfPwrMgrExecMigration();
   if (pwr_ret != kEsfPwrMgrOk) {
     ESF_MAIN_LOG_ERR("%s error:%u", __func__, pwr_ret);
+    ret = kEsfMainErrorExternal;
+  }
+  EsfNetworkManagerResult nm_ret = EsfNetworkManagerExecMigration();
+  if (nm_ret != kEsfNetworkManagerResultSuccess) {
+    ESF_MAIN_LOG_ERR("%s error:%u", __func__, nm_ret);
     ret = kEsfMainErrorExternal;
   }
   ESF_MAIN_LOG_INFO("%s end:%u", __func__, ret);

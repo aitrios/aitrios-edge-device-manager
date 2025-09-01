@@ -73,7 +73,7 @@ porting_layer = static_library(
     libnm_dep,
     sqlite3_dep,
     utility_dep,
-  ],
+  ] + (get_option('target') == 't4r' ? [libchrony_dep] : []),
 )
 porting_layer_dep = declare_dependency(
   link_with : porting_layer,

@@ -76,8 +76,7 @@
 #define NETWORK_NETSTAT_PATH              "/proc/net/stat"
 
 // Show State String
-#define NETIF_STATE_SHOW(state)           ((state < kPlNetIfStateMax) ? \
-                                          kNetIfState[state] : "Unknown")
+#define NETIF_STATE_SHOW(state)           kNetIfState[state]
 
 // Typedefs --------------------------------------------------------------------
 // PL Network State
@@ -179,11 +178,6 @@ static sem_t s_network_msg_sem;
 
 // Network Event Thread
 static pthread_t s_pl_network_thread_pid = 0;
-
-#ifdef CONFIG_SMP
-// Network Lock
-static spinlock_t s_spin_lock;
-#endif  // CONFIG_SMP
 
 // Local functions -------------------------------------------------------------
 // Network Event Thread

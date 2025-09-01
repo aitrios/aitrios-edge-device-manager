@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <assert.h>
 
@@ -29,6 +30,7 @@
 // Global Variables -----------------------------------------------------------
 
 static pthread_mutex_t s_api_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t s_sw_wdt_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool s_is_initialized = false;
 static pthread_t s_sw_wdt_thread;
 static bool s_is_sw_wdt_enable[CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM];
@@ -49,16 +51,9 @@ PlErrCode PlPowerMgrInitialize(void) {
     err_code = kPlErrLock;
     goto fin;
   }
-
   if (s_is_initialized) {
     LOG_ERR(0x01, "[ERROR] %s %d\n", __func__, __LINE__);
     err_code = kPlErrInvalidState;
-    goto unlock;
-  }
-
-  err_code = PlPowerMgrInitializeImpl();
-  if (err_code != kPlErrCodeOk) {
-    LOG_ERR(0x02, "[ERROR] %s %d\n", __func__, __LINE__);
     goto unlock;
   }
 
@@ -68,6 +63,12 @@ PlErrCode PlPowerMgrInitialize(void) {
     s_sw_wdt_last_keepalive_time[i] = tmp;
   }
   s_is_exit = false;
+
+  err_code = PlPowerMgrInitializeImpl();
+  if (err_code != kPlErrCodeOk) {
+    LOG_ERR(0x02, "[ERROR] %s %d\n", __func__, __LINE__);
+    goto unlock;
+  }
 
 #ifdef __NuttX__
   pthread_attr_t attr = {0};
@@ -110,7 +111,6 @@ PlErrCode PlPowerMgrFinalize(void) {
     err_code = kPlErrLock;
     goto fin;
   }
-
   if (!s_is_initialized) {
     LOG_ERR(0x05, "[ERROR] %s %d\n", __func__, __LINE__);
     err_code = kPlErrInvalidState;
@@ -215,7 +215,7 @@ fin:
 PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id) {
   PlErrCode pl_ret = kPlErrCodeOk;
   int ret = 0;
-  ret = pthread_mutex_lock(&s_api_mutex);
+  ret = pthread_mutex_lock(&s_sw_wdt_mutex);
   if (ret) {
     LOG_ERR(0x12, "[ERROR] %s %d\n", __func__, __LINE__);
     return kPlErrLock;
@@ -225,15 +225,17 @@ PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id) {
     pl_ret = kPlErrInvalidParam;
     goto unlock;
   }
-  struct timespec now;
+  struct timespec now = {0};
   ret = clock_gettime(CLOCK_MONOTONIC, &now);
   if (ret != 0) {
     LOG_ERR(0x14, "Failed to clock_gettime:%d", ret);
+    pl_ret = kPlErrInternal;
+    goto unlock;
   }
   s_sw_wdt_last_keepalive_time[id] = now;
 
 unlock:
-  ret = pthread_mutex_unlock(&s_api_mutex);
+  ret = pthread_mutex_unlock(&s_sw_wdt_mutex);
   if (ret) {
     LOG_ERR(0x15, "[ERROR] %s %d\n", __func__, __LINE__);
   }
@@ -242,36 +244,40 @@ unlock:
 
 // ----------------------------------------------------------------------------
 PlErrCode PlPowerMgrEnableSwWdt(uint32_t id) {
-  int ret = 0;
-  ret = pthread_mutex_lock(&s_api_mutex);
+  PlErrCode pl_ret = kPlErrCodeOk;
+  int ret = pthread_mutex_lock(&s_sw_wdt_mutex);
   if (ret) {
     LOG_ERR(0x16, "[ERROR] %s %d\n", __func__, __LINE__);
     return kPlErrLock;
   }
+
   struct timespec now;
   ret = clock_gettime(CLOCK_MONOTONIC, &now);
   if (ret != 0) {
     LOG_ERR(0x17, "Failed to clock_gettime:%d", ret);
+    pl_ret = kPlErrInternal;
+    goto unlock;
   }
   s_sw_wdt_last_keepalive_time[id] = now;
   s_is_sw_wdt_enable[id] = true;
-  ret = pthread_mutex_unlock(&s_api_mutex);
+
+unlock:
+  ret = pthread_mutex_unlock(&s_sw_wdt_mutex);
   if (ret) {
     LOG_ERR(0x18, "[ERROR] %s %d\n", __func__, __LINE__);
   }
-  return kPlErrCodeOk;
+  return pl_ret;
 }
 
 // ----------------------------------------------------------------------------
 PlErrCode PlPowerMgrDisableSwWdt(uint32_t id) {
-  int ret = 0;
-  ret = pthread_mutex_lock(&s_api_mutex);
+  int ret = pthread_mutex_lock(&s_sw_wdt_mutex);
   if (ret) {
     LOG_ERR(0x19, "[ERROR] %s %d\n", __func__, __LINE__);
     return kPlErrLock;
   }
   s_is_sw_wdt_enable[id] = false;
-  ret = pthread_mutex_unlock(&s_api_mutex);
+  ret = pthread_mutex_unlock(&s_sw_wdt_mutex);
   if (ret) {
     LOG_ERR(0x1A, "[ERROR] %s %d\n", __func__, __LINE__);
   }
@@ -281,7 +287,7 @@ PlErrCode PlPowerMgrDisableSwWdt(uint32_t id) {
 // ----------------------------------------------------------------------------
 static void *PlPowerSwWdt(void *arg) {
   while (!s_is_exit) {
-    struct timespec now;
+    struct timespec now = {0};
     int ret = clock_gettime(CLOCK_MONOTONIC, &now);
     if (ret != 0) {
       LOG_ERR(0x1B, "Failed to clock_gettime:%d", ret);
