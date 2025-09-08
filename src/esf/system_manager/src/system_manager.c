@@ -22,6 +22,7 @@
 #include "system_manager_accessor_exception_info.h"
 #include "system_manager_accessor_hwinfo.h"
 #include "system_manager_accessor_initial_setting_flag.h"
+#include "system_manager_accessor_migration_data.h"
 #include "system_manager_accessor_qr_mode_timeout_value.h"
 #include "system_manager_accessor_reset_cause.h"
 #include "system_manager_accessor_root_auth.h"
@@ -2748,4 +2749,69 @@ void EsfSystemManagerExecReboot(EsfSystemManagerRebootType reboot_type) {
   }
 
   EsfPwrMgrExecuteRebootEx(reboot_type_pm);
+}
+
+EsfSystemManagerResult EsfSystemManagerMigration(void) {
+  EsfSystemManagerResult ret = kEsfSystemManagerResultOk;
+
+  // Migrate RootAuth data (ID = 0)
+  ret = EsfSystemManagerMigrateRootAuth();
+  if (ret != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to migrate RootAuth data. result=%d",
+                     "system_manager.c", __LINE__, ret);
+    return ret;
+  }
+
+  // Migrate DeviceManifest data (ID = 1)
+  ret = EsfSystemManagerMigrateDeviceManifest();
+  if (ret != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to migrate DeviceManifest data. result=%d",
+                     "system_manager.c", __LINE__, ret);
+    return ret;
+  }
+
+  // Migrate HwInfo data (ID = 2)
+  ret = EsfSystemManagerMigrateHwInfo();
+  if (ret != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to migrate HwInfo data. result=%d",
+                     "system_manager.c", __LINE__, ret);
+    return ret;
+  }
+
+  // Migrate Old EVP Setup Info data (ID = 3)
+  ret = EsfSystemManagerMigrateEvpSetupInfo();
+  if (ret != kEsfSystemManagerResultOk) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:Failed to migrate Old EVP Setup Info data. result=%d",
+        "system_manager.c", __LINE__, ret);
+    return ret;
+  }
+
+  // Erase migration data after successful migration
+  const PlSystemManagerMigrationDataId migration_data_ids[] = {
+    kPlSystemManagerMigrationDataIdRootAuth,
+    kPlSystemManagerMigrationDataIdDeviceManifest,
+    kPlSystemManagerMigrationDataIdHwInfo,
+    kPlSystemManagerMigrationDataIdEvpSetupInfo
+  };
+
+  for (size_t i = 0; i < sizeof(migration_data_ids) / sizeof(migration_data_ids[0]); i++) {
+    ret = EsfSystemManagerEraseMigrationData(migration_data_ids[i]);
+    if (ret != kEsfSystemManagerResultOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to erase migration data (ID=%d). result=%d",
+                       "system_manager.c", __LINE__, migration_data_ids[i], ret);
+      // Continue with other deletions even if one fails
+    }
+  }
+
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                  "%s-%d:Successfully completed all migration data processing and cleanup",
+                  "system_manager.c", __LINE__);
+
+  return kEsfSystemManagerResultOk;
 }

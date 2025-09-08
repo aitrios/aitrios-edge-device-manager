@@ -6,10 +6,17 @@
 
 #include "pl_main_internal.h"
 
+#include <stdio.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/mount.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #ifndef CONFIG_EXTERNAL_TARGET_RPI
 #include "fsutils/flash_eraseall.h"
@@ -420,3 +427,216 @@ static PlErrCode PlMainFileSystemUnmountOther(
   LOG_I("Other unmount end. device:%s target:%s", info->source, info->target);
   return kPlErrInternal;
 }
+// -----------------------------------------------------------------------------
+#ifdef CONFIG_EXTERNAL_TARGET_T4R
+// Works the same as "rm -r path"
+static void RemoveDir(const char *path) {
+  DIR *dir = opendir(path);
+  if (!dir) {
+    return;
+  }
+
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+      continue;
+    }
+
+    char filepath[1024];
+    snprintf(filepath, sizeof(filepath), "%s/%s", path, entry->d_name);
+
+    struct stat statbuf;
+    if (!lstat(filepath, &statbuf)) {
+      if (S_ISDIR(statbuf.st_mode)) {
+        RemoveDir(filepath);
+      } else {
+        int ret = remove(filepath);
+        if (ret != 0) {
+          LOG_I("Failed to remove %s: %d %d", filepath, ret, errno);
+        }
+      }
+    }
+  }
+  closedir(dir);
+  int ret = rmdir(path);
+  if (ret != 0) {
+    LOG_I("Failed to rmdir %s: %d %d", path, ret, errno);
+  }
+  return;
+}
+#endif
+// -----------------------------------------------------------------------------
+void PlMainInternalEraseMigrationSrcData(void) {
+#ifndef CONFIG_EXTERNAL_TARGET_T4R
+  return;
+#else
+  RemoveDir("/misc/smartcamera/emmc/60_00/00/list");
+  RemoveDir("/misc/smartcamera/emmc/60_00/01/list");
+  RemoveDir("/misc/smartcamera/emmc/70_00/00/list");
+  RemoveDir("/misc/smartcamera/emmc/70_00/01/list");
+  RemoveDir("/misc/smartcamera/emmc/70_00/02/list");
+  RemoveDir("/misc/smartcamera/emmc/70_00/03/list");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0100.0.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0100.0.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0100.1.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0100.1.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0100_bank.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0200.0.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0200.0.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0200.1.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0200.1.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0200_bank.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0300.0.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0300.0.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0300.1.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0300.1.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0300_bank.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0400.0.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0400.0.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0400.1.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0400.1.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0400_bank.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0500.0.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0500.0.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0500.1.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0500.1.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0500_bank.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0600.0.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0600.0.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0600.1.bin");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0600.1.info");
+  remove("/misc/smartcamera/emmc/70_00/04/file/0600_bank.info");
+  RemoveDir("/misc/smartcamera/emmc/80_00/00/list");
+  RemoveDir("/misc/smartcamera/emmc/80_00/01/list");
+  RemoveDir("/misc/smartcamera/emmc/80_00/02/list");
+  RemoveDir("/misc/smartcamera/emmc/90_00/00/list");
+  RemoveDir("/misc/smartcamera/emmc/b0_00/00/list");
+  remove("/misc/smartcamera/evp_info/docker_setup_info.txt");
+  remove("/misc/smartcamera/evp_info/evp_setup_status.txt");
+  RemoveDir("/misc/smartcamera/evp_info/ceat");
+  RemoveDir("/misc/smartcamera/mnt/docker");
+  RemoveDir("/misc/smartcamera/mnt/hoss");
+  RemoveDir("/misc/smartcamera/mnt/hous");
+  RemoveDir("/misc/smartcamera/ram");
+  RemoveDir("/misc/smartcamera/socket");
+  RemoveDir("/misc/var");
+  RemoveDir("/misc/var/log");
+  RemoveDir("/misc/var/lib/docker");
+  RemoveDir("/misc/var/lib/chrony");
+  RemoveDir("/misc/var/rauc");
+  remove("/misc/etc/docker/daemon.json");
+  remove("/misc/etc/hostapd/hostapd.conf");
+  remove("/misc/etc/syslog-ng/syslog-ng.conf");
+  remove("/misc/etc/systemd/journald.conf");
+  remove("/misc/etc/systemd/network/wired.network");
+  RemoveDir("/misc/smartcamera/dnn_out");
+#endif
+  return;
+}
+// ----------------------------------------------------------------------------
+#ifdef CONFIG_EXTERNAL_TARGET_T4R
+static int MigrateKey(void) {
+  int ret = 0;
+  const char *src_path = "/factory/so/mqttclientkey.pem";
+  FILE *fp_src = fopen(src_path, "r");
+  if (fp_src == NULL) {
+    LOG_E(0x07, "%s failed to open:%s", __func__, src_path);
+    return -1;
+  }
+  const char *dst_path = "/etc/evp/mqttclient_key.pem";
+  FILE *fp_dst = fopen(dst_path, "w");
+  if (fp_dst == NULL) {
+    LOG_E(0x08, "%s failed to open:%s", __func__, dst_path);
+    fclose(fp_src);
+    return -1;
+  }
+  const int buf_size = 4096;
+  char *tmp = malloc(buf_size);
+  if (tmp == NULL) {
+    LOG_E(0x0D, "%s failed to malloc", __func__);
+    fclose(fp_src);
+    fclose(fp_dst);
+    return -1;
+  }
+  while (fgets(tmp, buf_size, fp_src) != NULL) {
+    fputs(tmp, fp_dst);
+  }
+
+  fclose(fp_src);
+  fclose(fp_dst);
+  free(tmp);
+  return 0;
+}
+#endif
+// ----------------------------------------------------------------------------
+#ifdef CONFIG_EXTERNAL_TARGET_T4R
+static int MigrateCert(void) {
+  int ret = 0;
+  const char *src_path1 = "/factory/so/mqttclient.nopass.pem";
+  FILE *fp_src1 = fopen(src_path1, "r");
+  if (fp_src1 == NULL) {
+    LOG_E(0x09, "%s failed to open:%s", __func__, src_path1);
+    return -1;
+  }
+  const char *src_path2 = "/factory/so/AITRIOS_LA_concatenated_CA_R1.txt";
+  FILE *fp_src2 = fopen(src_path2, "r");
+  if (fp_src2 == NULL) {
+    LOG_E(0x0A, "%s failed to open:%s", __func__, src_path2);
+    fclose(fp_src1);
+    return -1;
+  }
+  const char *dst_path = "/etc/evp/mqttclient_cert.pem";
+  remove(dst_path); // for multiple migration.
+  FILE *fp_dst = fopen(dst_path, "a");
+  if (fp_dst == NULL) {
+    LOG_E(0x0B, "%s failed to open:%s", __func__, dst_path);
+    fclose(fp_src1);
+    fclose(fp_src2);
+    return -1;
+  }
+
+  const int buf_size = 4096;
+  char *tmp = malloc(buf_size);
+  if (tmp == NULL) {
+    LOG_E(0x0C, "%s failed to malloc", __func__);
+    fclose(fp_src1);
+    fclose(fp_src2);
+    fclose(fp_dst);
+    return -1;
+  }
+  while (fgets(tmp, buf_size, fp_src1) != NULL) {
+    fputs(tmp, fp_dst);
+  }
+  while (fgets(tmp, buf_size, fp_src2) != NULL) {
+    fputs(tmp, fp_dst);
+  }
+
+  fclose(fp_src1);
+  fclose(fp_src2);
+  fclose(fp_dst);
+  free(tmp);
+  return 0;
+}
+#endif
+// ----------------------------------------------------------------------------
+PlErrCode PlMainInternalExecMigration(void) {
+#ifdef CONFIG_EXTERNAL_TARGET_T4R
+  int os_ret = 0;
+  os_ret = mkdir("/etc/evp", 0755);
+  if ((os_ret != 0) && (errno != EEXIST)) {
+    LOG_E(0x0C, "%s failed to mkdir:%d %d", __func__, os_ret, errno);
+    return kPlErrInternal;
+  }
+  int ret = 0;
+  if (MigrateKey() != 0) {
+    ret = -1;
+  }
+  if (MigrateCert() != 0) {
+    ret = -1;
+  }
+  return ret == 0 ? kPlErrCodeOk : kPlErrInternal;
+#else
+  return kPlErrCodeOk;
+#endif
+}
+// ----------------------------------------------------------------------------

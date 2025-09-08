@@ -21,6 +21,9 @@
 EsfNetworkManagerResult EsfNetworkManagerExecMigration(void) {
   return kEsfNetworkManagerResultSuccess;
 }
+void EsfNetworkManagerEraseMigrationSrcData(void) {
+  return;
+}
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE
 
 // -----------------------------------------------------------------------------
@@ -300,5 +303,9 @@ EsfNetworkManagerResult EsfNetworkManagerExecMigration(void) {
   EsfNetworkManagerResult ret = ExecMigration(esfnm_param, &esfnm_mask);
   free(esfnm_param);
   return ret;
+}
+// -----------------------------------------------------------------------------
+void EsfNetworkManagerEraseMigrationSrcData(void) {
+  return PlNetworkEraseMigrationSrcData();
 }
 #endif  // CONFIG_EXTERNAL_NETWORK_MANAGER_DISABLE

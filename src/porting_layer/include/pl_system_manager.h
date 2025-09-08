@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024-2025 Sony Semiconductor Solutions Corporation
-*
-* SPDX-License-Identifier: Apache-2.0
-*/
+ * SPDX-FileCopyrightText: 2024-2025 Sony Semiconductor Solutions Corporation
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 // This header file defines structures and functions related to the HW info
 // data management in the parameter storage manager.
@@ -27,6 +27,7 @@ extern "C" {
 #define PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE (37)
 #define PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE (64)
 #define PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+#define PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE (33)
 
 typedef struct PlSystemManagerHwInfo {
   char model_name[PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE];  // Model Name.
@@ -49,6 +50,9 @@ typedef struct PlSystemManagerHwInfo {
   char sensor_model_name
       [PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];  // Sensor Model
                                                               // Name.
+
+  char
+      device_name[PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE];  // DeviceName
 } PlSystemManagerHwInfo;
 
 typedef enum {
@@ -63,6 +67,13 @@ typedef enum {
   kPlSystemManagerResetCauseMax
 } PlSystemManagerResetCause;
 
+typedef enum {
+  kPlSystemManagerMigrationDataIdRootAuth = 0,
+  kPlSystemManagerMigrationDataIdDeviceManifest = 1,
+  kPlSystemManagerMigrationDataIdHwInfo = 2,
+  kPlSystemManagerMigrationDataIdEvpSetupInfo = 3,
+} PlSystemManagerMigrationDataId;
+
 size_t PlSystemManagerGetHwInfoSize(void);
 
 PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
@@ -70,8 +81,17 @@ PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
 
 bool PlSystemManagerIsHwInfoSupported(void);
 
+bool PlSystemManagerRequiresJwtParsing(void);
+
+bool PlSystemManagerRequiresSerialNumberFromDeviceManifest(void);
+
 PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
                                       bool *reset_flag);
+
+PlErrCode PlSystemManagerGetMigrationDataImpl(PlSystemManagerMigrationDataId id,
+                                              void *dst, size_t dst_size);
+
+PlErrCode PlSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id);
 
 #ifdef __cplusplus
 }

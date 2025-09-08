@@ -38,6 +38,7 @@ extern "C" {
 #define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE (37)
 #define ESF_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE (64)
 #define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+#define ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE (33)
 
 // This code defines an enumeration type for the result of executing an API.
 typedef enum {
@@ -77,6 +78,7 @@ typedef struct EsfSystemManagerHwInfo {
   char sensor_model_name
       [ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];  // Sensor Model
                                                                // Name.
+  char device_name[ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE];  // DeviceName
 } EsfSystemManagerHwInfo;
 
 // This code defines an enumeration type for the InitialSettingFlag.
@@ -818,6 +820,20 @@ EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag);
 //   None (void): This function does not return as it performs a system reboot.
 // """
 void EsfSystemManagerExecReboot(EsfSystemManagerRebootType reboot_type);
+
+// """Performs migration of legacy data to the parameter storage manager.
+// This function migrates various types of legacy data (RootAuth, DeviceManifest,
+// HwInfo, and EVP Setup Info) from the old format to the new parameter storage
+// manager format. The migration is performed sequentially for each data type.
+// 
+// Returns:
+//   kEsfSystemManagerResultOk: All migration data was successfully processed.
+//   kEsfSystemManagerResultInternalError: An internal error occurred during
+//     migration.
+//   kEsfSystemManagerResultEmptyData: Some migration data was empty (treated
+//     as success).
+// """
+EsfSystemManagerResult EsfSystemManagerMigration(void);
 
 #ifdef __cplusplus
 }

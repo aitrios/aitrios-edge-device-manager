@@ -226,6 +226,7 @@ PlErrCode PlNetworkGetMigrationData(PlNetworkMigrationHandle handle,
                                     size_t dst_size);
 PlErrCode PlNetworkIsNeedMigration(PlNetworkMigrationNeedParam *param,
                                    bool *need_migration);
+void PlNetworkEraseMigrationSrcData(void);
 PlNetworkCapabilities PlNetworkGetCapabilities(void);
 int PlNetworkSetIpv4Addr(const char *ifname, const struct in_addr *addr,
                          const struct in_addr *mask);

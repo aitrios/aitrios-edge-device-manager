@@ -1587,7 +1587,7 @@ LogManagerへDlogの蓄積要求を行います。
 
 * *書式* +
 +
-``** EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size) **``  
+``** EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size, bool is_critical) **``
 
 * *引数の説明* +
 +

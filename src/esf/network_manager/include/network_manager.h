@@ -1002,6 +1002,7 @@ EsfNetworkManagerResult EsfNetworkManagerLoadVariantParameter(
     EsfNetworkManagerVariantParameter *parameter);
 
 EsfNetworkManagerResult EsfNetworkManagerExecMigration(void);
+void EsfNetworkManagerEraseMigrationSrcData(void);
 
 #ifdef __cplusplus
 }

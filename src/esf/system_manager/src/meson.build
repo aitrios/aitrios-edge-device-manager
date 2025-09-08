@@ -21,5 +21,7 @@ esf_sources += files([
 	'system_manager_accessor_reset_cause.h',
 	'system_manager_accessor_root_auth.c',
 	'system_manager_accessor_root_auth.h',
+	'system_manager_accessor_migration_data.c',
+	'system_manager_accessor_migration_data.h',
 	'system_manager.c',
 ])

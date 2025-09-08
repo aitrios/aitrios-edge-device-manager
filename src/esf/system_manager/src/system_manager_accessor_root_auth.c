@@ -119,6 +119,29 @@ EsfSystemManagerResult EsfSystemManagerLoadRootAuthFromPsm(
   return kEsfSystemManagerResultOk;
 }
 
+EsfSystemManagerResult EsfSystemManagerSaveRootAuthToPsm(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerRootAuthMask* mask,
+    const EsfParameterStorageManagerRootAuth* data) {
+  if ((mask == NULL) || (data == NULL)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM, "%s-%d:Parameter error. mask=%p data=%p.",
+        "system_manager_accessor_root_auth.c", __LINE__, mask, data);
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfParameterStorageManagerStatus status = EsfParameterStorageManagerSave(
+      handle, (EsfParameterStorageManagerMask)mask,
+      (EsfParameterStorageManagerData)data, &kStructInfo, NULL);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to save to Parameter Storage Manager.",
+                     "system_manager_accessor_root_auth.c", __LINE__);
+    return kEsfSystemManagerResultInternalError;
+  }
+  return kEsfSystemManagerResultOk;
+}
+
 STATIC bool EsfParameterStorageManagerMaskEnabledRootCa(
     EsfParameterStorageManagerMask mask) {
   return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(

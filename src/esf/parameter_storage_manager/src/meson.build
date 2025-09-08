@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-esf_sources += files([
+psm_sources = files([
 	'parameter_storage_manager_buffer.c',
 	'parameter_storage_manager_ext.c',
 	'parameter_storage_manager_internal_work.c',

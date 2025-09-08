@@ -49,6 +49,9 @@ typedef struct UploadDlogData {
   void *m_user_data;
   LogUploadStatusT m_status;
   char *m_file_name;
+  bool m_is_critical;      // Critical log flag
+  bool m_is_priority;      // Priority flag
+  uint32_t m_retry_count;  // Retry count for upload failure
   SLIST_ENTRY(UploadDlogData)
   m_next;
 } UploadDlogData;
@@ -147,13 +150,14 @@ int32_t EsfLogManagerCheckCloudListNum(void);
 //    completion notification *user_data(void): User data
 //    data_size(size_t):Upload data size
 //    data(uint8_t): Upload data
+//    is_critical(bool): Critical log flag
 // Returns:
 //    kEsfLogManagerStatusOk: success
 //    kEsfLogManagerStatusFailed: abnormal termination.
 EsfLogManagerStatus EsfLogManagerRegisterLocalList(
     EsfLogManagerSettingBlockType block_type,
     EsfLogManagerBulkDlogCallback callback, void *user_data, size_t data_size,
-    uint8_t *data);
+    uint8_t *data, bool is_critical);
 
 // """Register information in the cloud upload list.
 // Args:
@@ -162,29 +166,14 @@ EsfLogManagerStatus EsfLogManagerRegisterLocalList(
 //    completion notification *user_data(void): User data
 //    data_size(size_t):Upload data size
 //    data(uint8_t): Upload data
+//    is_critical(bool): Critical log flag
 // Returns:
 //    kEsfLogManagerStatusOk: success
 //    kEsfLogManagerStatusFailed: abnormal termination.
 EsfLogManagerStatus EsfLogManagerRegisterCloudList(
     EsfLogManagerSettingBlockType block_type,
     EsfLogManagerBulkDlogCallback callback, void *user_data, size_t data_size,
-    uint8_t *data);
-
-// """Retrieve the last data entry registered in the local upload list.
-// Args:
-//    no arguments
-// Returns:
-//    LocalUploadDlogDataT: On success, it returns a pointer to
-//    LocalUploadDlogDataT. NULL: Failed to retriev.
-LocalUploadDlogDataT *EsfLogManagerGetLocalTailListData(void);
-
-// """Retrieve the last data entry registered in the cloud upload list.
-// Args:
-//    no arguments
-// Returns:
-//    CloudUploadDlogDataT: On success, it returns a pointer to
-//    CloudUploadDlogDataT. NULL: Failed to retriev.
-CloudUploadDlogDataT *EsfLogManagerGetCloudTailListData(void);
+    uint8_t *data, bool is_critical);
 
 // """Delete the last data entry registered in the local upload list.
 // Args:
@@ -204,6 +193,24 @@ EsfLogManagerStatus EsfLogManagerUnregisterLocalListData(
 EsfLogManagerStatus EsfLogManagerUnregisterCloudListData(
     UnregisterPositionT position);
 
+// """Delete the highest priority data entry from the local upload list.
+// Critical entries are prioritized over normal entries.
+// Args:
+//    no arguments
+// Returns:
+//    kEsfLogManagerStatusOk: success
+//    kEsfLogManagerStatusFailed: abnormal termination.
+EsfLogManagerStatus EsfLogManagerUnregisterLocalListDataPriority(void);
+
+// """Delete the highest priority data entry from the cloud upload list.
+// Critical entries are prioritized over normal entries.
+// Args:
+//    no arguments
+// Returns:
+//    kEsfLogManagerStatusOk: success
+//    kEsfLogManagerStatusFailed: abnormal termination.
+EsfLogManagerStatus EsfLogManagerUnregisterCloudListDataPriority(void);
+
 // """Delete all data entries registered in the local upload list.
 // Args:
 //    no arguments
@@ -219,5 +226,21 @@ EsfLogManagerStatus EsfLogManagerDeleteLocalUploadList(void);
 //    kEsfLogManagerStatusOk: success
 //    kEsfLogManagerStatusFailed: abnormal termination.
 EsfLogManagerStatus EsfLogManagerDeleteCloudUploadList(void);
+
+// """Get the highest priority upload data from local list.
+// Args:
+//    no arguments
+// Returns:
+//    LocalUploadDlogDataT*: On success, it returns a pointer to
+//    LocalUploadDlogDataT. NULL: Failed to retrieve or no data.
+LocalUploadDlogDataT *EsfLogManagerGetLocalPriorityUploadData(void);
+
+// """Get the highest priority upload data from cloud list.
+// Args:
+//    no arguments
+// Returns:
+//    CloudUploadDlogDataT*: On success, it returns a pointer to
+//    CloudUploadDlogDataT. NULL: Failed to retrieve or no data.
+CloudUploadDlogDataT *EsfLogManagerGetCloudPriorityUploadData(void);
 
 #endif  // ESF_LOG_MANAGER_LOG_MANAGER_LIST_H_

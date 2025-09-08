@@ -693,6 +693,7 @@ static EsfMainError EsfMainBoot(void) {
         for (int i = 0; i < ESF_MAIN_MIGRATION_RETRY_MAX; i++) {
           if (EsfMainExecMigration() == kEsfMainOk) {
             EsfMainDisableMigrationFlag();
+            EsfMainEraseMigrationSrcData();
             break;
           }
         }

@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>  // for clock_gettime, CLOCK_REALTIME
 #include <unistd.h>
 
 #ifdef __NuttX__
@@ -98,8 +99,10 @@
   ((size_t)CONFIG_EXTERNAL_LOG_MANAGER_ELOG_THREAD_STACK_SIZE)
 // Blob thread stack size.
 #define LOG_MANAGER_INTERNAL_BLOB_THREAD_STACK_SIZE ((size_t)4096)
-// Utility msg receive time out
-#define LOG_MANAGER_INTERNAL_MSG_TIMEOUT (-1)
+// Utility msg receive time out (milliseconds)
+#define LOG_MANAGER_INTERNAL_DLOG_MSG_TIMEOUT (1000)
+// Utility msg receive time out (milliseconds)
+#define LOG_MANAGER_INTERNAL_ELOG_MSG_TIMEOUT (-1)
 // Allocate msg queue for Elog client register
 #define LOG_MANAGER_INTERNAL_REGISTER_MSG_MAX (1)
 // Allocate msg queue for Elog thread destroy
@@ -130,6 +133,8 @@
 #define LOG_MANAGER_INTERNAL_HTTP_PROTOCOL_NAME "http://"
 // Blob upload retry wait time
 #define LOG_MANAGER_INTERNAL_RETRY_UPLOAD_SLEEP_TIME (1)
+// Maximum retry count for upload failure
+#define LOG_MANAGER_INTERNAL_MAX_RETRY_COUNT (3)
 
 // Processing result value
 typedef enum {
@@ -185,6 +190,7 @@ struct MessagePassingObjT {
   EsfLogManagerSettingBlockType m_block_type;
   EsfLogManagerBulkDlogCallback m_callback;
   void *m_user_data;
+  bool m_is_critical;  // Critical log flag
 };
 
 // Elog Message Object structure
@@ -204,6 +210,7 @@ struct AtomicUint32T {
 struct ByteBufferMainT {
   uint32_t *m_allocated_memory;
   ByteBuffer_Handle m_handle;
+  bool is_critical;
 };
 
 // Log setting structure
@@ -330,7 +337,9 @@ static size_t s_dlog_store_of_bytebuffer[DLOG_NUM_OF_RAM_BUFFER_PLANES] = {0};
 static size_t s_dlog_store_of_temp_bytebuffer = 0;
 static struct ByteBufferMainT
     s_dlog_buffer_handles[DLOG_NUM_OF_RAM_BUFFER_PLANES] = {
-        {.m_allocated_memory = NULL, .m_handle = (ByteBuffer_Handle)NULL}};
+        {.m_allocated_memory = NULL,
+         .m_handle = (ByteBuffer_Handle)NULL,
+         .is_critical = false}};
 /* --- End of s_mutex_for_bytebuffer scope --- */
 #endif  // CONFIG_EXTERNAL_DLOG_DISABLE
 
@@ -363,6 +372,11 @@ STATIC struct SYS_client *s_dlog_sys_client = NULL;
 
 // flag for determining the termination of a blob thread
 STATIC bool s_blob_thread_fin_flag = false;
+
+// Critical log management variables
+STATIC pthread_mutex_t s_critical_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+STATIC struct timespec s_last_critical_log_time = {0, 0};
+STATIC bool s_critical_log_pending = false;
 
 // configuration information for local upload
 STATIC struct UploadNameGroupObjT s_local_upload_info = {
@@ -476,13 +490,11 @@ STATIC void EsfLogManagerInternalDestroyBlobCollector(void);
 
 // """ Dlog buffer index switching process
 // Args:
-//    *str(const uint8_t): write string
-//    data_size(const uint32_t): write string size
+//    no arguments
 // Returns:
 //    kEsfLogManagerStatusOk: success
 //    kEsfLogManagerStatusFailed: abnormal termination.
-STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(
-    const uint8_t *str, uint32_t data_size);
+STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(void);
 
 // """ The process of notifying DeviceControlService with Dlog data
 // Args:
@@ -507,6 +519,14 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalCreateEncryptData(
 //    kEsfLogManagerStatusFailed: abnormal termination.
 STATIC EsfLogManagerStatus EsfLogManagerInternalBackupBuffer(
     size_t size, size_t buf_size, uint8_t *data, uint8_t **out_data);
+
+// """ Handle critical log upload timing
+// Args:
+//    no arguments
+// Returns:
+//    kEsfLogManagerStatusOk: success
+//    kEsfLogManagerStatusFailed: abnormal termination.
+STATIC EsfLogManagerStatus EsfLogManagerInternalHandleCriticalLogTiming(void);
 
 #ifdef LOG_MANAGER_ENCRYPT_ENABLE
 // """ Perform the encryption process on the specified buffer.
@@ -742,6 +762,15 @@ STATIC enum SYS_result EsfLogManagerInternalCloudUploadCallback(
     struct SYS_client *client, struct SYS_blob_data *blob,
     enum SYS_callback_reason reason, void *user);
 
+// """ Handle upload retry logic for failed uploads.
+// Args:
+//    *data(void): Upload data structure (LocalUploadDlogDataT or
+//    CloudUploadDlogDataT) is_local(bool): true for local upload, false for
+//    cloud upload
+// Returns:
+//    no return
+STATIC void EsfLogManagerInternalHandleUploadRetry(void *data, bool is_local);
+
 // """ Create filenames for upload and perform local upload processing.
 // Args:
 //    no arguments
@@ -880,6 +909,45 @@ STATIC bool EsfLogManagerInternalCheckBlobCallbackArguments(
 }
 #endif  // CONFIG_EXTERNAL_DLOG_DISABLE
 
+#ifndef CONFIG_EXTERNAL_DLOG_DISABLE
+STATIC void EsfLogManagerInternalHandleUploadRetry(void *data, bool is_local) {
+  const char *log_type = is_local ? "Local" : "Cloud";
+
+  if (data != NULL) {
+    // Both LocalUploadDlogDataT and CloudUploadDlogDataT have the same
+    // structure (UploadDlogData) so we can safely cast to access m_retry_count
+    CloudUploadDlogDataT *upload_data = (CloudUploadDlogDataT *)data;
+    upload_data->m_retry_count++;
+
+    if (upload_data->m_retry_count < LOG_MANAGER_INTERNAL_MAX_RETRY_COUNT) {
+      ESF_LOG_MANAGER_ERROR("%s upload failed, retrying (%d/%d)\n", log_type,
+                            upload_data->m_retry_count,
+                            LOG_MANAGER_INTERNAL_MAX_RETRY_COUNT);
+      if (is_local) {
+        EsfLogManagerSetLocalUploadStatus(kUploadStatusRequest);
+      } else {
+        EsfLogManagerSetCloudUploadStatus(kUploadStatusRequest);
+      }
+    } else {
+      ESF_LOG_MANAGER_ERROR(
+          "%s upload failed after %d retries, discarding data\n", log_type,
+          LOG_MANAGER_INTERNAL_MAX_RETRY_COUNT);
+      if (is_local) {
+        EsfLogManagerSetLocalUploadStatus(kUploadStatusFinished);
+      } else {
+        EsfLogManagerSetCloudUploadStatus(kUploadStatusFinished);
+      }
+    }
+  } else {
+    if (is_local) {
+      EsfLogManagerSetLocalUploadStatus(kUploadStatusRequest);
+    } else {
+      EsfLogManagerSetCloudUploadStatus(kUploadStatusRequest);
+    }
+  }
+}
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE
+
 STATIC void EsfLogManagerInternalSetupCleaning(void) {
   UtilityMsgErrCode utility_ret = kUtilityMsgOk;
 #ifndef CONFIG_EXTERNAL_DLOG_DISABLE
@@ -976,15 +1044,25 @@ STATIC void *EsfLogManagerInternalWriteDlogThread(void *p
   }
 
   for (;;) {
-    UtilityMsgErrCode utility_ret =
-        UtilityMsgRecv(s_dlog_msg_passing.m_handle, (void *)&msg,
-                       sizeof(struct MessagePassingObjT),
-                       LOG_MANAGER_INTERNAL_MSG_TIMEOUT, (int32_t *)&recv_size);
+    UtilityMsgErrCode utility_ret = UtilityMsgRecv(
+        s_dlog_msg_passing.m_handle, (void *)&msg,
+        sizeof(struct MessagePassingObjT),
+        LOG_MANAGER_INTERNAL_DLOG_MSG_TIMEOUT, (int32_t *)&recv_size);
     if (utility_ret != kUtilityMsgOk) {
-      ESF_LOG_MANAGER_ERROR(
-          "Failed to UtilityMsgRecv. Handle is s_dlog_msg_passing.m_handle. "
-          "ret=%d\n",
-          utility_ret);
+      if (utility_ret == kUtilityMsgErrTimedout) {
+        // Check critical log timing for automatic upload
+        EsfLogManagerStatus timing_ret =
+            EsfLogManagerInternalHandleCriticalLogTiming();
+        if (timing_ret != kEsfLogManagerStatusOk) {
+          ESF_LOG_MANAGER_ERROR("Failed to handle critical log timing ret=%d\n",
+                                timing_ret);
+        }
+      } else {
+        ESF_LOG_MANAGER_ERROR(
+            "Failed to UtilityMsgRecv. Handle is s_dlog_msg_passing.m_handle. "
+            "ret=%d\n",
+            utility_ret);
+      }
       continue;
     }
 
@@ -1052,7 +1130,7 @@ STATIC void *EsfLogManagerInternalWriteDlogThread(void *p
         } else {
           ret = EsfLogManagerRegisterLocalList(msg.m_block_type, msg.m_callback,
                                                msg.m_user_data, upload_size,
-                                               dlog_data);
+                                               dlog_data, msg.m_is_critical);
           if (ret != kEsfLogManagerStatusOk) {
             ESF_LOG_MANAGER_ERROR(
                 "Add local list failed block_type=%d upload_size=%lu ret=%d\n",
@@ -1074,10 +1152,10 @@ STATIC void *EsfLogManagerInternalWriteDlogThread(void *p
         } else {
           ret = EsfLogManagerRegisterCloudList(msg.m_block_type, msg.m_callback,
                                                msg.m_user_data, upload_size,
-                                               dlog_data);
+                                               dlog_data, msg.m_is_critical);
           if (ret != kEsfLogManagerStatusOk) {
             ESF_LOG_MANAGER_ERROR(
-                "Add local list failed block_type=%d upload_size=%lu ret=%d\n",
+                "Add cloud list failed block_type=%d upload_size=%lu ret=%d\n",
                 msg.m_block_type, upload_size, ret);
             free(dlog_data);
           }
@@ -1383,9 +1461,7 @@ STATIC enum SYS_result EsfLogManagerInternalLocalUploadCallback(
     enum SYS_callback_reason reason, void *user) {
   if (!EsfLogManagerInternalCheckBlobCallbackArguments(client, blob, user)) {
     ESF_LOG_MANAGER_ERROR("%s Invalid Parameter.\n", __func__);
-
-    EsfLogManagerSetLocalUploadStatus(kUploadStatusRequest);
-
+    EsfLogManagerInternalHandleUploadRetry(user, true);
     return SYS_RESULT_OK;
   }
 
@@ -1420,7 +1496,8 @@ STATIC enum SYS_result EsfLogManagerInternalLocalUploadCallback(
 
     case SYS_REASON_ERROR:
     default:
-      EsfLogManagerSetLocalUploadStatus(kUploadStatusRequest);
+      ESF_LOG_MANAGER_ERROR("Local upload failed\n");
+      EsfLogManagerInternalHandleUploadRetry(user, true);
       break;
   }
 
@@ -1434,9 +1511,7 @@ STATIC enum SYS_result EsfLogManagerInternalCloudUploadCallback(
 
   if (!EsfLogManagerInternalCheckBlobCallbackArguments(client, blob, user)) {
     ESF_LOG_MANAGER_ERROR("%s Invalid Parameter.\n", __func__);
-
-    EsfLogManagerSetCloudUploadStatus(kUploadStatusRequest);
-
+    EsfLogManagerInternalHandleUploadRetry(user, false);
     return SYS_RESULT_OK;
   }
 
@@ -1471,7 +1546,8 @@ STATIC enum SYS_result EsfLogManagerInternalCloudUploadCallback(
 
     case SYS_REASON_ERROR:
     default:
-      EsfLogManagerSetCloudUploadStatus(kUploadStatusRequest);
+      ESF_LOG_MANAGER_ERROR("Cloud upload failed\n");
+      EsfLogManagerInternalHandleUploadRetry(user, false);
       break;
   }
 
@@ -1479,7 +1555,7 @@ STATIC enum SYS_result EsfLogManagerInternalCloudUploadCallback(
 }
 
 STATIC EsfLogManagerStatus EsfLogManagerInternalLocalUpload(void) {
-  LocalUploadDlogDataT *data = EsfLogManagerGetLocalTailListData();
+  LocalUploadDlogDataT *data = EsfLogManagerGetLocalPriorityUploadData();
   // If there is no data in the list, do not perform any processing and return
   // 'Success' to end the process.
   if ((LocalUploadDlogDataT *)data == NULL) {
@@ -1565,7 +1641,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalLocalUpload(void) {
       break;
 
     case kUploadStatusFinished:
-      EsfLogManagerUnregisterLocalListData(kUnregisterTail);
+      EsfLogManagerUnregisterLocalListDataPriority();
       break;
 
     default:
@@ -1578,7 +1654,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalLocalUpload(void) {
 }
 
 STATIC EsfLogManagerStatus EsfLogManagerInternalCloudUpload(void) {
-  CloudUploadDlogDataT *data = EsfLogManagerGetCloudTailListData();
+  CloudUploadDlogDataT *data = EsfLogManagerGetCloudPriorityUploadData();
   // If there is no data in the list, do not perform any processing and return
   // 'Success' to end the process.
   if ((CloudUploadDlogDataT *)data == NULL) {
@@ -1651,7 +1727,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalCloudUpload(void) {
       break;
 
     case kUploadStatusFinished:
-      EsfLogManagerUnregisterCloudListData(kUnregisterTail);
+      EsfLogManagerUnregisterCloudListDataPriority();
       break;
 
     default:
@@ -1673,7 +1749,9 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalDlogFullCollector(void) {
       .m_buf_size = DLOG_SIZE_OF_RAM_BUFFER_PLANE,
       .m_block_type = kEsfLogManagerBlockTypeSysApp,
       .m_callback = NULL,
-      .m_user_data = NULL};
+      .m_user_data = NULL,
+      .m_is_critical =
+          s_dlog_buffer_handles[s_dlog_oldest_buff_idx].is_critical};
   int ret = 0;
 
   ret = EsfLogManagerInternalSendCmdToDlogCollectorThread(&msg_obj);
@@ -1693,7 +1771,8 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalDestroyDlogCollector(void) {
       .m_cmd = kCmdIsFinDlogCollector,
       .m_len_of_data = (size_t)(sizeof(struct MessagePassingObjT)),
       .m_data = NULL,
-      .m_data_size = 0};
+      .m_data_size = 0,
+      .m_is_critical = false};
 
   ret = EsfLogManagerInternalSendCmdToDlogCollectorThread(&msg_obj);
   if (ret != kEsfLogManagerStatusOk) {
@@ -1803,6 +1882,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalBackupBuffer(
 
   s_is_dlog_buffer_status = kBufferStatusUse;
   s_dlog_store_of_bytebuffer[s_dlog_oldest_buff_idx] = 0;
+  s_dlog_buffer_handles[s_dlog_oldest_buff_idx].is_critical = false;
 
   if (pthread_mutex_unlock(&s_mutex_for_bytebuffer) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
@@ -1814,8 +1894,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalBackupBuffer(
   return kEsfLogManagerStatusOk;
 }
 
-STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(
-    const uint8_t *str, uint32_t data_size) {
+STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(void) {
   uint8_t *byte_buffer_ret = NULL;
   s_dlog_oldest_buff_idx = s_dlog_buff_idx;
 
@@ -1832,6 +1911,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(
       return kEsfLogManagerStatusFailed;
     }
     s_dlog_store_of_bytebuffer[s_dlog_buff_idx] = 0;
+    s_dlog_buffer_handles[s_dlog_buff_idx].is_critical = false;
   } else {
     s_is_dlog_buffer_status = kBufferStatusHalfUse;
     LOG_MANAGER_TRACE_PRINT(":%d %d\n", s_dlog_store_of_temp_bytebuffer,
@@ -1842,22 +1922,6 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(
   }
 
   LOG_MANAGER_TRACE_PRINT(":Change Buff %d\n", s_dlog_buff_idx);
-
-  byte_buffer_ret =
-      BYTEBUFFER_PushBack(s_dlog_buffer_handles[s_dlog_buff_idx].m_handle,
-                          (uint8_t *)str, data_size);
-  if (byte_buffer_ret == NULL) {
-    ESF_LOG_MANAGER_ERROR(
-        "Failed to BYTEBUFFER_PushBack. s_dlog_buff_idx=%d stored_size=%lu "
-        "data_size=%u\n",
-        s_dlog_buff_idx, s_dlog_store_of_bytebuffer[s_dlog_buff_idx],
-        data_size);
-    return kEsfLogManagerStatusFailed;
-  }
-
-  LOG_MANAGER_TRACE_PRINT(
-      "%d %d\n", s_dlog_store_of_bytebuffer[s_dlog_buff_idx], data_size);
-  s_dlog_store_of_bytebuffer[s_dlog_buff_idx] += data_size;
 
   return kEsfLogManagerStatusOk;
 }
@@ -1896,6 +1960,7 @@ EsfLogManagerStatus EsfLogManagerInternalInitializeByteBuffer(void) {
       ESF_LOG_MANAGER_ERROR("Failed to BYTEBUFFER_Init. ret=%d\n", ret);
       return kEsfLogManagerStatusFailed;
     }
+    s_dlog_buffer_handles[idx].is_critical = false;
   }
   if (pthread_mutex_unlock(&s_mutex_for_bytebuffer) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
@@ -2133,6 +2198,7 @@ EsfLogManagerStatus EsfLogManagerInternalDeinitByteBuffer(void) {
     }
     free(s_dlog_buffer_handles[idx].m_allocated_memory);
     s_dlog_buffer_handles[idx].m_allocated_memory = NULL;
+    s_dlog_buffer_handles[idx].is_critical = false;
   }
 
   if (pthread_mutex_unlock(&s_mutex_for_bytebuffer) != 0) {
@@ -2146,7 +2212,8 @@ EsfLogManagerStatus EsfLogManagerInternalDeinitByteBuffer(void) {
 
 #ifndef CONFIG_EXTERNAL_DLOG_DISABLE
 EsfLogManagerStatus EsfLogManagerInternalWriteDlog(const uint8_t *str,
-                                                   uint32_t size) {
+                                                   uint32_t size,
+                                                   bool is_critical) {
   // The write dlog func is nothing processing if the device type
   // is Raspberry Pi.
   uint8_t *byte_buffer_ret = NULL;
@@ -2157,6 +2224,14 @@ EsfLogManagerStatus EsfLogManagerInternalWriteDlog(const uint8_t *str,
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
     return kEsfLogManagerStatusFailed;
   }
+
+  // after locking the byte buffer mutex
+  if (pthread_mutex_lock(&s_critical_log_mutex) != 0) {
+    (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
   //  LOG_MANAGER_TRACE_PRINT(":%d
   //  %d\n",s_dlog_store_of_bytebuffer[s_dlog_buff_idx],
   //                           s_dlog_buff_idx);
@@ -2169,6 +2244,7 @@ EsfLogManagerStatus EsfLogManagerInternalWriteDlog(const uint8_t *str,
     byte_buffer_ret = BYTEBUFFER_PushBack(
         s_dlog_buffer_handles[s_dlog_buff_idx].m_handle, (uint8_t *)str, size);
     if (byte_buffer_ret == NULL) {
+      (void)pthread_mutex_unlock(&s_critical_log_mutex);
       (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
       ESF_LOG_MANAGER_ERROR(
           "Failed to BYTEBUFFER_PushBack. s_dlog_buff_idx=%d stored_size=%lu "
@@ -2185,13 +2261,50 @@ EsfLogManagerStatus EsfLogManagerInternalWriteDlog(const uint8_t *str,
   } else {
     is_full = true;
 
-    ret = EsfLogManagerInternalChangeDlogByteBuffer(str, size);
+    ret = EsfLogManagerInternalChangeDlogByteBuffer();
     if (ret != kEsfLogManagerStatusOk) {
+      (void)pthread_mutex_unlock(&s_critical_log_mutex);
       (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
       ESF_LOG_MANAGER_ERROR("Failed to change Dlog ByteBuffer. ret=%d\n", ret);
       return kEsfLogManagerStatusFailed;
     }
+
+    s_critical_log_pending = false;
+
+    byte_buffer_ret = BYTEBUFFER_PushBack(
+        s_dlog_buffer_handles[s_dlog_buff_idx].m_handle, (uint8_t *)str, size);
+    if (byte_buffer_ret == NULL) {
+      ESF_LOG_MANAGER_ERROR(
+          "Failed to BYTEBUFFER_PushBack. s_dlog_buff_idx=%d stored_size=%lu "
+          "data_size=%u\n",
+          s_dlog_buff_idx, s_dlog_store_of_bytebuffer[s_dlog_buff_idx], size);
+      (void)pthread_mutex_unlock(&s_critical_log_mutex);
+      (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
+      return kEsfLogManagerStatusFailed;
+    }
+
+    LOG_MANAGER_TRACE_PRINT("%d %d\n",
+                            s_dlog_store_of_bytebuffer[s_dlog_buff_idx], size);
+    s_dlog_store_of_bytebuffer[s_dlog_buff_idx] += size;
+
     LOG_MANAGER_TRACE_PRINT("\n");
+  }
+
+  if (is_critical) {
+    s_dlog_buffer_handles[s_dlog_buff_idx].is_critical = is_critical;
+
+    if (s_critical_log_pending == false) {
+      clock_gettime(CLOCK_REALTIME, &s_last_critical_log_time);
+      s_critical_log_pending = true;
+      ESF_LOG_MANAGER_INFO(
+          "Critical log detected, scheduling urgent upload.\n");
+    }
+  }
+
+  if (pthread_mutex_unlock(&s_critical_log_mutex) != 0) {
+    (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return kEsfLogManagerStatusFailed;
   }
 
   if (pthread_mutex_unlock(&s_mutex_for_bytebuffer) != 0) {
@@ -2830,7 +2943,8 @@ EsfLogManagerStatus EsfLogManagerInternalSendBulkDlog(
       .m_data_size = size,
       .m_buf_size = buf_size,
       .m_callback = *callback,
-      .m_user_data = user_data};
+      .m_user_data = user_data,
+      .m_is_critical = false};
 
   msg_obj.m_block_type = EsfLogManagerInternalGetGroupID(module_id);
   if (msg_obj.m_block_type >= kEsfLogManagerBlockTypeNum) {
@@ -3093,10 +3207,10 @@ STATIC void *EsfLogWriteElogThread(void *p __attribute__((unused))) {
   int32_t recv_size = 0;
   EsfLogManagerStatus ret = kEsfLogManagerStatusOk;
   for (;;) {
-    UtilityMsgErrCode utility_ret =
-        UtilityMsgRecv(s_elog_msg_passing.m_handle, (void *)&msg_obj,
-                       sizeof(struct MessagePassingElogObjT),
-                       LOG_MANAGER_INTERNAL_MSG_TIMEOUT, (int32_t *)&recv_size);
+    UtilityMsgErrCode utility_ret = UtilityMsgRecv(
+        s_elog_msg_passing.m_handle, (void *)&msg_obj,
+        sizeof(struct MessagePassingElogObjT),
+        LOG_MANAGER_INTERNAL_ELOG_MSG_TIMEOUT, (int32_t *)&recv_size);
     if (utility_ret != kUtilityMsgOk) {
       ESF_LOG_MANAGER_ERROR(
           "Failed to UtilityMsgRecv. Handle is s_elog_msg_passing.m_handle. "
@@ -3719,3 +3833,70 @@ EsfLogManagerStatus EsfLogManagerInternalClearElog(void) {
 
   return kEsfLogManagerStatusOk;
 }
+
+#ifndef CONFIG_EXTERNAL_DLOG_DISABLE
+STATIC EsfLogManagerStatus EsfLogManagerInternalHandleCriticalLogTiming(void) {
+  bool should_upload = false;
+
+  if (pthread_mutex_lock(&s_mutex_for_bytebuffer) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  // after locking the byte buffer mutex
+  if (pthread_mutex_lock(&s_critical_log_mutex) != 0) {
+    (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  if (s_critical_log_pending) {
+    struct timespec current_time;
+    clock_gettime(CLOCK_REALTIME, &current_time);
+
+    // Calculate time difference in seconds
+    time_t time_diff = current_time.tv_sec - s_last_critical_log_time.tv_sec;
+
+    if (time_diff >= CONFIG_EXTERNAL_LOG_MANAGER_CRITICAL_UPLOAD_TIMEOUT) {
+      should_upload = true;
+    }
+  }
+
+  if (should_upload) {
+    EsfLogManagerStatus ret = EsfLogManagerInternalChangeDlogByteBuffer();
+    if (ret != kEsfLogManagerStatusOk) {
+      (void)pthread_mutex_unlock(&s_critical_log_mutex);
+      (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
+      ESF_LOG_MANAGER_ERROR("Failed to change Dlog ByteBuffer. ret=%d\n", ret);
+      return kEsfLogManagerStatusFailed;
+    }
+
+    s_critical_log_pending = false;
+  }
+
+  if (pthread_mutex_unlock(&s_critical_log_mutex) != 0) {
+    (void)pthread_mutex_unlock(&s_mutex_for_bytebuffer);
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  if (pthread_mutex_unlock(&s_mutex_for_bytebuffer) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  if (should_upload) {
+    // Trigger immediate upload for critical logs
+    ESF_LOG_MANAGER_INFO(
+        "Critical log upload timeout reached, triggering upload.\n");
+
+    EsfLogManagerStatus ret = EsfLogManagerInternalDlogFullCollector();
+    if (ret != kEsfLogManagerStatusOk) {
+      ESF_LOG_MANAGER_ERROR("Failed to process about Dlog full. ret=%d\n", ret);
+      return kEsfLogManagerStatusFailed;
+    }
+  }
+
+  return kEsfLogManagerStatusOk;
+}
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE

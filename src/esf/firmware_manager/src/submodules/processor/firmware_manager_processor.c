@@ -124,11 +124,13 @@ static EsfFwMgrResult EsfFwMgrProcessorOpen(
     return kEsfFwMgrResultInvalidArgument;
   }
 
+#ifndef CONFIG_EXTERNAL_TARGET_T4R
   if (request->target == kEsfFwMgrTargetProcessorLoader) {
     ESF_FW_MGR_DLOG_ERROR("Not supported: Processor loader");
     ESF_FW_MGR_ELOG_ERROR(kEsfFwMgrElogErrorId0x83Processor);
     return kEsfFwMgrResultUnimplemented;
   }
+#endif
 
   if (prepare_write->total_size <= 0) {
     ESF_FW_MGR_DLOG_ERROR("prepare_write->total_size must be positive: %d.\n",

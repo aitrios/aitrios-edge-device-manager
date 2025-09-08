@@ -48,3 +48,11 @@ bool PlMainIsMigrationSupported(void) {
   return false;
 #endif
 }
+// -----------------------------------------------------------------------------
+void PlMainEraseMigrationSrcData(void) {
+  return PlMainInternalEraseMigrationSrcData();
+}
+// ----------------------------------------------------------------------------
+PlErrCode PlMainExecMigration(void) {
+  return PlMainInternalExecMigration();
+}

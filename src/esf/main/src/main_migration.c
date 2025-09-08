@@ -11,10 +11,11 @@
 #include "main.h"
 #include "main_log.h"
 #include "network_manager.h"
-#include "power_manager.h"
 #include "parameter_storage_manager.h"
 #include "parameter_storage_manager_common.h"
 #include "pl_main.h"
+#include "power_manager.h"
+#include "system_manager.h"
 
 // ----------------------------------------------------------------------------
 typedef struct EsfMigrationMask {
@@ -41,7 +42,8 @@ static const EsfParameterStorageManagerMemberInfo kMigrationMembersInfo[] = {{
 }};
 
 static const EsfParameterStorageManagerStructInfo kEsfMigrationStructInfo = {
-    .items_num = sizeof(kMigrationMembersInfo) / sizeof(kMigrationMembersInfo[0]),
+    .items_num = sizeof(kMigrationMembersInfo) /
+                 sizeof(kMigrationMembersInfo[0]),
     .items = kMigrationMembersInfo,
 };
 
@@ -115,6 +117,12 @@ EsfMainError EsfMainDisableMigrationFlag(void) {
 EsfMainError EsfMainExecMigration(void) {
   ESF_MAIN_LOG_INFO("%s start", __func__);
   EsfMainError ret = kEsfMainOk;
+  PlErrCode main_ret = kPlErrCodeOk;
+  main_ret = PlMainExecMigration();
+  if (main_ret != kPlErrCodeOk) {
+    ESF_MAIN_LOG_ERR("%s error:%u", __func__, main_ret);
+    ret = kEsfMainErrorExternal;
+  }
   EsfPwrMgrError pwr_ret = EsfPwrMgrExecMigration();
   if (pwr_ret != kEsfPwrMgrOk) {
     ESF_MAIN_LOG_ERR("%s error:%u", __func__, pwr_ret);
@@ -125,6 +133,19 @@ EsfMainError EsfMainExecMigration(void) {
     ESF_MAIN_LOG_ERR("%s error:%u", __func__, nm_ret);
     ret = kEsfMainErrorExternal;
   }
+  EsfSystemManagerResult sm_ret = EsfSystemManagerMigration();
+  if (sm_ret != kEsfSystemManagerResultOk) {
+    ESF_MAIN_LOG_ERR("%s SystemManager migration error:%u", __func__, sm_ret);
+    ret = kEsfMainErrorExternal;
+  }
   ESF_MAIN_LOG_INFO("%s end:%u", __func__, ret);
   return ret;
+}
+// ----------------------------------------------------------------------------
+EsfMainError EsfMainEraseMigrationSrcData(void) {
+  ESF_MAIN_LOG_INFO("%s start", __func__);
+  PlMainEraseMigrationSrcData();
+  EsfNetworkManagerEraseMigrationSrcData();
+  ESF_MAIN_LOG_INFO("%s end", __func__);
+  return kEsfMainOk;
 }
