@@ -56,6 +56,30 @@ EsfSystemManagerResult EsfSystemManagerLoadRootAuthFromPsm(
     const EsfParameterStorageManagerRootAuthMask* mask,
     EsfParameterStorageManagerRootAuth* data);
 
+// """Saves the Root Auth to the parameter storage manager (PSM).
+// This function saves the Root Auth into the specified
+// parameter storage manager (PSM) handle. It first checks if the provided
+// mask and data pointers are not NULL, then proceeds to save the data
+// using the EsfParameterStorageManagerSave function. Finally, it returns
+// the result of the save operation.
+// Args:
+//   [IN] handle (EsfParameterStorageManagerHandle): The handle to the
+//     parameter storage manager where the data will be saved.
+//   [IN] mask (const EsfParameterStorageManagerRootAuthMask*): A pointer to
+//     the mask that specifies which fields are being updated.
+//   [IN] data (const EsfParameterStorageManagerRootAuth*): A pointer to the
+//     data containing the Root Auth to be saved.
+// Returns:
+//   kEsfSystemManagerResultOk: if the operation is successful.
+//   kEsfSystemManagerResultParamError: if either the mask or data pointer is
+//     NULL.
+//   kEsfSystemManagerResultInternalError: if the internal save operation fails.
+// """
+EsfSystemManagerResult EsfSystemManagerSaveRootAuthToPsm(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerRootAuthMask* mask,
+    const EsfParameterStorageManagerRootAuth* data);
+
 #ifdef __cplusplus
 }
 #endif

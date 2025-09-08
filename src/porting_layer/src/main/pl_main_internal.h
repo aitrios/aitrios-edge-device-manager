@@ -232,5 +232,7 @@ PlErrCode PlMainInternalFlashUnmount(const PlMainDeviceInformation* info,
 PlErrCode PlMainInternalIsFeatureSupported(const PlMainFeatureType* support,
                                            size_t support_size,
                                            PlMainFeatureType type);
+PlErrCode PlMainInternalExecMigration(void);
 
+void PlMainInternalEraseMigrationSrcData(void);
 #endif  // PL_MAIN_INTERNAL_H__

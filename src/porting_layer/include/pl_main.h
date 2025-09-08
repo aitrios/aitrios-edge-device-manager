@@ -161,4 +161,6 @@ PlErrCode PlMainFlashUnmount(void);
 PlErrCode PlMainIsFeatureSupported(PlMainFeatureType type);
 bool PlMainIsMigrationSupported(void);
 
+void PlMainEraseMigrationSrcData(void);
+PlErrCode PlMainExecMigration(void);
 #endif /* PL_MAIN_H__ */

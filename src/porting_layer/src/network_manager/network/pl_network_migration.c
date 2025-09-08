@@ -43,3 +43,8 @@ PlErrCode PlNetworkIsNeedMigration(PlNetworkMigrationNeedParam *param,
   PlErrCode ret = PlNetworkIsNeedMigrationImpl(param, need_migration);
   return ret;
 }
+
+// -----------------------------------------------------------------------------
+void PlNetworkEraseMigrationSrcData(void) {
+  return PlNetworkEraseMigrationSrcDataImpl();
+}

@@ -163,25 +163,44 @@ EsfLogManagerStatus EsfLogManagerDeleteCallbackList(void) {
 }
 
 EsfLogManagerStatus EsfLogManagerSetLocalUploadStatus(LogUploadStatusT status) {
-  LocalUploadDlogDataT *entry = (LocalUploadDlogDataT *)NULL;
-  LocalUploadDlogDataT *temp = (LocalUploadDlogDataT *)NULL;
-  LocalUploadDlogDataT *keep = (LocalUploadDlogDataT *)NULL;
+  LocalUploadDlogDataT *priority_entry = NULL;
+  LocalUploadDlogDataT *critical_entry = NULL;
+  LocalUploadDlogDataT *normal_entry = NULL;
+  LocalUploadDlogDataT *entry = NULL;
+  LocalUploadDlogDataT *target_entry = NULL;
 
   if (pthread_mutex_lock(&s_local_upload_dlog_data_list_mutex) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
     return kEsfLogManagerStatusFailed;
   }
 
-  if (SLIST_EMPTY(&s_local_upload_dlog_data_list) == false) {
-    SLIST_FOREACH_SAFE(entry, &s_local_upload_dlog_data_list, m_next, temp) {
-      keep = entry;
+  // Find the last priority, critical and normal entries
+  SLIST_FOREACH(entry, &s_local_upload_dlog_data_list, m_next) {
+    if (entry != NULL) {
+      if (entry->m_is_priority) {
+        priority_entry = entry;
+      } else if (entry->m_is_critical) {
+        critical_entry = entry;
+      } else if (!entry->m_is_critical) {
+        normal_entry = entry;
+      }
     }
   }
 
-  if (keep != NULL) {
-    keep->m_status = status;
+  // Prioritize: priority flag > critical log > normal log
+  if (priority_entry != NULL) {
+    target_entry = priority_entry;
+  } else if (critical_entry != NULL) {
+    target_entry = critical_entry;
+  } else {
+    target_entry = normal_entry;
+  }
+
+  if (target_entry != NULL) {
+    target_entry->m_status = status;
     if (status == kUploadStatusRequest) {
-      keep->m_upload_complete_size = 0;
+      target_entry->m_upload_complete_size = 0;
+      target_entry->m_is_priority = false;
     }
   }
 
@@ -194,25 +213,44 @@ EsfLogManagerStatus EsfLogManagerSetLocalUploadStatus(LogUploadStatusT status) {
 }
 
 EsfLogManagerStatus EsfLogManagerSetCloudUploadStatus(LogUploadStatusT status) {
-  CloudUploadDlogDataT *entry = (CloudUploadDlogDataT *)NULL;
-  CloudUploadDlogDataT *temp = (CloudUploadDlogDataT *)NULL;
-  CloudUploadDlogDataT *keep = (CloudUploadDlogDataT *)NULL;
+  CloudUploadDlogDataT *priority_entry = NULL;
+  CloudUploadDlogDataT *critical_entry = NULL;
+  CloudUploadDlogDataT *normal_entry = NULL;
+  CloudUploadDlogDataT *entry = NULL;
+  CloudUploadDlogDataT *target_entry = NULL;
 
   if (pthread_mutex_lock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
     return kEsfLogManagerStatusFailed;
   }
 
-  if (SLIST_EMPTY(&s_cloud_upload_dlog_data_list) == false) {
-    SLIST_FOREACH_SAFE(entry, &s_cloud_upload_dlog_data_list, m_next, temp) {
-      keep = entry;
+  // Find the last priority, critical and normal entries
+  SLIST_FOREACH(entry, &s_cloud_upload_dlog_data_list, m_next) {
+    if (entry != NULL) {
+      if (entry->m_is_priority) {
+        priority_entry = entry;
+      } else if (entry->m_is_critical) {
+        critical_entry = entry;
+      } else if (!entry->m_is_critical) {
+        normal_entry = entry;
+      }
     }
   }
 
-  if (keep != NULL) {
-    keep->m_status = status;
+  // Prioritize: priority flag > critical log > normal log
+  if (priority_entry != NULL) {
+    target_entry = priority_entry;
+  } else if (critical_entry != NULL) {
+    target_entry = critical_entry;
+  } else {
+    target_entry = normal_entry;
+  }
+
+  if (target_entry != NULL) {
+    target_entry->m_status = status;
     if (status == kUploadStatusRequest) {
-      keep->m_upload_complete_size = 0;
+      target_entry->m_upload_complete_size = 0;
+      target_entry->m_is_priority = false;
     }
   }
 
@@ -274,58 +312,10 @@ int32_t EsfLogManagerCheckCloudListNum(void) {
   return count;
 }
 
-LocalUploadDlogDataT *EsfLogManagerGetLocalTailListData(void) {
-  LocalUploadDlogDataT *entry = (LocalUploadDlogDataT *)NULL;
-  LocalUploadDlogDataT *temp = (LocalUploadDlogDataT *)NULL;
-  LocalUploadDlogDataT *keep = (LocalUploadDlogDataT *)NULL;
-
-  if (pthread_mutex_lock(&s_local_upload_dlog_data_list_mutex) != 0) {
-    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
-    return NULL;
-  }
-
-  if (SLIST_EMPTY(&s_local_upload_dlog_data_list) == false) {
-    SLIST_FOREACH_SAFE(entry, &s_local_upload_dlog_data_list, m_next, temp) {
-      keep = entry;
-    }
-  }
-
-  if (pthread_mutex_unlock(&s_local_upload_dlog_data_list_mutex) != 0) {
-    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
-    return NULL;
-  }
-
-  return keep;
-}
-
-CloudUploadDlogDataT *EsfLogManagerGetCloudTailListData(void) {
-  CloudUploadDlogDataT *entry = (CloudUploadDlogDataT *)NULL;
-  CloudUploadDlogDataT *temp = (CloudUploadDlogDataT *)NULL;
-  CloudUploadDlogDataT *keep = (CloudUploadDlogDataT *)NULL;
-
-  if (pthread_mutex_lock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
-    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
-    return NULL;
-  }
-
-  if (SLIST_EMPTY(&s_cloud_upload_dlog_data_list) == false) {
-    SLIST_FOREACH_SAFE(entry, &s_cloud_upload_dlog_data_list, m_next, temp) {
-      keep = entry;
-    }
-  }
-
-  if (pthread_mutex_unlock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
-    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
-    return NULL;
-  }
-
-  return keep;
-}
-
 EsfLogManagerStatus EsfLogManagerRegisterLocalList(
     EsfLogManagerSettingBlockType block_type,
     EsfLogManagerBulkDlogCallback callback, void *user_data, size_t data_size,
-    uint8_t *data) {
+    uint8_t *data, bool is_critical) {
   LocalUploadDlogDataT *add_data =
       (LocalUploadDlogDataT *)malloc(sizeof(LocalUploadDlogDataT));
   if (add_data == (LocalUploadDlogDataT *)NULL) {
@@ -341,6 +331,9 @@ EsfLogManagerStatus EsfLogManagerRegisterLocalList(
   add_data->m_user_data = user_data;
   add_data->m_status = kUploadStatusRequest;
   add_data->m_file_name = NULL;
+  add_data->m_is_critical = is_critical;
+  add_data->m_is_priority = false;
+  add_data->m_retry_count = 0;
   clock_gettime(CLOCK_REALTIME, &add_data->m_time_stamp);
 
   if (pthread_mutex_lock(&s_local_upload_dlog_data_list_mutex) != 0) {
@@ -362,7 +355,7 @@ EsfLogManagerStatus EsfLogManagerRegisterLocalList(
 EsfLogManagerStatus EsfLogManagerRegisterCloudList(
     EsfLogManagerSettingBlockType block_type,
     EsfLogManagerBulkDlogCallback callback, void *user_data, size_t data_size,
-    uint8_t *data) {
+    uint8_t *data, bool is_critical) {
   CloudUploadDlogDataT *add_data =
       (CloudUploadDlogDataT *)malloc(sizeof(CloudUploadDlogDataT));
   if (add_data == (CloudUploadDlogDataT *)NULL) {
@@ -378,6 +371,9 @@ EsfLogManagerStatus EsfLogManagerRegisterCloudList(
   add_data->m_user_data = user_data;
   add_data->m_status = kUploadStatusRequest;
   add_data->m_file_name = NULL;
+  add_data->m_is_critical = is_critical;
+  add_data->m_is_priority = false;
+  add_data->m_retry_count = 0;
   clock_gettime(CLOCK_REALTIME, &add_data->m_time_stamp);
 
   if (pthread_mutex_lock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
@@ -565,4 +561,232 @@ EsfLogManagerStatus EsfLogManagerDeleteCloudUploadList(void) {
   }
 
   return kEsfLogManagerStatusOk;
+}
+
+EsfLogManagerStatus EsfLogManagerUnregisterLocalListDataPriority(void) {
+  LocalUploadDlogDataT *priority_entry = NULL;
+  LocalUploadDlogDataT *critical_entry = NULL;
+  LocalUploadDlogDataT *normal_entry = NULL;
+  LocalUploadDlogDataT *entry = NULL;
+  LocalUploadDlogDataT *target_entry = NULL;
+
+  EsfLogManagerBulkDlogCallback callback = NULL;
+  size_t upload_size = 0;
+  void *user_data = NULL;
+
+  if (pthread_mutex_lock(&s_local_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  // Find the last priority, critical and normal entries
+  SLIST_FOREACH(entry, &s_local_upload_dlog_data_list, m_next) {
+    if (entry != NULL) {
+      if (entry->m_is_priority) {
+        priority_entry = entry;
+      } else if (entry->m_is_critical) {
+        critical_entry = entry;
+      } else if (!entry->m_is_critical) {
+        normal_entry = entry;
+      }
+    }
+  }
+
+  // Prioritize: priority flag > critical log > normal log
+  if (priority_entry != NULL) {
+    target_entry = priority_entry;
+  } else if (critical_entry != NULL) {
+    target_entry = critical_entry;
+  } else {
+    target_entry = normal_entry;
+  }
+
+  if (target_entry != NULL) {
+    if (target_entry->m_callback != NULL) {
+      callback = target_entry->m_callback;
+      upload_size = target_entry->m_upload_size;
+      user_data = target_entry->m_user_data;
+    } else {
+      // Release the allocated buffer if there is no notification callback.
+      free(target_entry->m_addr);
+      target_entry->m_addr = NULL;
+    }
+    SLIST_REMOVE(&s_local_upload_dlog_data_list, target_entry, UploadDlogData,
+                 m_next);
+    free(target_entry);
+    target_entry = NULL;
+  }
+
+  if (pthread_mutex_unlock(&s_local_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  if (callback != NULL) {
+    callback(upload_size, user_data);
+  }
+
+  return kEsfLogManagerStatusOk;
+}
+
+EsfLogManagerStatus EsfLogManagerUnregisterCloudListDataPriority(void) {
+  CloudUploadDlogDataT *priority_entry = NULL;
+  CloudUploadDlogDataT *critical_entry = NULL;
+  CloudUploadDlogDataT *normal_entry = NULL;
+  CloudUploadDlogDataT *entry = NULL;
+  CloudUploadDlogDataT *target_entry = NULL;
+
+  EsfLogManagerBulkDlogCallback callback = NULL;
+  size_t upload_size = 0;
+  void *user_data = NULL;
+
+  if (pthread_mutex_lock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  // Find the last priority, critical and normal entries
+  SLIST_FOREACH(entry, &s_cloud_upload_dlog_data_list, m_next) {
+    if (entry != NULL) {
+      if (entry->m_is_priority) {
+        priority_entry = entry;
+      } else if (entry->m_is_critical) {
+        critical_entry = entry;
+      } else if (!entry->m_is_critical) {
+        normal_entry = entry;
+      }
+    }
+  }
+
+  // Prioritize: priority flag > critical log > normal log
+  if (priority_entry != NULL) {
+    target_entry = priority_entry;
+  } else if (critical_entry != NULL) {
+    target_entry = critical_entry;
+  } else {
+    target_entry = normal_entry;
+  }
+
+  if (target_entry != NULL) {
+    if (target_entry->m_callback != NULL) {
+      callback = target_entry->m_callback;
+      upload_size = target_entry->m_upload_size;
+      user_data = target_entry->m_user_data;
+    } else {
+      // Release the allocated buffer if there is no notification callback.
+      free(target_entry->m_addr);
+      target_entry->m_addr = NULL;
+    }
+    SLIST_REMOVE(&s_cloud_upload_dlog_data_list, target_entry, UploadDlogData,
+                 m_next);
+    free(target_entry);
+    target_entry = NULL;
+  }
+
+  if (pthread_mutex_unlock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return kEsfLogManagerStatusFailed;
+  }
+
+  if (callback != NULL) {
+    callback(upload_size, user_data);
+  }
+
+  return kEsfLogManagerStatusOk;
+}
+
+LocalUploadDlogDataT *EsfLogManagerGetLocalPriorityUploadData(void) {
+  LocalUploadDlogDataT *priority_entry = NULL;
+  LocalUploadDlogDataT *critical_entry = NULL;
+  LocalUploadDlogDataT *normal_entry = NULL;
+  LocalUploadDlogDataT *entry = NULL;
+  LocalUploadDlogDataT *target_entry = NULL;
+
+  if (pthread_mutex_lock(&s_local_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return NULL;
+  }
+
+  // Find the last priority, critical and normal entries
+  SLIST_FOREACH(entry, &s_local_upload_dlog_data_list, m_next) {
+    if (entry != NULL) {
+      if (entry->m_is_priority) {
+        priority_entry = entry;
+      } else if (entry->m_is_critical) {
+        critical_entry = entry;
+      } else if (!entry->m_is_critical) {
+        normal_entry = entry;
+      }
+    }
+  }
+
+  // Select target with priority: priority flag > critical log > normal log
+  if (priority_entry != NULL) {
+    target_entry = priority_entry;
+  } else if (critical_entry != NULL) {
+    target_entry = critical_entry;
+  } else {
+    target_entry = normal_entry;
+  }
+
+  // Set priority flag for the selected entry (only if not already priority
+  // entry)
+  if (target_entry != NULL && priority_entry == NULL) {
+    target_entry->m_is_priority = true;
+  }
+
+  if (pthread_mutex_unlock(&s_local_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return NULL;
+  }
+
+  return target_entry;
+}
+
+CloudUploadDlogDataT *EsfLogManagerGetCloudPriorityUploadData(void) {
+  CloudUploadDlogDataT *priority_entry = NULL;
+  CloudUploadDlogDataT *critical_entry = NULL;
+  CloudUploadDlogDataT *normal_entry = NULL;
+  CloudUploadDlogDataT *entry = NULL;
+  CloudUploadDlogDataT *target_entry = NULL;
+
+  if (pthread_mutex_lock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
+    return NULL;
+  }
+
+  // Find the last priority, critical and normal entries
+  SLIST_FOREACH(entry, &s_cloud_upload_dlog_data_list, m_next) {
+    if (entry != NULL) {
+      if (entry->m_is_priority) {
+        priority_entry = entry;
+      } else if (entry->m_is_critical) {
+        critical_entry = entry;
+      } else if (!entry->m_is_critical) {
+        normal_entry = entry;
+      }
+    }
+  }
+
+  // Select target with priority: priority flag > critical log > normal log
+  if (priority_entry != NULL) {
+    target_entry = priority_entry;
+  } else if (critical_entry != NULL) {
+    target_entry = critical_entry;
+  } else {
+    target_entry = normal_entry;
+  }
+
+  // Set priority flag for the selected entry (only if not already priority
+  // entry)
+  if (target_entry != NULL && priority_entry == NULL) {
+    target_entry->m_is_priority = true;
+  }
+
+  if (pthread_mutex_unlock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
+    ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
+    return NULL;
+  }
+
+  return target_entry;
 }

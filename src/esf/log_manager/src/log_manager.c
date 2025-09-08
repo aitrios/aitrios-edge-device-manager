@@ -14,7 +14,7 @@
 #include "log_manager_internal.h"
 #ifndef CONFIG_EXTERNAL_DLOG_DISABLE
 #include "log_manager_list.h"
-#endif // CONFIG_EXTERNAL_DLOG_DISABLE
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE
 
 #ifdef CONFIG_EXTERNAL_LOG_MANAGER_METRICS
 #include "log_manager_metrics.h"
@@ -27,7 +27,6 @@ static bool s_after_callback_flag = false;
 
 // Functions ===============================================================
 EsfLogManagerStatus EsfLogManagerInit(void) {
-
   if (s_log_manager_state != kEsfLogManagerStateInvalid) {
     ESF_LOG_MANAGER_ERROR("State transition error. s_log_manager_state=%d\n",
                           s_log_manager_state);
@@ -87,7 +86,7 @@ EsfLogManagerStatus EsfLogManagerStart(void) {
     EsfLogManagerInternalChangeDlogCallback(kEsfLogManagerBlockTypeAiisp);
     EsfLogManagerInternalChangeDlogCallback(kEsfLogManagerBlockTypeVicapp);
   }
-#endif // CONFIG_EXTERNAL_DLOG_DISABLE
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE
 
   return kEsfLogManagerStatusOk;
 }
@@ -145,7 +144,7 @@ EsfLogManagerStatus EsfLogManagerSetParameter(
 
 #ifndef CONFIG_EXTERNAL_DLOG_DISABLE
   EsfLogManagerInternalChangeDlogCallback(block_type);
-#endif // CONFIG_EXTERNAL_DLOG_DISABLE
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE
 
   return kEsfLogManagerStatusOk;
 }
@@ -194,7 +193,8 @@ EsfLogManagerStatus EsfLogManagerGetModuleParameter(
 }
 
 #ifndef CONFIG_EXTERNAL_DLOG_DISABLE
-EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size) {
+EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size,
+                                           bool is_critical) {
   EsfLogManagerStatus ret = kEsfLogManagerStatusOk;
 
   if (s_log_manager_state != kEsfLogManagerStateStart) {
@@ -203,7 +203,7 @@ EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size) {
     return kEsfLogManagerStatusFailed;
   }
 
-  ret = EsfLogManagerInternalWriteDlog(str, size);
+  ret = EsfLogManagerInternalWriteDlog(str, size, is_critical);
   if (ret != kEsfLogManagerStatusOk) {
     ESF_LOG_MANAGER_ERROR("WriteDlog failed=%d\n", ret);
     return kEsfLogManagerStatusFailed;
@@ -221,7 +221,7 @@ EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size) {
 
   return kEsfLogManagerStatusOk;
 }
-#endif // CONFIG_EXTERNAL_DLOG_DISABLE
+#endif  // CONFIG_EXTERNAL_DLOG_DISABLE
 
 EsfLogManagerStatus EsfLogManagerSendElog(
     const EsfLogManagerElogMessage *message) {

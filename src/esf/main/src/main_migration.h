@@ -14,5 +14,6 @@
 EsfMainError EsfMainIsNeedMigration(bool *ret);
 EsfMainError EsfMainDisableMigrationFlag(void);
 EsfMainError EsfMainExecMigration(void);
+EsfMainError EsfMainEraseMigrationSrcData(void);
 
 #endif  // ESF_MAIN_MAIN_MIGRATION_H_

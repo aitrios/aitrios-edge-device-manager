@@ -11,6 +11,7 @@
 #include "pl.h"
 #include "pl_system_manager.h"
 #include "system_manager.h"
+#include "system_manager_accessor_device_manifest.h"
 #include "utility_log.h"
 #include "utility_log_module_id.h"
 
@@ -87,6 +88,29 @@ EsfSystemManagerResult EsfSystemManagerLoadHwInfoFromPsm(
   return kEsfSystemManagerResultOk;
 }
 
+EsfSystemManagerResult EsfSystemManagerSaveHwInfoToPsm(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerHwInfoMask *mask,
+    const EsfParameterStorageManagerHwInfo *data) {
+  if ((mask == NULL) || (data == NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Parameter error. mask=%p data=%p.",
+                     "system_manager_accessor_hwinfo.c", __LINE__, mask, data);
+    return kEsfSystemManagerResultParamError;
+  }
+
+  EsfParameterStorageManagerStatus status = EsfParameterStorageManagerSave(
+      handle, (EsfParameterStorageManagerMask)mask,
+      (EsfParameterStorageManagerData)data, &kStructInfo, NULL);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to save to Parameter Storage Manager.",
+                     "system_manager_accessor_hwinfo.c", __LINE__);
+    return kEsfSystemManagerResultInternalError;
+  }
+  return kEsfSystemManagerResultOk;
+}
+
 STATIC bool EsfParameterStorageManagerMaskEnabledHwInfo(
     EsfParameterStorageManagerMask mask) {
   return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
@@ -103,6 +127,7 @@ EsfSystemManagerResult EsfSystemManagerParseHwInfo(
     return kEsfSystemManagerResultParamError;
   }
 
+  // For platforms that don't require JWT parsing
   PlSystemManagerHwInfo *pl_data_struct = calloc(1,
                                                  sizeof(PlSystemManagerHwInfo));
   if (pl_data_struct == NULL) {
@@ -129,6 +154,34 @@ EsfSystemManagerResult EsfSystemManagerParseHwInfo(
     }
   }
 
+  if (PlSystemManagerRequiresSerialNumberFromDeviceManifest()) {
+    // For platforms that require JWT parsing (like T4R)
+    // Use the Device Manifest accessor to parse JWT and populate all HW Info
+    // fields
+    EsfSystemManagerResult result =
+        EsfSystemManagerParseSerialNumberFromDeviceManifest(data);
+    if (result != kEsfSystemManagerResultOk) {
+      if (result == kEsfSystemManagerResultEmptyData) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:Device Manifest is empty for HW Info. result=%d",
+            "system_manager_accessor_hwinfo.c", __LINE__, result);
+      } else {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:Failed to parse Device Manifest for HW Info. result=%d",
+            "system_manager_accessor_hwinfo.c", __LINE__, result);
+        free(pl_data_struct);
+        return kEsfSystemManagerResultInternalError;
+      }
+    }
+  } else {
+    strncpy(data->serial_number, pl_data_struct->serial_number,
+            sizeof(data->serial_number) - 1);
+    data->serial_number[ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE - 1] =
+        '\0';
+  }
+
   strncpy(data->model_name, pl_data_struct->model_name,
           sizeof(data->model_name) - 1);
   data->model_name[ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE - 1] = '\0';
@@ -140,10 +193,6 @@ EsfSystemManagerResult EsfSystemManagerParseHwInfo(
           sizeof(data->product_serial_number) - 1);
   data->product_serial_number
       [ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE - 1] = '\0';
-  strncpy(data->serial_number, pl_data_struct->serial_number,
-          sizeof(data->serial_number) - 1);
-  data->serial_number[ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE - 1] =
-      '\0';
   strncpy(data->aiisp_chip_id, pl_data_struct->aiisp_chip_id,
           sizeof(data->aiisp_chip_id) - 1);
   data->aiisp_chip_id[ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE - 1] =
@@ -159,8 +208,10 @@ EsfSystemManagerResult EsfSystemManagerParseHwInfo(
           sizeof(data->sensor_model_name) - 1);
   data->sensor_model_name[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE -
                           1] = '\0';
+  strncpy(data->device_name, pl_data_struct->device_name,
+          sizeof(data->device_name) - 1);
+  data->device_name[ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE - 1] = '\0';
 
   free(pl_data_struct);
-
   return kEsfSystemManagerResultOk;
 }

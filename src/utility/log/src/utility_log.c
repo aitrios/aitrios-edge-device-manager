@@ -511,7 +511,9 @@ STATIC UtilityLogStatus UtilityLogWriteDlogInternal(
   }
   if ((dlog_dest == kUtilityLogDlogDestStore) ||
       (dlog_dest == kUtilityLogDlogDestBoth)) {
-    EsfLogManagerStatus ret = EsfLogManagerStoreDlog((uint8_t *)log_str, idx);
+    bool is_critical = (level == kUtilityLogDlogLevelCritical);
+    EsfLogManagerStatus ret = EsfLogManagerStoreDlog((uint8_t *)log_str, idx,
+                                                     is_critical);
     if (ret != kEsfLogManagerStatusOk) {
       UTILITY_LOG_ERROR("EsfLogManagerStoreDlog Failed. ret=%d", ret);
       free(log_str);

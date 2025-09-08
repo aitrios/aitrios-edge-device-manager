@@ -51,6 +51,20 @@ EsfSystemManagerResult EsfSystemManagerLoadHwInfoFromPsm(
     const EsfParameterStorageManagerHwInfoMask *mask,
     EsfParameterStorageManagerHwInfo *data);
 
+// Save HW Info to the parameter storage manager (PSM).
+// Args:
+//   [IN] handle: PSM handle.
+//   [IN] mask: Mask specifying which fields to save.
+//   [IN] data: HW Info data to save.
+// Returns:
+//   kEsfSystemManagerResultOk: Success.
+//   kEsfSystemManagerResultParamError: Invalid parameter.
+//   kEsfSystemManagerResultInternalError: Internal error.
+EsfSystemManagerResult EsfSystemManagerSaveHwInfoToPsm(
+    EsfParameterStorageManagerHandle handle,
+    const EsfParameterStorageManagerHwInfoMask *mask,
+    const EsfParameterStorageManagerHwInfo *data);
+
 EsfSystemManagerResult EsfSystemManagerParseHwInfo(
     EsfSystemManagerHwInfo *data,
     EsfParameterStorageManagerHwInfo *data_struct);

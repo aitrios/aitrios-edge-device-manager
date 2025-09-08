@@ -43,6 +43,7 @@ PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
   data->sensor_id[0] = '\0';
   data->app_processor_type[0] = '\0';
   data->sensor_model_name[0] = '\0';
+  data->device_name[0] = '\0';
 
   PlErrCode err = PlSystemManagerGetSerialNumber(data->serial_number);
   if (err != kPlErrCodeOk) {
@@ -108,6 +109,10 @@ static PlErrCode PlSystemManagerGetSerialNumber(char *serial_number) {
 
 bool PlSystemManagerIsHwInfoSupported(void) { return false; }
 
+bool PlSystemManagerRequiresSerialNumberFromDeviceManifest(void) {
+  return false;
+}
+
 PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
                                       bool *reset_flag) {
   if (reset_flag == NULL) {
@@ -117,5 +122,32 @@ PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
   }
   (void)reset_cause;
   *reset_flag = false;
+  return kPlErrCodeOk;
+}
+
+/*TODO : This is a provisional implementation to prevent build errors. */
+PlErrCode PlSystemManagerGetMigrationDataImpl(PlSystemManagerMigrationDataId id,
+                                              void *dst, size_t dst_size) {
+  // RPI platform has no migration data, so return empty data
+  if (dst != NULL && dst_size > 0) {
+    // Set empty string to indicate no migration data available
+    memset(dst, 0, dst_size);
+  }
+
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                  "%s-%d:RPI platform has no migration data for id=%d, "
+                  "returning empty data.",
+                  "pl_system_manager_impl.c", __LINE__, id);
+
+  return kPlErrCodeOk;
+}
+
+PlErrCode PlSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id) {
+  // RPI platform has no migration data files, so deletion is always successful
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                  "%s-%d:RPI platform has no migration data for id=%d, "
+                  "deletion is considered successful.",
+                  "pl_system_manager_impl.c", __LINE__, id);
+
   return kPlErrCodeOk;
 }

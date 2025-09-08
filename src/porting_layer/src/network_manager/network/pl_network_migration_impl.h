@@ -19,5 +19,6 @@ PlErrCode PlNetworkGetMigrationDataImpl(PlNetworkMigrationHandle handle,
                                         size_t dst_size);
 PlErrCode PlNetworkIsNeedMigrationImpl(PlNetworkMigrationNeedParam *param,
                                        bool *need_migration);
+void PlNetworkEraseMigrationSrcDataImpl(void);
 
 #endif  // PORTING_LAYER_SRC_NETWORK_MANAGER_NETWORK_MIGRATION_IMPL_H_

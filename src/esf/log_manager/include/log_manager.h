@@ -313,16 +313,17 @@ EsfLogManagerStatus EsfLogManagerGetParameter(
 EsfLogManagerStatus EsfLogManagerGetModuleParameter(
     uint32_t module_id, EsfLogManagerParameterValue *value);
 
-// """Requests the Dlog to be stored in the LogManager
+// """Requests the Dlog with log level to be stored in the LogManager
 
 // The string specified by the string pointer is stored in the Dlog memory
-// in the specified size.
+// in the specified size with the specified log level.
 // When the accumulated memory for DLog becomes full, a callback notification
 // of DLog memory full will be sent.
 
 // Args:
 //    *str (uint8_t): Specifies the string pointer to be accumulated.
 //    size (uint32_t): Specifies the string size.
+//    is_critical (bool): Specifies whether the log is critical.
 
 // Returns:
 //    kEsfLogManagerStatusOk: success
@@ -331,8 +332,8 @@ EsfLogManagerStatus EsfLogManagerGetModuleParameter(
 //                                If the accumulation process fails
 
 // """
-
-EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size);
+EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size,
+                                           bool is_critical);
 
 //""" Requests the Elog to send to LogManager
 

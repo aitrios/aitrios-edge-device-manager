@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include <bsd/sys/queue.h>
 
@@ -270,6 +272,55 @@ static PlErrCode PlStorageCreateHandle(PlStorageDataId id, int oflags,
 err_free:
   free(hdl);
   return ret;
+}
+
+// ----------------------------------------------------------------------------
+static void DeleteNmconnectionFile(void) {
+  const char* path = "/etc/NetworkManager/system-connections/";
+  DIR *dir = opendir(path);
+  if (!dir) {
+    return;
+  }
+
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    if ((entry->d_type == DT_REG) || (entry->d_type == DT_UNKNOWN)) {
+      char fullpath[1024];
+      snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
+      struct stat st;
+      if (stat(fullpath, &st) == 0) {
+        remove(fullpath);
+      }
+    }
+  }
+  closedir(dir);
+  return;
+}
+
+// ----------------------------------------------------------------------------
+static PlErrCode ResetNmconnectionFile(void) {
+  const char *path = "/etc/NetworkManager/system-connections/eth0.nmconnection";
+  FILE *fp = fopen(path, "w");
+
+  if (fp == NULL) {
+    LOG_ERR(0x39, "Failed to create file\n");
+    return kPlErrInternal;
+  }
+
+  fprintf(fp,
+      "[connection]\n"
+      "id=eth0\n"
+      "type=ethernet\n"
+      "interface-name=eth0\n"
+      "autoconnect=true\n\n"
+      "[ipv4]\n"
+      "method=auto\n\n"
+      "[ipv6]\n"
+      "method=ignore\n"
+  );
+  fclose(fp);
+  chmod(path, 0600);
+  return kPlErrCodeOk;
 }
 
 // ----------------------------------------------------------------------------
@@ -702,7 +753,12 @@ out_unlock_mutex:
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageFactoryReset(PlStorageDataId id) {
-  return PlStorageErase(id);
+  PlErrCode ret = PlStorageErase(id);
+  if (id == PlStorageDataIPAddress) {
+    DeleteNmconnectionFile();
+    ret = ResetNmconnectionFile();
+  }
+  return ret;
 }
 
 // ----------------------------------------------------------------------------

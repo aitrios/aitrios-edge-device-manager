@@ -72,7 +72,9 @@ EsfLogManagerStatus EsfLogManagerInternalSetup(void);
 //    kEsfLogManagerStatusFailed: abnormal termination.
 // """
 EsfLogManagerStatus EsfLogManagerInternalWriteDlog(const uint8_t *str,
-                                                   uint32_t size);
+                                                   uint32_t size,
+                                                   bool is_critical);
+
 // """Terminate the Log manager internal.
 // Args:
 //    no arguments

@@ -1628,7 +1628,7 @@ Requests to store a Dlog entry in the LogManager.
 
 * *Format* +
 +
-``** EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size) **``
+``** EsfLogManagerStatus EsfLogManagerStoreDlog(uint8_t *str, uint32_t size, bool is_critical) **``
 
 * *Arguments* +
 +
