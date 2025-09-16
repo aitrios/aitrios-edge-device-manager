@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
- 
+
 #ifndef ESF_CLOCK_MANAGER_SETTING_H_
 #define ESF_CLOCK_MANAGER_SETTING_H_
 
@@ -286,6 +286,43 @@ EsfClockManagerReturnValue EsfClockManagerSetParams(
 // """
 EsfClockManagerReturnValue EsfClockManagerGetParams(
     EsfClockManagerParams *const data);
+
+/**
+ * @brief Migrate NTP URL configuration data
+ *
+ * This function migrates NTP URL configuration data from the old format
+ * to the new format during system upgrades. It retrieves migration data
+ * using the platform layer implementation.
+ *
+ * @param[out] dst Destination buffer to store migrated data
+ * @param[in] dst_size Size of the destination buffer
+ *
+ * @return EsfClockManagerReturnValue
+ * @retval kClockManagerSuccess Migration completed successfully
+ * @retval kClockManagerInternalError Failed to retrieve migration data
+ *
+ * @note This function is specific to T4 platform implementation
+ */
+EsfClockManagerReturnValue EsfClockManagerGetMigrationData(void *dst,
+                                                           size_t dst_size);
+
+/**
+ * @brief Perform clock manager settings migration
+ *
+ * This function performs migration of clock manager settings by retrieving
+ * NTP URL from migration data and updating the current configuration.
+ * It first gets the migration data using EsfClockManagerGetMigrationData,
+ * then retrieves current parameters using EsfClockManagerGetParams.
+ *
+ * @return EsfClockManagerReturnValue
+ * @retval kClockManagerSuccess Migration completed successfully
+ * @retval kClockManagerParamError Invalid parameter error
+ * @retval kClockManagerInternalError Failed to retrieve migration data or
+ * current parameters
+ *
+ * @note This function is specific to T4 platform implementation
+ */
+EsfClockManagerReturnValue EsfClockManagerMigrateSettings(void);
 
 #ifdef __cplusplus
 }

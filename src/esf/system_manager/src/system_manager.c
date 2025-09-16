@@ -2177,6 +2177,9 @@ EsfSystemManagerResult EsfSystemManagerSetResetCause(
 #ifdef CONFIG_EXTERNAL_SYSTEM_MANAGER_RESET_CAUSE_DISABLE
   return kEsfSystemManagerResultOk;
 #else
+  WRITE_DLOG_DEBUG(MODULE_ID_SYSTEM,
+                   "%s-%d:EsfSystemManagerSetResetCause start. reset_cause=%d",
+                   "system_manager.c", __LINE__, reset_cause);
   if ((reset_cause <= kEsfSystemManagerResetCauseUnknown) ||
       (reset_cause >= kEsfSystemManagerResetCauseMax)) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Parameter error. reset_cause=%d",
@@ -2250,24 +2253,38 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
 
   EsfSystemManagerResetCause get_sm_reset_cause =
       kEsfSystemManagerResetCauseUnknown;
+  struct EsfPwrMgrExceptionInfo *info = NULL;
+  uint32_t info_size = 0;
+  bool is_exception = false;
 
-  if (pm_reset_cause == kEsfPwrMgrResetCauseWDT) {
 #ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
+  if ((pm_reset_cause == kEsfPwrMgrResetCauseWDT) ||
+      (pm_reset_cause == kEsfPwrMgrResetCauseCoreSoft)) {
     WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
                     "%s-%d:Save ExceptionInfo to parameter storage manager.",
                     "system_manager.c", __LINE__);
 
     /* get ExceptionInfo */
-    struct EsfPwrMgrExceptionInfo *info = NULL;
-    uint32_t info_size = 0;
     pm_result = EsfPwrMgrGetExceptionInfo(&info, &info_size);
     if (pm_result != kEsfPwrMgrOk) {
-      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
-                       "%s-%d:Failed to set ExceptionInfo. pm_result=%d",
-                       "system_manager.c", __LINE__, pm_result);
-      return kEsfSystemManagerResultInternalError;
+      if (pm_reset_cause == kEsfPwrMgrResetCauseWDT) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:Failed to get ExceptionInfo. pm_result=%d",
+                         "system_manager.c", __LINE__, pm_result);
+        return kEsfSystemManagerResultInternalError;
+      } else {  // kEsfPwrMgrResetCauseCoreSoft
+        WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
+                        "%s-%d:No ExceptionInfo. pm_result=%d",
+                        "system_manager.c", __LINE__, pm_result);
+      }
+    } else {
+      is_exception = true;
     }
+  }
+#endif  // CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
 
+  if (is_exception) {
+#ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
     {
       /* write flash ExceptionInfo */
       EsfParameterStorageManagerHandle handle =
@@ -2380,8 +2397,12 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
           // fall through
 
         case kEsfPwrMgrResetCauseCoreSoft:
-          // Booting without a saved ResetCause is treated as SoftResetError.
-          save_sm_reset_cause = kEsfSystemManagerResetCauseSoftResetError;
+          if (is_exception) {
+            save_sm_reset_cause = kEsfSystemManagerResetCauseWDT;
+          } else {
+            // Booting without a saved ResetCause is treated as SoftResetError.
+            save_sm_reset_cause = kEsfSystemManagerResetCauseSoftResetError;
+          }
           break;
 
         default:
@@ -2684,6 +2705,46 @@ EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag) {
     return kEsfSystemManagerResultInternalError;
   }
 
+  if (pm_reset_cause == kEsfPwrMgrResetCauseCoreSoft) {
+    EsfParameterStorageManagerHandle handle =
+        ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
+    EsfParameterStorageManagerStatus status =
+        EsfParameterStorageManagerOpen(&handle);
+    if (status != kEsfParameterStorageManagerStatusOk) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:Failed to open parameter storage manager. status=%d",
+          "system_manager.c", __LINE__, status);
+      return kEsfSystemManagerResultInternalError;
+    }
+
+    /* get ExceptionInfo size */
+    EsfParameterStorageManagerItemID id =
+        kEsfParameterStorageManagerItemExceptionInfo;
+    uint32_t loadable_size = 0;
+    status = EsfParameterStorageManagerGetSize(handle, id, &loadable_size);
+    if (status != kEsfParameterStorageManagerStatusOk) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to get size of ExceptionInfo. status=%d",
+                       "system_manager.c", __LINE__, status);
+      (void)EsfParameterStorageManagerClose(handle);
+      return kEsfSystemManagerResultInternalError;
+    }
+
+    status = EsfParameterStorageManagerClose(handle);
+    if (status != kEsfParameterStorageManagerStatusOk) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:Failed to close parameter storage manager. status=%d",
+          "system_manager.c", __LINE__, status);
+      return kEsfSystemManagerResultInternalError;
+    }
+
+    if (loadable_size > 0) {
+      pm_reset_cause = kEsfPwrMgrResetCauseWDT;
+    }
+  }
+
   // Convert PowerManager ResetCause to SystemManager ResetCause
   EsfSystemManagerResetCause sm_reset_cause =
       EsfSystemManagerConvertResetCausePmToSm(pm_reset_cause);
@@ -2707,7 +2768,9 @@ EsfSystemManagerResult EsfSystemManagerIsNeedReboot(bool *reset_flag) {
 void EsfSystemManagerExecReboot(EsfSystemManagerRebootType reboot_type) {
   EsfSystemManagerResult result = kEsfSystemManagerResultOk;
   EsfPwrMgrRebootType reboot_type_pm = EsfPwrMgrRebootTypeSW;
-
+  WRITE_DLOG_DEBUG(MODULE_ID_SYSTEM,
+                   "%s-%d:EsfSystemManagerExecReboot start. reboot_type=%d",
+                   "system_manager.c", __LINE__, reboot_type);
   switch (reboot_type) {
     case kEsfSystemManagerRebootTypeSystemNormal:
       reboot_type_pm = EsfPwrMgrRebootTypeSW;
@@ -2793,24 +2856,26 @@ EsfSystemManagerResult EsfSystemManagerMigration(void) {
 
   // Erase migration data after successful migration
   const PlSystemManagerMigrationDataId migration_data_ids[] = {
-    kPlSystemManagerMigrationDataIdRootAuth,
-    kPlSystemManagerMigrationDataIdDeviceManifest,
-    kPlSystemManagerMigrationDataIdHwInfo,
-    kPlSystemManagerMigrationDataIdEvpSetupInfo
-  };
+      kPlSystemManagerMigrationDataIdRootAuth,
+      kPlSystemManagerMigrationDataIdDeviceManifest,
+      kPlSystemManagerMigrationDataIdHwInfo,
+      kPlSystemManagerMigrationDataIdEvpSetupInfo};
 
-  for (size_t i = 0; i < sizeof(migration_data_ids) / sizeof(migration_data_ids[0]); i++) {
+  for (size_t i = 0;
+       i < sizeof(migration_data_ids) / sizeof(migration_data_ids[0]); i++) {
     ret = EsfSystemManagerEraseMigrationData(migration_data_ids[i]);
     if (ret != kEsfSystemManagerResultOk) {
-      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
-                       "%s-%d:Failed to erase migration data (ID=%d). result=%d",
-                       "system_manager.c", __LINE__, migration_data_ids[i], ret);
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:Failed to erase migration data (ID=%d). result=%d",
+          "system_manager.c", __LINE__, migration_data_ids[i], ret);
       // Continue with other deletions even if one fails
     }
   }
 
   WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
-                  "%s-%d:Successfully completed all migration data processing and cleanup",
+                  "%s-%d:Successfully completed all migration data "
+                  "processing and cleanup",
                   "system_manager.c", __LINE__);
 
   return kEsfSystemManagerResultOk;

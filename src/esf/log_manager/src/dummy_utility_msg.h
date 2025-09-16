@@ -6,6 +6,7 @@
 
 typedef enum {
   kUtilityMsgOk = 0,
+  kUtilityMsgError,
   kUtilityMsgErrState,
   kUtilityMsgErrParam,
   kUtilityMsgErrLock,

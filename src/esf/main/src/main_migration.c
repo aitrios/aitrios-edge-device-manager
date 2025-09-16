@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 
+#include "clock_manager.h"
 #include "main.h"
 #include "main_log.h"
 #include "network_manager.h"
@@ -131,6 +132,11 @@ EsfMainError EsfMainExecMigration(void) {
   EsfNetworkManagerResult nm_ret = EsfNetworkManagerExecMigration();
   if (nm_ret != kEsfNetworkManagerResultSuccess) {
     ESF_MAIN_LOG_ERR("%s error:%u", __func__, nm_ret);
+    ret = kEsfMainErrorExternal;
+  }
+  EsfClockManagerReturnValue cm_ret = EsfClockManagerMigration();
+  if (cm_ret != kClockManagerSuccess) {
+    ESF_MAIN_LOG_ERR("%s error:%u", __func__, cm_ret);
     ret = kEsfMainErrorExternal;
   }
   EsfSystemManagerResult sm_ret = EsfSystemManagerMigration();

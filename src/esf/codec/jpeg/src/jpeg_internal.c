@@ -1436,6 +1436,7 @@ EsfCodecJpegError EsfCodecJpegCompressImage(
       WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                        "%s-%d:Failed to covert line. result=%d",
                        "jpeg_internal.c", __LINE__, result);
+      free(scan_line);
       return result;
     }
 

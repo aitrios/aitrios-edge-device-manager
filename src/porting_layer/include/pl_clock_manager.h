@@ -182,4 +182,37 @@ PlClockManagerReturnValue PlClockManagerRestartNtpClientDaemon(void);
 
 bool PlClockManagerIsNtpClientDaemonActive(void);
 
+/**
+ * @brief Get migration data from system configuration
+ *
+ * This function retrieves migration data from system configuration files.
+ * Currently implemented to read NTP server information from /etc/chrony.conf.
+ *
+ * @param[out] dst Destination buffer to store the migration data
+ * @param[in] dst_size Size of the destination buffer
+ *
+ * @return PlClockManagerReturnValue
+ * @retval kPlClockManagerSuccess Success
+ * @retval kPlClockManagerParamError Invalid parameters
+ * @retval kPlClockManagerInternalError Failed to access configuration file or
+ * no data found
+ */
+PlClockManagerReturnValue PlClockManagerGetMigrationDataImpl(void *dst,
+                                                              size_t dst_size);
+
+/**
+ * @brief Setup migration configuration for clock management
+ * 
+ * This function performs the complete setup for clock management migration,
+ * including the following operations:
+ * 1. Adds "confdir /etc/chrony/conf.d" to the end of chrony.conf if not present
+ * 2. Replaces default NTP server with Aitrios NTP server (time.aitrios.sony-semicon.com)
+ * 3. Creates symbolic link from /misc/smartcamera/edc/conf.d to /etc/chrony/conf.d
+ * 
+ * @return PlClockManagerReturnValue
+ * @retval kPlClockManagerSuccess Success
+ * @retval kPlClockManagerInternalError Failed to modify configuration or create symbolic link
+ */
+PlClockManagerReturnValue PlClockManagerSetupMigration(void);
+
 #endif  // PL_CLOCK_MANAGER_H_

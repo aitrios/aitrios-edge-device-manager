@@ -10,6 +10,7 @@
 # compilation in a few places
 config_h.set('CONFIG_EXTERNAL_TARGET_RPI', true)
 
+config_h.set('CONFIG_ENABLE_REBOOT_ON_EDC_ASSERT', false)
 
 #####################
 # esf

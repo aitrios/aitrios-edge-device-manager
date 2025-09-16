@@ -152,6 +152,22 @@ EsfClockManagerReturnValue EsfClockManagerRegisterCbOnNtpSyncComplete(
 // """
 EsfClockManagerReturnValue EsfClockManagerUnregisterCbOnNtpSyncComplete(void);
 
+// """Migrate clock manager settings.
+
+// This function migrates NTP URL settings for the clock manager.
+// It calls EsfClockManagerMigrateSettings to handle the migration process.
+
+// Args:
+//    no arguments
+
+// Returns:
+//    Results.  The following value is returned.
+//    kClockManagerSuccess: success.
+//    kClockManagerInternalError: internal error.
+
+// """
+EsfClockManagerReturnValue EsfClockManagerMigration(void);
+
 #ifdef __cplusplus
 }
 #endif

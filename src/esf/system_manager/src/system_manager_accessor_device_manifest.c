@@ -178,7 +178,8 @@ STATIC EsfSystemManagerResult EsfSystemManagerParseJwtPayload(
     return kEsfSystemManagerResultInternalError;
   }
 
-  strcpy(padded_payload, payload);
+  strncpy(padded_payload, payload, payload_len);
+  padded_payload[payload_len] = '\0';
 
   // Convert Base64URL to Base64: replace '-' with '+' and '_' with '/'
   for (size_t i = 0; i < payload_len; i++) {
