@@ -15,6 +15,7 @@
 #include <inttypes.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 #include <bsd/sys/queue.h>
 
@@ -51,6 +52,27 @@ static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
 static struct PlStorageSqlite3HandleList s_handle_list;
 static bool s_initialized = false;
 static sqlite3 *s_db = NULL;
+// ----------------------------------------------------------------------------
+static int MakeDir(const char *path) {
+  char dir[1024] = {0};
+  size_t len = strlen(path);
+
+  for (size_t i = 0; i < len; i++) {
+    dir[i] = path[i];
+    if (path[i] == '/') {
+      if (i == 0) {
+        continue; // root dir
+      }
+
+      int ret = mkdir(dir, 0755);
+      if ((ret != 0) && (errno != EEXIST)) {
+        LOG_ERR(0x3A, "Failed to mkdir:%s %d %d\n", dir, ret, errno);
+        return -1;
+      }
+    }
+  }
+  return 0;
+}
 
 // ----------------------------------------------------------------------------
 static struct PlStorageSqlite3Handle *toSqlite3Handle(PlStorageHandle handle) {
@@ -883,6 +905,11 @@ PlErrCode PlStorageInitialize(void) {
   db_path = getenv("EDGE_DEVICE_CORE_DB_PATH");
   if (!db_path) {
     db_path = DEFAULT_SQLITE3_DATABASE_PATH;
+  }
+  ret = MakeDir(db_path);
+  if (ret) {
+    ret = kPlErrInternal;
+    goto out_unlock_mutex;
   }
 
   ret = sqlite3_open_v2(db_path, &s_db,

@@ -47,11 +47,15 @@
 #ifdef CONFIG_EXTERNAL_WASM_BINDING_INIT
 #include "wasm_binding_init.h"
 #endif  // CONFIG_EXTERNAL_WASM_BINDING_INIT
+/*
 #if defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB)
+*/
 #include "sensor_main.h"
+/*
 #endif  // CONFIG_EXTERNAL_SENSOR_MAIN ||
         // CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB
+*/
 #include "system_manager.h"
 
 // define
@@ -285,11 +289,12 @@ static EsfMainError EsfMainGetExpirationTime(
 //     an error response is given.
 
 // """
-#if (defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
-     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB))
+
 static EsfMainError EsfMainEsfSensorInitialize(void) {
   EsfMainError ret = kEsfMainOk;
   EsfSensorErrCode sensor_ret = kEsfSensorFail;
+#if (defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
+     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB))
   EsfSystemManagerResult system_manager_ret =
       kEsfSystemManagerResultInternalError;
 
@@ -356,6 +361,8 @@ static EsfMainError EsfMainEsfSensorInitialize(void) {
       ESF_MAIN_INFO("Set kEsfSystemManagerInitialSettingCompleted");
     }
   } while (0);
+#endif  // (CONFIG_EXTERNAL_SENSOR_MAIN ||
+        // CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB)
 
   ESF_MAIN_DBG("EsfSensorUtilityVerifyFiles start.");
   sensor_ret = EsfSensorUtilityVerifyFiles();
@@ -382,6 +389,9 @@ static EsfMainError EsfMainEsfSensorInitialize(void) {
 //     This is an internal API and cannot be used externally.
 
 // """
+
+#if (defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
+     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB))
 static void EsfMainEsfSensorFinalize(void) {
   ESF_MAIN_LOG_DBG("EsfMainEmmcDeinitialize start.");
   if (PlMainEmmcUnmount() != kPlErrCodeOk) {
@@ -1429,8 +1439,13 @@ static EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
   // Execute processing for each module.
   //
   {
+//TODO: Changed to device-independent code
+//      when CONFIG_EXTERNAL_SENSOR_MAIN is enabled.
+//As a temporary solution, remove the following ifdef:
+/*
 #if (defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
-     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB))
+     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB)
+*/
     ESF_MAIN_DBG("EsfSensorUtilityResetFiles start.");
     EsfSensorErrCode sensor_ret = EsfSensorUtilityResetFiles();
     if (sensor_ret != kEsfSensorOk) {
@@ -1447,8 +1462,10 @@ static EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
       }
     }
     ESF_MAIN_DBG("EsfSensorUtilityResetFiles finish.");
+/*
 #endif  // (CONFIG_EXTERNAL_SENSOR_MAIN ||
         // CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB)
+*/
   }
   {
     // Factory Reset ParameterStorageManager
@@ -1682,7 +1699,11 @@ static int InitSigaction(void) {
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
+#ifdef __linux__
+int esf_main(int argc, char *argv[]) {
+#else
 int main(int argc, FAR char *argv[]) {
+#endif
   (void)argc;
   (void)argv;
   ESF_MAIN_LOG_TRACE("func start");

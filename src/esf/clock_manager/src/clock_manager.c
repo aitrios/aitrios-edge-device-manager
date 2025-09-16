@@ -417,3 +417,15 @@ STATIC EsfClockManagerReturnValue EsfClockManagerStopInternal(void) {
   return kClockManagerStateTransitionError;
 }
 #endif // CONFIG_EXTERNAL_TARGET_RPI
+
+
+EsfClockManagerReturnValue EsfClockManagerMigration(void) {
+  // Migration implementation - currently returns success as dummy
+  // Note: Actual migration processing is not performed for non-T4R platforms
+  // This function serves as a placeholder to maintain API consistency
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                  "%s-%d:%s --- Migration function called.\n",
+                  "clock_manager.c", __LINE__, __func__);
+  
+  return kClockManagerSuccess;
+}
