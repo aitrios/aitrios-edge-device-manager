@@ -1517,7 +1517,11 @@ EsfNetworkManagerParameterStorageManagerAccessorLoadNetwork(
     if (EsfNetworkManagerParameterStorageManagerAccessorMaskEnabledNetworkNormalNetifKind(
             (EsfParameterStorageManagerMask)mask) &&
         internal_data->netif_kind.size == 0) {
+#ifdef CONFIG_EXTERNAL_TARGET_T5
       data->normal_mode.netif_kind = 1;  // Ether
+#else
+      data->normal_mode.netif_kind = 0;
+#endif
     }
   } while (0);
 

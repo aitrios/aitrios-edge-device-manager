@@ -76,10 +76,12 @@ struct EsfPwrMgrExceptionInfo {
   struct PlSystemCtlExceptionInfo pl_info;
 };
 
-#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 // Local functions ------------------------------------------------------------
 static EsfPwrMgrError CommonMutexLock(int32_t timeout_msec);
 static EsfPwrMgrError CommonMutexUnlock(void);
+static void NotifyReboot(char *str);
+
+#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 static void HoursMeterCallBack(void *cb_params);
 static EsfPwrMgrError InitHoursMeter(void);
 static EsfPwrMgrError DeinitHoursMeter(void);
@@ -95,15 +97,19 @@ static EsfPwrMgrError InitWdt(void);
 static EsfPwrMgrError DeinitWdt(void);
 #endif // CONFIG_EXTERNAL_PL_WDT
 
-static void NotifyReboot(char *str);
 #ifdef CONFIG_EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE
 static EsfPwrMgrSupplyType ConvertGetSupplyType(PlPowerMgrSupplyType pl_type);
-#endif
+#endif  // CONFIG_EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE
 #ifdef __NuttX__
 static EsfPwrMgrResetCause ConvertResetCause(PlSystemCtlResetCause pl_cause);
-#endif
+#endif  // __NuttX__
+#endif  // !CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 
 // Global Variables -----------------------------------------------------------
+static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
+static EsfPwrMgrStatus s_status = kEsfPwrMgrStatusStop;
+
+#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 static const EsfParameterStorageManagerMemberInfo kPwrMgrMembersInfo[] = {{
     .id = kEsfParameterStorageManagerItemHoursMeter,
     .type = kEsfParameterStorageManagerItemTypeString,
@@ -119,15 +125,11 @@ static const EsfParameterStorageManagerStructInfo kPwrMgrStructInfo = {
     .items = kPwrMgrMembersInfo,
 };
 
-#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 static EsfPwrMgrResource s_resource = {
     ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE, NULL, 0};
-#endif  // !CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
-
-static EsfPwrMgrStatus s_status = kEsfPwrMgrStatusStop;
-static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct EsfPwrMgrExceptionInfo *s_exception_info = NULL;
+#endif  // !CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 
 // Functions ------------------------------------------------------------------
 static EsfPwrMgrError CommonMutexLock(int32_t timeout_msec) {
@@ -186,6 +188,18 @@ fin:
 }
 
 // ----------------------------------------------------------------------------
+static void NotifyReboot(char *str) {
+  LOG_TRACE("func start");
+
+  while (1) {
+    LOG_WARN(kEsfPwrMgrElogWarningId0x82EsfPwrMgr,
+             "Processing is stopped by %s. Please Reboot the device.", str);
+    sleep(1);
+  }
+}
+
+// ----------------------------------------------------------------------------
+#ifndef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 static void HoursMeterCallBack(void *cb_params) {
   LOG_TRACE("func start");
   (void)cb_params;
@@ -494,17 +508,6 @@ static EsfPwrMgrError DeinitWdt(void) {
 #endif // CONFIG_EXTERNAL_PL_WDT
 
 // ----------------------------------------------------------------------------
-static void NotifyReboot(char *str) {
-  LOG_TRACE("func start");
-
-  while (1) {
-    LOG_WARN(kEsfPwrMgrElogWarningId0x82EsfPwrMgr,
-             "Processing is stopped by %s. Please Reboot the device.", str);
-    sleep(1);
-  }
-}
-
-// ----------------------------------------------------------------------------
 #ifdef CONFIG_EXTERNAL_POWER_MANAGER_USB_CURRENT_LIMIT_ENABLE
 static EsfPwrMgrSupplyType ConvertGetSupplyType(PlPowerMgrSupplyType pl_type) {
   switch (pl_type) {
@@ -542,6 +545,7 @@ static EsfPwrMgrResetCause ConvertResetCause(PlSystemCtlResetCause pl_cause) {
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrStart(void) {
 #ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+  s_status = kEsfPwrMgrStatusStart;
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -672,6 +676,7 @@ fin:
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrStop(void) {
 #ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
+  s_status = kEsfPwrMgrStatusStop;
   return kEsfPwrMgrOk;
 #else
   LOG_TRACE("func start");
@@ -775,9 +780,6 @@ fin:
 
 // ----------------------------------------------------------------------------
 EsfPwrMgrError EsfPwrMgrPrepareReboot(void) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
-  return kEsfPwrMgrOk;
-#else
   LOG_TRACE("func start");
   EsfPwrMgrError ret = kEsfPwrMgrOk;
 
@@ -821,14 +823,10 @@ unlock:
 fin:
   LOG_TRACE("func end");
   return ret;
-#endif  // CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 }
 
 // ----------------------------------------------------------------------------
 void EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootType reboot_type) {
-#ifdef CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
-  return;
-#else
   LOG_TRACE("func start");
 
   PlSystemCtlOperation reboot_operation = kPlSystemCtlRebootCpu;
@@ -852,7 +850,6 @@ void EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootType reboot_type) {
 
   LOG_TRACE("func end");
   return;
-#endif  // CONFIG_EXTERNAL_POWER_MANAGER_DISABLE
 }
 
 // TODO:Scheduled for deletion

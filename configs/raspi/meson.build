@@ -51,7 +51,11 @@ config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_STABLE_SYNC_CONT_MAX', 1000)
 config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_STABLE_SYNC_CONT_DEF', 5)
 config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_DEFAULT_NTP_SERVER', '"time.aitrios.sony-semicon.com"')
 config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_NOTIFIER_STACKSIZE', 4096)
-config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_RPI', true)
+config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_DISABLE', true)
+
+# if NTP synchronization fails for about 3 minutes, it is judged as an error.
+# Because Chrony NTP synchronization cycle is 64 seconds.
+config_h.set('CONFIG_EXTERNAL_CLOCK_MANAGER_NTP_ERROR_TIME', 192)
 
 #clock manager stub netutils
 config_h.set('CONFIG_NETUTILS_NTPCLIENT_NUM_SAMPLES', 5)
@@ -174,6 +178,9 @@ config_h.set('CONFIG_PL_LED_LEDS_NUM', 3)
 
 # firmware manager porting layer
 config_h.set('CONFIG_FIRMWARE_MANAGER_PORTING_LAYER', false)
+
+# pl system control
+config_h.set('CONFIG_EXTERNAL_PL_SYSTEM_CONTROL', true)
 
 #####################
 # utility

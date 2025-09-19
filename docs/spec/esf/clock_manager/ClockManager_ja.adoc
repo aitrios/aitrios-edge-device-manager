@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 4
 :chapter-label:
-:revnumber: 0.0.6
+:revnumber: 0.0.7
 :toc:
 :toc-title: 目次
 :toclevels: 4
@@ -176,7 +176,7 @@ stateDiagram-v2
 |===
 2.2+| 3+|状態
 |IDLE |READY|RUNNING
-.9+|API名
+.10+|API名
 
 |``**`EsfClockManagerInit`**``
 |READY
@@ -219,6 +219,11 @@ stateDiagram-v2
 |―
 
 |``**`EsfClockManagerUnregisterCbOnNtpSyncComplete`**``
+|×
+|―
+|―
+
+|``**`EsfClockManagerMigration`**``
 |×
 |―
 |―
@@ -269,6 +274,10 @@ Clock Managerが提供する“終了用公開関数”が呼び出されるな�
 |NTP Client Daemonを監視してNTP時刻同期完了が発生したときに、それをコールバック関数で通知する。
 ただし、NTP時刻同期が失敗したときは、コールバック関数で通知をしない。つまり、そのコールバック関数による通知が生じるのは、NTP時刻同期が成功したときに限る。
 |<<#_Function6>>
+
+|データマイグレーション機能
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する。
+|<<#_Function7>>
 |===
 
 <<<
@@ -438,6 +447,27 @@ Clock Managerが提供する“終了用公開関数”が呼び出されるな�
         *** NTP Client Daemonがサンプリングした個数が正数である。
     ** エラー時の挙動、復帰方法 +
         *** NTP Client Daemon監視用スレッドがNTP Client Daemonのエラーを検出したならば、エラーログ出力を行う。
+
+[#_Function7]
+==== データマイグレーション機能
+* 機能概要 +
+    過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する。 +
+    移行が必要な設定データが存在する場合にのみ処理を行う。
+* 前提条件 +
+    ** Clock Managerが初期化されていること。
+    ** Parameter Storage Managerモジュールが起動していること。
+* 機能詳細
+    ** 詳細挙動 +
+        本機能は、旧形式のNTPサーバーのhostnameを新形式に変換して保存し直す。 +
+        具体的な移行処理としては、以下のような処理を行う： +
+        1. 旧形式のデータを読み取る。
+        2. Parameter Storage Managerから既存の新形式のデータを読み取る。 +
+        3. 変換後のデータをParameter Storage Managerに保存する。 +
+           移行が不要な場合（Parameter Storage Managerに既存の新形式のデータが存在する場合）は、何も処理を行わない。
+        4. その他の新形式のデータに関する初期設定を行う。
+    ** エラー時の挙動、復帰方法 +
+        移行処理に失敗した場合、エラーログ出力を行う。 +
+        復帰方法としては、再度移行処理を試みること。
 
 [#_FigureClockManagerSequence]
 .制御シーケンス図
@@ -730,6 +760,10 @@ EsfClockManagerSlewParam構造体のオブジェクトをClock Managerへ渡す�
 |`EsfClockManagerUnregisterCbOnNtpSyncComplete`
 |NTP時刻同期が完了したことを通知するコールバック関数登録を解除する。
 |<<#_EsfClockManagerUnregisterCbOnNtpSyncComplete>>
+
+|`EsfClockManagerMigration`
+|Clock Managerの設定データの移行処理を実行する。
+|<<#_EsfClockManagerMigration>>
 
 |===
 
@@ -1639,6 +1673,45 @@ NTP時刻同期が完了したことを通知するコールバック関数登�
 登録されているコールバック関数の解除をします。もしコールバック関数が登録されていないときに本関数が呼び出されたときは、 `kClockManagerSuccess` を返します。
 処理結果が正常終了であろうとエラーであろうと、状態遷移はしません。
 
+[#_EsfClockManagerMigration]
+==== EsfClockManagerMigration
+* *機能* +
++
+Clock Managerの設定データの移行処理を実行する。 +
+スレッドセーフではない。呼び出し元のコンテキストで動作する。 +
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する処理を行う。 +
+
+* *書式* +
++
+``** EsfClockManagerReturnValue EsfClockManagerMigration(void)**``
+
+* *引数の説明* +
++
+無し
+
+* *戻り値* +
++
+実行結果に応じて<<#_EsfClockManagerMigrationReturnValue>>のいずれかの値を返す。
+
+[#_EsfClockManagerMigrationReturnValue]
+.EsfClockManagerMigrationの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+
+|`kClockManagerSuccess`
+|正常終了
+
+|`kClockManagerInternalError`
+|内部エラー
+|===
+
+* *説明* +
+本関数は設定データの移行処理を実行します。具体的には、以前のバージョンで使用されていたNTPサーバーのhostnameやその他の設定パラメータを現在の形式に変換します。 +
+移行処理中にエラーが発生した場合は、 `kClockManagerInternalError` を返します。 +
+本関数は状態遷移を行いません。 +
+移行が不要な場合（すでに新しい形式の設定が存在する場合など）は、 `kClockManagerSuccess` を返して正常終了します。
+
 <<<
 
 == API使用時の呼び出し例
@@ -2203,4 +2276,12 @@ image::./images/ClockManager_4.png[scaledwidth="100%",align="center"]
 ・NTP時刻同期完了通知が呼び出されるのは成功したときに限る、に変更。 +
 ・追加 +
 　・NTP同期が通知後も同期され続けることの説明追記
+|v0.0.7
+|変更 +
+・`EsfClockManagerMigration` APIの追加 +
+　・データマイグレーション機能の機能仕様を追加 +
+　・API一覧に `EsfClockManagerMigration` を追加 +
+　・機能一覧にデータマイグレーション機能を追加 +
+　・API定義の詳細説明を追加 +
+　・状態遷移表を更新
 |===

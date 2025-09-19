@@ -1,0 +1,188 @@
+/*
+ * SPDX-FileCopyrightText: 2024-2025 Sony Semiconductor Solutions Corporation
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#ifndef PL_NETWORK_CONFIG_H_
+#define PL_NETWORK_CONFIG_H_
+
+// Macros ----------------------------------------------------------------------
+#define NETWORK_DEVNAME_LEN (32 + 1)
+#define NETWORK_PORT_INVALID (-1)
+
+#ifdef CONFIG_PL_NETWORK_EVENT_STACKSIZE
+#define NETWORK_EVENT_THREAD_STACKSIZE CONFIG_PL_NETWORK_EVENT_STACKSIZE
+#else
+#define NETWORK_EVENT_THREAD_STACKSIZE (4 * 1024)
+#endif
+
+#ifdef CONFIG_PL_NETWORK_THREAD_PRIORITY
+#define NETWORK_THREAD_PRIORITY CONFIG_PL_NETWORK_THREAD_PRIORITY
+#else
+#define NETWORK_THREAD_PRIORITY (115)
+#endif
+
+#ifdef CONFIG_PL_ETH0_IFNAME
+#define NETWORK_ETH0_IFNAME CONFIG_PL_ETH0_IFNAME
+#else
+#define NETWORK_ETH0_IFNAME "eth0"
+#endif
+
+#ifdef CONFIG_PL_ETH0_CLOUD
+#define NETWORK_ETH0_CLOUD true
+#else
+#define NETWORK_ETH0_CLOUD false
+#endif
+
+#ifdef CONFIG_PL_ETH0_LOCAL
+#define NETWORK_ETH0_LOCAL true
+#else
+#define NETWORK_ETH0_LOCAL false
+#endif
+
+#ifdef CONFIG_PL_ETHER_MONITOR_STACKSIZE
+#define ETHER_MONITOR_THREAD_STACKSIZE CONFIG_PL_ETHER_MONITOR_STACKSIZE
+#else
+#define ETHER_MONITOR_THREAD_STACKSIZE (4 * 1024)
+#endif
+
+#ifdef CONFIG_PL_ETHER_MONITOR_PERIODIC_MS
+#define ETHER_MONITOR_PERIODIC_MS CONFIG_PL_ETHER_MONITOR_PERIODIC_MS
+#else
+#define ETHER_MONITOR_PERIODIC_MS (2 * 1000)
+#endif
+
+#ifdef CONFIG_PL_ETH0_HAVE_DEVICE
+#define ETH0_DEVICE_ENABLE true
+#else
+#define ETH0_DEVICE_ENABLE false
+#endif
+
+#ifdef CONFIG_PL_ETH0_DEVNAME
+#define ETH0_DEVICE_NAME CONFIG_PL_ETH0_DEVNAME
+#else
+#define ETH0_DEVICE_NAME "\0"
+#endif
+
+#ifdef CONFIG_PL_ETH0_SPI_PORT
+#define ETH0_SPI_PORT CONFIG_PL_ETH0_SPI_PORT
+#else
+#define ETH0_SPI_PORT NETWORK_PORT_INVALID
+#endif
+
+#ifdef CONFIG_PL_ETH0_RESET_PORT
+#define ETH0_RESET_PORT CONFIG_PL_ETH0_RESET_PORT
+#else
+#define ETH0_RESET_PORT NETWORK_PORT_INVALID
+#endif
+
+#ifdef CONFIG_PL_ETH0_RESET_IS_IOEXP
+#define ETH0_RESET_IS_IOEXP true
+#else
+#define ETH0_RESET_IS_IOEXP false
+#endif
+
+#ifdef CONFIG_PL_ETH0_RESET_ACTIVE_HIGH
+#define ETH0_RESET_ACTIVE_HIGH true
+#else
+#define ETH0_RESET_ACTIVE_HIGH false
+#endif
+
+#ifdef CONFIG_PL_ETH0_IRQ_PORT
+#define ETH0_IQR_PORT CONFIG_PL_ETH0_IRQ_PORT
+#else
+#define ETH0_IQR_PORT NETWORK_PORT_INVALID
+#endif
+
+#ifdef CONFIG_PL_ETH0_IRQ_IS_IOEXP
+#define ETH0_IQR_IS_IOEXP true
+#else
+#define ETH0_IQR_IS_IOEXP false
+#endif
+
+#ifdef CONFIG_PL_ETH0_IRQ_ACTIVE_HIGH
+#define ETH0_IQR_ACTIVE_HIGH true
+#else
+#define ETH0_IQR_ACTIVE_HIGH false
+#endif
+
+#ifdef CONFIG_PL_ETH0_POWER_PORT
+#define ETH0_POWER_PORT CONFIG_PL_ETH0_POWER_PORT
+#else
+#define ETH0_POWER_PORT NETWORK_PORT_INVALID
+#endif
+
+#ifdef CONFIG_PL_ETH0_POWER_IS_IOEXP
+#define ETH0_POWER_IS_IOEXP true
+#else
+#define ETH0_POWER_IS_IOEXP false
+#endif
+
+#ifdef CONFIG_PL_ETH0_POWER_ACTIVE_HIGH
+#define ETH0_POWER_ACTIVE_HIGH true
+#else
+#define ETH0_POWER_ACTIVE_HIGH false
+#endif
+
+#ifdef CONFIG_PL_WLAN0_IFNAME
+#define NETWORK_WLAN0_IFNAME CONFIG_PL_WLAN0_IFNAME
+#else
+#define NETWORK_WLAN0_IFNAME "wlan0"
+#endif
+
+#ifdef CONFIG_PL_WLAN01_IFNAME
+#define NETWORK_WLAN1_IFNAME CONFIG_PL_WLAN01_IFNAME
+#else
+#define NETWORK_WLAN1_IFNAME "wlan1"
+#endif
+
+#ifdef CONFIG_PL_WLAN0_CLOUD
+#define NETWORK_WLAN0_CLOUD true
+#else
+#define NETWORK_WLAN0_CLOUD false
+#endif
+
+#ifdef CONFIG_PL_WLAN1_CLOUD
+#define NETWORK_WLAN1_CLOUD true
+#else
+#define NETWORK_WLAN1_CLOUD false
+#endif
+
+#ifdef CONFIG_PL_WLAN0_LOCAL
+#define NETWORK_WLAN0_LOCAL true
+#else
+#define NETWORK_WLAN0_LOCAL false
+#endif
+
+#ifdef CONFIG_PL_WLAN1_LOCAL
+#define NETWORK_WLAN1_LOCAL true
+#else
+#define NETWORK_WLAN1_LOCAL false
+#endif
+
+#ifdef CONFIG_PL_WLAN0_HAVE_DEVICE
+#define WLAN0_DEVICE_ENABLE true
+#else
+#define WLAN0_DEVICE_ENABLE false
+#endif
+
+#ifdef CONFIG_PL_WLAN0_DEVNAME
+#define WLAN0_DEVICE_NAME CONFIG_PL_WLAN0_DEVNAME
+#else
+#define WLAN0_DEVICE_NAME "\0"
+#endif
+
+#ifdef CONFIG_PL_WLAN1_HAVE_DEVICE
+#define WLAN1_DEVICE_ENABLE true
+#else
+#define WLAN1_DEVICE_ENABLE false
+#endif
+
+#ifdef CONFIG_PL_WLAN1_DEVNAME
+#define WLAN1_DEVICE_NAME CONFIG_PL_WLAN1_DEVNAME
+#else
+#define WLAN1_DEVICE_NAME "\0"
+#endif
+
+#endif  // PL_NETWORK_CONFIG_H_

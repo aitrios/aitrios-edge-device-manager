@@ -12,6 +12,9 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "clock_manager.h"
+#include "pl_clock_manager.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -34,6 +37,10 @@ typedef int32_t EsfClockManagerMillisecondT;
 /**
  * Definitions of package private enumerations
  */
+typedef struct EsfClockManagerCondBase {
+  pthread_mutex_t m_mutex;  // mutex
+  pthread_cond_t m_cond;    // condition
+} EsfClockManagerCondBase;
 
 typedef enum EsfClockManagerMutexBaseReturnValue {
   kMutexBaseRvIsSuccess,
@@ -53,99 +60,20 @@ typedef enum EsfClockManagerCondBaseReturnValue {
  */
 
 typedef struct EsfClockManagerMutexBase {
-  pthread_mutex_t *m_mutex;
+  pthread_mutex_t m_mutex;
 } EsfClockManagerMutexBase;
 
-typedef struct EsfClockManagerCondBase {
-  pthread_mutex_t *m_mutex;  // mutex
-  pthread_cond_t *m_cond;    // condition
-} EsfClockManagerCondBase;
+// This structure prevents a thread id of the thread from race condition.
+typedef struct EsfClockManagerThreadId {
+  EsfClockManagerMutexBase m_mutex_base;  // mutex
+  pthread_t m_thread_id;                  // thread id
+} EsfClockManagerThreadId;
 
-// """Initializes the given object of structure EsfClockManagerMutexBase.
-
-// If the given cond_base is NULL, returns kClockManagerParamError.
-// This function initializes an object of pthread_mutex_t.
-
-// Args:
-//    mutex_base (EsfClockManagerMutexBase *const): a pointer to
-//      an object of EsfClockManagerMutexBase.  This formal parameter is a
-//      pointer to an object to be initialized by this function.
-
-// Returns:
-//    The following values are returned:
-//    kMutexBaseRvIsSuccess: success.
-//    kMutexBaseRvIsParamError: invalid parameter.
-//    kMutexBaseRvIsMutexError: error with respect to pthread_mutex_t
-
-// """
-EsfClockManagerMutexBaseReturnValue EsfClockManagerInitMutexBase(
-    EsfClockManagerMutexBase *const mutex_base);
-
-// """Deinitializes the given object of structure EsfClockManagerMutexBase.
-
-// If the given cond_base is NULL, returns kClockManagerParamError.
-// This function deinitializes an object of pthread_mutex_t.
-
-// Args:
-//    mutex_base (EsfClockManagerMutexBase *const): a pointer to
-//      an object of EsfClockManagerMutexBase.  This formal parameter is a
-//      pointer to an object to be deinitialized by this function.
-
-// Returns:
-//    The following values are returned:
-//    kMutexBaseRvIsSuccess: success.
-//    kMutexBaseRvIsParamError: invalid parameter.
-//    kMutexBaseRvIsMutexError: error with respect to pthread_mutex_t
-
-// """
-EsfClockManagerMutexBaseReturnValue EsfClockManagerDeinitMutexBase(
-    EsfClockManagerMutexBase *const mutex_base);
-
-// """Initializes the given object of structure EsfClockManagerCondBase.
-
-// If the given cond_base is NULL, returns kClockManagerParamError.
-// This function initializes an object of pthread_cond_t and an object of
-// pthread_mutex_t.
-
-// Args:
-//    cond_base (EsfClockManagerCondBase *const): a pointer to
-//      an object of EsfClockManagerCondBase.  This formal parameter is a
-//      pointer to an object to be initialized by this function.
-
-// Returns:
-//    The following values are returned:
-//    kCondBaseRvIsSuccess: success.
-//    kCondBaseRvIsParamError: invalid parameter.
-//    kCondBaseRvIsMutexError: error with respect to pthread_mutex_t
-//    kCondBaseRvIsCondError: error with respect to pthread_cond_t
-
-// """
 EsfClockManagerCondBaseReturnValue EsfClockManagerInitCondBase(
-    EsfClockManagerCondBase *const cond_base);
+    pthread_cond_t *cond);
 
-// """Deinitializes the given object of structure EsfClockManagerCondBase.
-
-// If the given cond_base is NULL, returns kClockManagerParamError.
-// This function deinitializes an object of pthread_cond_t and an object of
-// pthread_mutex_t.
-
-// Args:
-//    cond_base (EsfClockManagerCondBase *const): a pointer to
-//      an object of EsfClockManagerCondBase.  This formal parameter is a
-//      pointer to an object to be deinitialized by this function.
-
-// Returns:
-//    The following values are returned:
-//    kCondBaseRvIsSuccess: success.
-//    kCondBaseRvIsParamError: invalid parameter.
-//    kCondBaseRvIsMutexError: error with respect to pthread_mutex_t
-//    kCondBaseRvIsCondError: error with respect to pthread_cond_t
-
-// """
 EsfClockManagerCondBaseReturnValue EsfClockManagerDeinitCondBase(
-    EsfClockManagerCondBase *const cond_base);
-
-// """Calculates absolute real time.
+    pthread_cond_t *cond);
 
 // This function adds the given duration to now real time.  Then the result
 // is returned.

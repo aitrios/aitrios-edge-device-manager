@@ -2,12 +2,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+if get_option('target') == 't4r'
 esf_sources += files([
-	'clock_manager_setting_internal.h',
+	'clock_manager_internal.c',
+	'clock_manager_monitor.c',
+	'clock_manager_notification.c',
 	'clock_manager_setting.c',
 	'clock_manager_utility.c',
-	'clock_manager_utility.h',
 	'clock_manager.c'
 ])
-
-subdir('stub')
+else
+esf_sources += files([
+	'clock_manager_utility.c',
+	'clock_manager.c',
+])
+endif
