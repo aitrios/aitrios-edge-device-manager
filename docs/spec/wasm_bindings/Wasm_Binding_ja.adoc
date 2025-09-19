@@ -1,0 +1,316 @@
+= Wasm_Binding 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.0
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書は、Wasm AppからWasm BindingのAPIを呼び出し可能にするために必要なWasm Bindngブロックを定義します。 +
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+=== WAMR
+
+WebAssembly Micro Runtime組み込みに特化したWasm Runtimeの一種
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+Wasm Bindngブロックは、Wasm AppからESFのAPIを呼び出し可能にする機能を提供します。 
+
+.概要図
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Wasm export API]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+
+    subgraph WasmApp
+        wasm_export_api_if[Wasm export API IF]
+    end
+
+wasm_export_api_if --> | Call Native API | wasm_export
+wasm_export --> | Call ESF API | ESFAPI
+wasm_export --> | resault | wasm_export_api_if
+ESFAPI --> | result | wasm_export
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+Wasm Bindngブロックの機能としては、主にWasmアプリケーションの領域にあるアドレス空間から、ESFアドレスの空間に変換を実施し、ESFのAPIを実行します。
+
+.データフロー図
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[アドレス空間変換]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+    subgraph WasmApp
+        wasm_export_api_if[Wasm export API IF]
+    end
+wasm_export_api_if --> | Wasm adder/ESF adder | wasm_export
+wasm_export --> | ESF adder | ESFAPI
+ESFAPI --> | ESF adder | wasm_export
+wasm_export --> | Wasm adder/ESF adder | wasm_export_api_if
+....
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+|EVP Runtime
+|WamrにWasm BindingのAPIを登録するために使用
+|
+|wamr
+|wasm空間のアドレス操作に使用
+|バージョン: 2.1.0
+|===
+
+<<<
+
+=== 状態遷移
+WasmBindingは状態を持ちません。
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|WasmBinding初期化機能
+|WasmBindingの初期化を行います。
+|<<#_WasmBinding初期化機能>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_WasmBinding初期化機能]
+==== WasmBinding初期化機能
+
+* 機能概要
+  ** WasmBindingの初期化を行います。
+* 前提条件
+  ** EVP Agentが起動していないこと。
+* 機能詳細
+  ** 詳細挙動
+      *** EVP(EVP_wasm_runtime_register_natives)を介してWamrに、WasmBindingのAPIを登録します。
+  
+  ** エラー時の挙動
+      *** 関数登録に失敗した場合falseを返します。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|連続処理実行時間
+|最大でかかる処理時間です。
+|<<#_連続処理実行時間>>
+
+|スタックメモリ使用量
+|最大で使用するスタックメモリ量です。
+|<<#_スタックメモリ使用量>>
+
+|ヒープメモリ使用量
+|最大で使用するヒープメモリ量です。
+|<<#_ヒープメモリ使用量>>
+
+|静的メモリ使用量
+|使用する静的メモリ量です。
+|<<#_静的メモリ使用量>>
+
+|スレッド使用数
+|使用するスレッド数です。
+|<<#_スレッド使用数>>
+
+|===
+
+<<<
+
+[#_コンポーネントの非機能要件説明]
+=== コンポーネントの非機能要件説明
+[#_連続処理実行時間]
+==== 連続処理実行時間
+T.B.D
+
+[#_スタックメモリ使用量]
+==== スタックメモリ使用量
+T.B.D
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+T.B.D
+
+[#_静的メモリ使用量]
+==== 静的メモリ使用量
+T.B.D
+
+[#_スレッド使用数]
+==== スレッド使用数
+T.B.D
+
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+
+データ型定義はありません。
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|WasmBindingInit
+|WasmBindingの初期化を行います。
+|<<#_WasmBindingInit>>
+|===
+
+
+<<<
+
+=== データ型定義
+
+
+<<<
+
+=== API定義
+
+[#_WasmBindingInit]
+==== WasmBindingInit
+
+* *機能* 
++
+WasmBindingの初期化を行います。
+
+* *書式* +
++
+``** bool WasmBindingInit(void)**``  
+
+* *引数の説明* +
++
+引数はありません。
+
+* *戻り値* +
+[#_WasmBindingInitの戻り値の説明]
+.WasmBindingInitの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |説明 
+|true
+|正常終了
+
+|false
+|関数登録に失敗
+|===
+
+* *説明* +
+** Wasm Appから、WasmBindingのAPIを呼び出し可能にします。
+
+** 実行情報
+*** EVP Agentを起動する前に呼び出して下さい。
+
+<<<
+
+== API使用時の呼び出し例
+各APIを使用する場合の呼び出し例を以下に示します。 +
+[#_WasmBindingInitの呼び出し]
+=== WasmBindingInitの呼び出し
+
+WasmBindingInitの呼び出し例。EVP Agent起動前に呼び出します。  +
+esf mainを有効にした場合はWasmBindingInitの呼び出しは不要になります。
+
+[source, C]
+....
+
+if (!WasmBindingInit()) {
+  printf("WasmBindingInit failed\n");
+}
+
+// Start EvpAgent.
+extern int evp_agent_main(int, FAR char **);
+pid = task_create("EVP Agent",
+                  101,
+                  CONFIG_DEFAULT_TASK_STACKSIZE,
+                  evp_agent_main,
+                  NULL);
+
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+=== Config
+[#_Config一覧]
+.Config一覧
+[width="100%",options="header"]
+
+|===
+|変数名 |値  |デフォルト値|ファイル | 説明
+|CONFIG_EXTERNAL_WASM_BINDING_INIT
+|tristate
+|``n``
+|src/wasm_binding/binding/Kconfig
+|WasnBinding初期化モジュールを有効にします。
+|===
+
+<<< 
+
+== 使用しているOSSの一覧
+* wamr
+  ** ライセンス: Apache 2.0 license (2024/9/24時点最新)
+
+== 参考文献
+
+* wasm-micro-runtime
+** https://github.com/bytecodealliance/wasm-micro-runtime
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|初版リリース
+|===

@@ -34,7 +34,7 @@ typedef struct {
 // -----------------------------------------------------------------------------
 //  Public Function Prototypes
 // -----------------------------------------------------------------------------
-// Appmem API
+// DmaMem API
 PlErrCode       PlDmaMemInitialize(void);
 PlErrCode       PlDmaMemFinalize(void);
 PlDmaMemHandle  PlDmaMemAlloc(uint32_t size);

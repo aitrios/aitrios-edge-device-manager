@@ -310,7 +310,7 @@ bool EsfClockManagerEnterReadingIfPossible(void);
 
 // Returns:
 //    The following values are returned:
-//    true: process is in of NTP time synchronization.
+//    true: writing was entered successfully.
 //    false: otherwise.
 
 // """
@@ -357,6 +357,15 @@ void EsfClockManagerLeaveWriting(void);
 
 // """
 EsfClockManagerReturnValue EsfClockManagerMarkCompletedSync(void);
+
+EsfClockManagerReturnValue EsfClockManagerSetParamsForciblyMain(
+    const EsfClockManagerParams *data, const EsfClockManagerParamsMask *mask);
+
+EsfClockManagerReturnValue EsfClockManagerSetParamsMain(
+    const EsfClockManagerParams *data, const EsfClockManagerParamsMask *mask);
+
+EsfClockManagerReturnValue EsfClockManagerGetParamsMain(
+    EsfClockManagerParams *const data);
 
 // """Gets a copy object of the object in volatile memory.
 

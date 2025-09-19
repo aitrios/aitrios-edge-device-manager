@@ -12,18 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#ifdef __NuttX__
-#include <nuttx/config.h>
-#else
-#if !defined(CONFIG_NETUTILS_NTPCLIENT_SERVER)
-#define CONFIG_NETUTILS_NTPCLIENT_SERVER \
-  "0.pool.ntp.org;1.pool.ntp.org;2.pool.ntp.org"
-#endif  // #if !defined(CONFIG_NETUTILS_NTPCLIENT_SERVER) ends.
-#endif  // #ifdef __NuttX__ -- #else ends.
 
 #include "clock_manager_internal.h"
 #include "clock_manager_setting_internal.h"
 #include "clock_manager_utility.h"
+#include "pl_clock_manager.h"
 #include "parameter_storage_manager.h"
 #include "parameter_storage_manager_common.h"
 #include "utility_log.h"
@@ -70,7 +63,6 @@ STATIC void EsfClockManagerFreeResource(void);
 //    Returns true if the connection parameters are valid, false otherwise.
 
 // """
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
 STATIC bool EsfClockManagerCheckParamConnect(
     const EsfClockManagerConnection *const connect,
     const EsfClockManagerConnectionMask *const mask_connect);
@@ -189,7 +181,6 @@ STATIC bool EsfClockManagerCheckParam(
 //    false: if the member variable in the given pointer to an object of
 //      EsfClockManagerParamsMask is 0.
 //
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
 
 // """
 STATIC bool EsfClockManagerIsHostnameMaskEnabled(
@@ -417,6 +408,18 @@ EsfClockManagerOnFactoryReset(void *private_data);
 STATIC EsfClockManagerReturnValue EsfClockManagerLoadFromPsm(
     EsfClockManagerParamsForPsm *const psm_obj, const int tag);
 
+// """Loads the parameters from Parameter Storage Manager directly.
+// This function loads the parameters from Parameter Storage Manager directly
+// without using the mask.
+// Args:
+//    psm_obj (EsfClockManagerParamsForPsm *const): a pointer to an object which
+//      each value that is read from Parameter Storage Manager is store in.
+// Returns:
+//    Value of EsfParameterStorageManagerStatus.
+// """
+STATIC EsfClockManagerReturnValue
+EsfClockManagerLoadFromPsmDirect(EsfClockManagerParamsForPsm *const psm_obj);
+
 // """Checks then substitutes the default value for connect-member if necessary.
 
 // This function validates each value of the given object's member variable.
@@ -583,7 +586,6 @@ STATIC void EsfClockManagerGetPsmDefault(
 //    value of EsfClockManagerReturnValue.
 
 // """
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
 STATIC EsfClockManagerReturnValue EsfClockManagerSubstituteForVolatileObj(
     const EsfClockManagerParams *const data,
     const EsfClockManagerParamsMask *const mask);
@@ -627,7 +629,6 @@ EsfClockManagerParams2PsmParams(EsfClockManagerParamsForPsm *const psm_params,
 // """
 STATIC EsfClockManagerPsmParamsType
 EsfClockManagerParamsType2PsmParamsType(EsfClockManagerParamType type);
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
 
 // """Transforms the given EsfClockManagerParamsForPsm to EsfClockManagerParams.
 
@@ -771,32 +772,46 @@ STATIC EsfParameterStorageManagerFactoryResetID
         ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID;
 
 STATIC EsfClockManagerParamsForPsm *g_params_in_volatile = NULL;
+STATIC pthread_mutex_t s_params_in_volatile_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 STATIC EsfClockManagerParamsForPsm *g_temporary_for_params = NULL;
+STATIC pthread_mutex_t s_temporary_for_params_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 STATIC EsfParameterStorageManagerHandle g_psm_handle =
     ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE;
-STATIC EsfClockManagerCondForRw *g_cond_for_rw = NULL;
+STATIC EsfClockManagerCondForRw g_cond_for_rw = {
+    .m_cond_base =
+        {
+            .m_mutex = PTHREAD_MUTEX_INITIALIZER,
+            .m_cond = PTHREAD_COND_INITIALIZER,
+        },
+    .m_is_in_rw = 0,
+};
 STATIC EsfClockManagerBarrierToPreventParamsFromWriting
-    *g_barrier_prevent_params_from_writing = NULL;
+    g_barrier_prevent_params_from_writing = {
+        .m_mutex_base =
+            {
+                .m_mutex = PTHREAD_MUTEX_INITIALIZER,
+            },
+        .m_is_process_in_of_ntp_time_synchronization = false,
+};
 
 /**
  * Definitions of public functions
  */
 
-EsfClockManagerReturnValue EsfClockManagerSetParamsForcibly(
+EsfClockManagerReturnValue EsfClockManagerSetParamsForciblyMain(
     const EsfClockManagerParams *data, const EsfClockManagerParamsMask *mask) {
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
   if (g_factory_reset_registration_id ==
           ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID ||
-      g_params_in_volatile == NULL || g_temporary_for_params == NULL ||
-      g_psm_handle == ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE ||
-      g_cond_for_rw == NULL || g_barrier_prevent_params_from_writing == NULL) {
+      g_psm_handle == ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:%s --- EsfClockManagerInit must be called "
                      "before this function is called.\n",
                      "clock_manager_setting.c", __LINE__, __func__);
     return kClockManagerStateTransitionError;
   }
-  if (EsfClockManagerEnterWritingIfPossible()) {
+  if (EsfClockManagerEnterWritingIfPossible() == false) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- Could not enter the critical region.\n",
                     "clock_manager_setting.c", __LINE__, __func__);
@@ -815,16 +830,51 @@ EsfClockManagerReturnValue EsfClockManagerSetParamsForcibly(
     return kClockManagerParamError;
   }
 
-  EsfClockManagerParams2PsmParams(g_temporary_for_params, data);
+  EsfClockManagerParamsForPsm *tmp_params = calloc(1, sizeof(*tmp_params));
+  if (tmp_params == NULL) {
+    EsfClockManagerLeaveWriting();
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:%s --- Memory allocation failed.\n",
+                     "clock_manager_setting.c", __LINE__, __func__);
+    return kClockManagerInternalError;
+  }
 
-  EsfClockManagerCheckPsmConnectThenSubstituteDefaultForIfNecessary(
-      g_temporary_for_params);
+  EsfClockManagerParams2PsmParams(tmp_params, data);
+
+  EsfClockManagerCheckPsmConnectThenSubstituteDefaultForIfNecessary(tmp_params);
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      free(tmp_params);
+      EsfClockManagerLeaveWriting();
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- Failed to lock mutex:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+
+    memcpy(g_temporary_for_params, tmp_params, sizeof(*tmp_params));
+
+    rv_mutex = pthread_mutex_unlock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      free(tmp_params);
+      EsfClockManagerLeaveWriting();
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- Failed to unlock mutex:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+  }
 
   const EsfParameterStorageManagerStatus saved_status =
-      EsfParameterStorageManagerSave(
-          g_psm_handle, (EsfParameterStorageManagerMask)mask,
-          (EsfParameterStorageManagerData)g_temporary_for_params,
-          &kClockManagerParamStructInfo, NULL);
+      EsfParameterStorageManagerSave(g_psm_handle,
+                                     (EsfParameterStorageManagerMask)mask,
+                                     (EsfParameterStorageManagerData)tmp_params,
+                                     &kClockManagerParamStructInfo, NULL);
+
+  free(tmp_params);
+  tmp_params = NULL;
 
   if (saved_status == kEsfParameterStorageManagerStatusOk) {
     EsfClockManagerSubstituteForVolatileObj(data, mask);
@@ -843,26 +893,20 @@ EsfClockManagerReturnValue EsfClockManagerSetParamsForcibly(
 
   EsfClockManagerLeaveWriting();
   return returned_value;
-#else
-  return kClockManagerSuccess;
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
 }
 
-EsfClockManagerReturnValue EsfClockManagerSetParams(
+EsfClockManagerReturnValue EsfClockManagerSetParamsMain(
     const EsfClockManagerParams *data, const EsfClockManagerParamsMask *mask) {
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
   if (g_factory_reset_registration_id ==
           ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID ||
-      g_params_in_volatile == NULL || g_temporary_for_params == NULL ||
-      g_psm_handle == ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE ||
-      g_cond_for_rw == NULL || g_barrier_prevent_params_from_writing == NULL) {
+      g_psm_handle == ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:%s --- EsfClockManagerInit must be called "
                      "before this function is called.\n",
                      "clock_manager_setting.c", __LINE__, __func__);
     return kClockManagerStateTransitionError;
   }
-  if (EsfClockManagerEnterWritingIfPossible()) {
+  if (EsfClockManagerEnterWritingIfPossible() == false) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- Could not enter the critical region.\n",
                     "clock_manager_setting.c", __LINE__, __func__);
@@ -888,18 +932,15 @@ EsfClockManagerReturnValue EsfClockManagerSetParams(
   EsfClockManagerSubstituteForVolatileObj(data, mask);
 
   EsfClockManagerLeaveWriting();
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
+
   return kClockManagerSuccess;
 }
 
-EsfClockManagerReturnValue EsfClockManagerGetParams(
+EsfClockManagerReturnValue EsfClockManagerGetParamsMain(
     EsfClockManagerParams *const data) {
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
   if (g_factory_reset_registration_id ==
           ESF_PARAMETER_STORAGE_MANAGER_INVALID_FACTORY_RESET_ID ||
-      g_params_in_volatile == NULL || g_temporary_for_params == NULL ||
-      g_psm_handle == ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE ||
-      g_cond_for_rw == NULL || g_barrier_prevent_params_from_writing == NULL) {
+      g_psm_handle == ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:%s --- EsfClockManagerInit must be called "
                      "before this function is called.\n",
@@ -923,7 +964,7 @@ EsfClockManagerReturnValue EsfClockManagerGetParams(
   EsfClockManagerGetParamsInternal(data, CALLER_IS_GET_PARAMS);
 
   EsfClockManagerLeaveReading();
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
+
   return kClockManagerSuccess;
 }
 
@@ -938,23 +979,66 @@ EsfClockManagerReturnValue EsfClockManagerInitSetting(void) {
         "clock_manager_setting.c", __LINE__, __func__, g_psm_handle);
     return kClockManagerSuccess;
   }
-  if (g_params_in_volatile == NULL) {
-    g_params_in_volatile = (EsfClockManagerParamsForPsm *)malloc(
-        sizeof(EsfClockManagerParamsForPsm));
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+
     if (g_params_in_volatile == NULL) {
-      WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- malloc failed.\n",
-                          "clock_manager_setting.c", __LINE__, __func__);
+      g_params_in_volatile = (EsfClockManagerParamsForPsm *)malloc(
+          sizeof(EsfClockManagerParamsForPsm));
+      if (g_params_in_volatile == NULL) {
+        WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- malloc failed.\n",
+                            "clock_manager_setting.c", __LINE__, __func__);
+        (void)pthread_mutex_unlock(&s_params_in_volatile_mutex);
+        EsfClockManagerFreeResource();
+        return kClockManagerInternalError;
+      }
+    }
+
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
       EsfClockManagerFreeResource();
       return kClockManagerInternalError;
     }
   }
-  if (g_temporary_for_params == NULL) {
-    g_temporary_for_params = (EsfClockManagerParamsForPsm *)malloc(
-        sizeof(EsfClockManagerParamsForPsm));
-    if (g_temporary_for_params == NULL) {
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
       EsfClockManagerFreeResource();
-      WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- malloc failed.\n",
-                          "clock_manager_setting.c", __LINE__, __func__);
+      return kClockManagerInternalError;
+    }
+
+    if (g_temporary_for_params == NULL) {
+      g_temporary_for_params = (EsfClockManagerParamsForPsm *)malloc(
+          sizeof(EsfClockManagerParamsForPsm));
+      if (g_temporary_for_params == NULL) {
+        (void)pthread_mutex_unlock(&s_temporary_for_params_mutex);
+        EsfClockManagerFreeResource();
+        WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- malloc failed.\n",
+                            "clock_manager_setting.c", __LINE__, __func__);
+        return kClockManagerInternalError;
+      }
+    }
+
+    rv_mutex = pthread_mutex_unlock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      EsfClockManagerFreeResource();
       return kClockManagerInternalError;
     }
   }
@@ -969,67 +1053,69 @@ EsfClockManagerReturnValue EsfClockManagerInitSetting(void) {
     return kClockManagerInternalError;
   }
 
-  if (g_cond_for_rw == NULL) {
-    g_cond_for_rw = (EsfClockManagerCondForRw *)malloc(sizeof(*g_cond_for_rw));
-    if (g_cond_for_rw == NULL) {
-      WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- malloc failed.\n",
-                          "clock_manager_setting.c", __LINE__, __func__);
-      EsfClockManagerFreeResource();
-      return kClockManagerInternalError;
-    }
-    g_cond_for_rw->m_cond_base.m_mutex = NULL;
-    g_cond_for_rw->m_cond_base.m_cond = NULL;
-  }
-
-  const EsfClockManagerCondBaseReturnValue rv =
-      EsfClockManagerInitCondBase(&(g_cond_for_rw->m_cond_base));
-  if (rv != kCondBaseRvIsSuccess) {
-    EsfClockManagerFreeResource();
-    return kClockManagerInternalError;
-  }
-
-  if (g_barrier_prevent_params_from_writing == NULL) {
-    g_barrier_prevent_params_from_writing =
-        (EsfClockManagerBarrierToPreventParamsFromWriting *)malloc(
-            sizeof(EsfClockManagerBarrierToPreventParamsFromWriting));
-    if (g_barrier_prevent_params_from_writing == NULL) {
-      WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- malloc failed.\n",
-                          "clock_manager_setting.c", __LINE__, __func__);
-      EsfClockManagerFreeResource();
-      return kClockManagerInternalError;
-    }
-    g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex = NULL;
-  }
-  const EsfClockManagerMutexBaseReturnValue mutex_base_rv =
-      EsfClockManagerInitMutexBase(
-          &(g_barrier_prevent_params_from_writing->m_mutex_base));
-  if (mutex_base_rv != kMutexBaseRvIsSuccess) {
-    EsfClockManagerFreeResource();
-    return kClockManagerInternalError;
-  }
   g_barrier_prevent_params_from_writing
-      ->m_is_process_in_of_ntp_time_synchronization = false;
+      .m_is_process_in_of_ntp_time_synchronization = false;
 
-  g_cond_for_rw->m_is_in_rw = 0;
+  g_cond_for_rw.m_is_in_rw = 0;
 
-  g_params_in_volatile->connect.hostname[0] = '\0';
-  g_params_in_volatile->common.raw_sync_interval.sync_interval = -1;
-  g_params_in_volatile->common.raw_polling_time.polling_time = -1;
-  g_params_in_volatile->skip_and_limit.raw_type.type =
+  EsfClockManagerParamsForPsm *tmp_params = calloc(1, sizeof(*tmp_params));
+  if (tmp_params == NULL) {
+    WRITE_DLOG_CRITICAL(MODULE_ID_SYSTEM, "%s-%d:%s --- calloc failed.\n",
+                        "clock_manager_setting.c", __LINE__, __func__);
+    EsfClockManagerFreeResource();
+    return kClockManagerInternalError;
+  }
+
+  tmp_params->connect.hostname[0] = '\0';
+  tmp_params->common.raw_sync_interval.sync_interval = -1;
+  tmp_params->common.raw_polling_time.polling_time = -1;
+  tmp_params->skip_and_limit.raw_type.type =
       (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax;
-  g_params_in_volatile->skip_and_limit.raw_limit_packet_time.limit_packet_time =
-      -1;
-  g_params_in_volatile->skip_and_limit.raw_limit_rtc_correction_value
+  tmp_params->skip_and_limit.raw_limit_packet_time.limit_packet_time = -1;
+  tmp_params->skip_and_limit.raw_limit_rtc_correction_value
       .limit_rtc_correction_value = -1;
-  g_params_in_volatile->skip_and_limit.raw_sanity_limit.sanity_limit = -1;
-  g_params_in_volatile->slew_setting.raw_type.type =
+  tmp_params->skip_and_limit.raw_sanity_limit.sanity_limit = -1;
+  tmp_params->slew_setting.raw_type.type =
       (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax;
-  g_params_in_volatile->slew_setting.raw_stable_rtc_correction_value
+  tmp_params->slew_setting.raw_stable_rtc_correction_value
       .stable_rtc_correction_value = -1;
-  g_params_in_volatile->slew_setting.raw_stable_sync_number.stable_sync_number =
-      -1;
+  tmp_params->slew_setting.raw_stable_sync_number.stable_sync_number = -1;
 
-  EsfClockManagerLoadFromPsm(g_params_in_volatile, CALLER_IS_INIT_SETTING);
+  EsfClockManagerReturnValue rv =
+      EsfClockManagerLoadFromPsm(tmp_params, CALLER_IS_INIT_SETTING);
+  if (rv != kClockManagerSuccess) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:%s --- Failed to load from PSM:%d.\n",
+                     "clock_manager_setting.c", __LINE__, __func__, rv);
+    free(tmp_params);
+    EsfClockManagerFreeResource();
+    return kClockManagerInternalError;
+  }
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      free(tmp_params);
+      EsfClockManagerFreeResource();
+      return kClockManagerInternalError;
+    }
+
+    memcpy(g_params_in_volatile, tmp_params,
+           sizeof(EsfClockManagerParamsForPsm));
+    free(tmp_params);
+
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      EsfClockManagerFreeResource();
+      return kClockManagerInternalError;
+    }
+  }
 
   return kClockManagerSuccess;
 }
@@ -1041,18 +1127,18 @@ EsfClockManagerReturnValue EsfClockManagerDeinitSetting(void) {
 
 EsfClockManagerReturnValue EsfClockManagerMarkStartingSync(void) {
   if (pthread_mutex_lock(
-          g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex)) {
+          &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex)) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:%s --- pthread_mutex_lock failed.\n",
                      "clock_manager_setting.c", __LINE__, __func__);
     return kClockManagerInternalError;
   }
   g_barrier_prevent_params_from_writing
-      ->m_is_process_in_of_ntp_time_synchronization = true;
+      .m_is_process_in_of_ntp_time_synchronization = true;
   pthread_mutex_unlock(
-      g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex);
+      &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex);
 
-  const int rv_lock = pthread_mutex_lock(g_cond_for_rw->m_cond_base.m_mutex);
+  const int rv_lock = pthread_mutex_lock(&g_cond_for_rw.m_cond_base.m_mutex);
   if (rv_lock) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
@@ -1060,20 +1146,23 @@ EsfClockManagerReturnValue EsfClockManagerMarkStartingSync(void) {
   }
   WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:%s --- ref counter:%d\n",
                   "clock_manager_setting.c", __LINE__, __func__,
-                  g_cond_for_rw->m_is_in_rw);
-  while (g_cond_for_rw->m_is_in_rw < 0) {
-    if (!rv_lock) {
-      struct timespec abs_time = {0};
-      EsfClockManagerCalculateAbstimeInMonotonic(&abs_time, 1000);
+                  g_cond_for_rw.m_is_in_rw);
 
-      pthread_cond_timedwait(g_cond_for_rw->m_cond_base.m_cond,
-                             g_cond_for_rw->m_cond_base.m_mutex, &abs_time);
+  while (g_cond_for_rw.m_is_in_rw < 0) {
+    struct timespec abs_time = {0};
+    bool calc_time = EsfClockManagerCalculateAbstimeInMonotonic(&abs_time,
+                                                                1000);
+
+    if (!rv_lock && calc_time) {
+      pthread_cond_timedwait(&g_cond_for_rw.m_cond_base.m_cond,
+                             &g_cond_for_rw.m_cond_base.m_mutex, &abs_time);
     } else {
       sleep((unsigned int)1);
     }
   }
+
   if (!rv_lock) {
-    pthread_mutex_unlock(g_cond_for_rw->m_cond_base.m_mutex);
+    pthread_mutex_unlock(&g_cond_for_rw.m_cond_base.m_mutex);
   }
 
   return kClockManagerSuccess;
@@ -1081,7 +1170,7 @@ EsfClockManagerReturnValue EsfClockManagerMarkStartingSync(void) {
 
 bool EsfClockManagerIsInSync(void) {
   const int rv_lock = pthread_mutex_lock(
-      g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex);
+      &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex);
   if (rv_lock) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
@@ -1089,28 +1178,28 @@ bool EsfClockManagerIsInSync(void) {
   }
   const bool is_process_in_of_sync =
       g_barrier_prevent_params_from_writing
-          ->m_is_process_in_of_ntp_time_synchronization;
+          .m_is_process_in_of_ntp_time_synchronization;
   if (!rv_lock) {
     pthread_mutex_unlock(
-        g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex);
+        &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex);
   }
 
   return is_process_in_of_sync;
 }
 
 bool EsfClockManagerEnterReadingIfPossible(void) {
-  const int rv_lock = pthread_mutex_lock(g_cond_for_rw->m_cond_base.m_mutex);
+  const int rv_lock = pthread_mutex_lock(&g_cond_for_rw.m_cond_base.m_mutex);
   if (rv_lock) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
                     "clock_manager_setting.c", __LINE__, __func__, rv_lock);
   }
-  if (g_cond_for_rw->m_is_in_rw >= 0) {
-    g_cond_for_rw->m_is_in_rw++;
+  if (g_cond_for_rw.m_is_in_rw >= 0) {
+    g_cond_for_rw.m_is_in_rw++;
   }
-  const int is_status_in_of_rw = g_cond_for_rw->m_is_in_rw;
+  const int is_status_in_of_rw = g_cond_for_rw.m_is_in_rw;
   if (!rv_lock) {
-    pthread_mutex_unlock(g_cond_for_rw->m_cond_base.m_mutex);
+    pthread_mutex_unlock(&g_cond_for_rw.m_cond_base.m_mutex);
   }
 
   return is_status_in_of_rw > 0;
@@ -1118,7 +1207,7 @@ bool EsfClockManagerEnterReadingIfPossible(void) {
 
 bool EsfClockManagerEnterWritingIfPossible(void) {
   const int rv_lock = pthread_mutex_lock(
-      g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex);
+      &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex);
   if (rv_lock) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
@@ -1126,72 +1215,74 @@ bool EsfClockManagerEnterWritingIfPossible(void) {
   }
   const bool is_process_in_of_sync =
       g_barrier_prevent_params_from_writing
-          ->m_is_process_in_of_ntp_time_synchronization;
+          .m_is_process_in_of_ntp_time_synchronization;
   if (!g_barrier_prevent_params_from_writing
-           ->m_is_process_in_of_ntp_time_synchronization) {
-    const int rv_lock2 = pthread_mutex_lock(g_cond_for_rw->m_cond_base.m_mutex);
-    if (g_cond_for_rw->m_is_in_rw == 0) {
-      g_cond_for_rw->m_is_in_rw = -1;
+           .m_is_process_in_of_ntp_time_synchronization) {
+    const int rv_lock2 = pthread_mutex_lock(&g_cond_for_rw.m_cond_base.m_mutex);
+    if (g_cond_for_rw.m_is_in_rw == 0) {
+      g_cond_for_rw.m_is_in_rw = -1;
     } else {
       while (true) {
-        if (!rv_lock2) {
-          struct timespec abs_time = {0};
-          EsfClockManagerCalculateAbstimeInMonotonic(&abs_time, 1000);
+        struct timespec abs_time = {0};
+        bool calc_time = EsfClockManagerCalculateAbstimeInMonotonic(&abs_time,
+                                                                    1000);
 
-          pthread_cond_timedwait(g_cond_for_rw->m_cond_base.m_cond,
-                                 g_cond_for_rw->m_cond_base.m_mutex, &abs_time);
+        if (!rv_lock2 && calc_time) {
+          pthread_cond_timedwait(&g_cond_for_rw.m_cond_base.m_cond,
+                                 &g_cond_for_rw.m_cond_base.m_mutex, &abs_time);
         } else {
           sleep((unsigned int)1);
         }
-        if (g_cond_for_rw->m_is_in_rw == 0) {
-          g_cond_for_rw->m_is_in_rw = -1;
+
+        if (g_cond_for_rw.m_is_in_rw == 0) {
+          g_cond_for_rw.m_is_in_rw = -1;
           break;
         }
       }
     }
     if (!rv_lock2) {
-      pthread_mutex_unlock(g_cond_for_rw->m_cond_base.m_mutex);
+      pthread_mutex_unlock(&g_cond_for_rw.m_cond_base.m_mutex);
     }
   }
   if (!rv_lock) {
     pthread_mutex_unlock(
-        g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex);
+        &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex);
   }
 
-  return is_process_in_of_sync;
+  return !is_process_in_of_sync;
 }
 
 void EsfClockManagerLeaveReading(void) {
-  const int rv_lock = pthread_mutex_lock(g_cond_for_rw->m_cond_base.m_mutex);
+  const int rv_lock = pthread_mutex_lock(&g_cond_for_rw.m_cond_base.m_mutex);
   if (rv_lock) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
                     "clock_manager_setting.c", __LINE__, __func__, rv_lock);
   }
-  if (g_cond_for_rw->m_is_in_rw > 0) {
-    g_cond_for_rw->m_is_in_rw--;
+  if (g_cond_for_rw.m_is_in_rw > 0) {
+    g_cond_for_rw.m_is_in_rw--;
   }
-  pthread_cond_broadcast(g_cond_for_rw->m_cond_base.m_cond);
+  pthread_cond_broadcast(&g_cond_for_rw.m_cond_base.m_cond);
   if (!rv_lock) {
-    pthread_mutex_unlock(g_cond_for_rw->m_cond_base.m_mutex);
+    pthread_mutex_unlock(&g_cond_for_rw.m_cond_base.m_mutex);
   }
 
   return;
 }
 
 void EsfClockManagerLeaveWriting(void) {
-  const int rv_lock = pthread_mutex_lock(g_cond_for_rw->m_cond_base.m_mutex);
+  const int rv_lock = pthread_mutex_lock(&g_cond_for_rw.m_cond_base.m_mutex);
   if (rv_lock) {
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
                     "clock_manager_setting.c", __LINE__, __func__, rv_lock);
   }
-  if (g_cond_for_rw->m_is_in_rw < 0) {
-    g_cond_for_rw->m_is_in_rw++;
+  if (g_cond_for_rw.m_is_in_rw < 0) {
+    g_cond_for_rw.m_is_in_rw++;
   }
-  pthread_cond_broadcast(g_cond_for_rw->m_cond_base.m_cond);
+  pthread_cond_broadcast(&g_cond_for_rw.m_cond_base.m_cond);
   if (!rv_lock) {
-    pthread_mutex_unlock(g_cond_for_rw->m_cond_base.m_mutex);
+    pthread_mutex_unlock(&g_cond_for_rw.m_cond_base.m_mutex);
   }
 
   return;
@@ -1199,16 +1290,16 @@ void EsfClockManagerLeaveWriting(void) {
 
 EsfClockManagerReturnValue EsfClockManagerMarkCompletedSync(void) {
   if (pthread_mutex_lock(
-          g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex)) {
+          &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex)) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:%s --- pthread_mutex_lock failed.\n",
                      "clock_manager_setting.c", __LINE__, __func__);
     return kClockManagerInternalError;
   }
   g_barrier_prevent_params_from_writing
-      ->m_is_process_in_of_ntp_time_synchronization = false;
+      .m_is_process_in_of_ntp_time_synchronization = false;
   pthread_mutex_unlock(
-      g_barrier_prevent_params_from_writing->m_mutex_base.m_mutex);
+      &g_barrier_prevent_params_from_writing.m_mutex_base.m_mutex);
   return kClockManagerSuccess;
 }
 
@@ -1217,29 +1308,115 @@ EsfClockManagerReturnValue EsfClockManagerGetParamsInternal(
   if (params_obj == NULL) {
     return kClockManagerParamError;
   }
-  if (g_params_in_volatile->connect.hostname[0] == '\0' ||
-      (strnlen(g_params_in_volatile->connect.hostname,
-               ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
-       (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) ||
-      g_params_in_volatile->common.raw_sync_interval.sync_interval < 0 ||
-      g_params_in_volatile->common.raw_polling_time.polling_time < 0 ||
-      g_params_in_volatile->skip_and_limit.raw_type.type >=
-          (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax ||
-      g_params_in_volatile->skip_and_limit.raw_limit_packet_time
-              .limit_packet_time < 0 ||
-      g_params_in_volatile->skip_and_limit.raw_limit_rtc_correction_value
-              .limit_rtc_correction_value < 0 ||
-      g_params_in_volatile->skip_and_limit.raw_sanity_limit.sanity_limit < 0 ||
-      g_params_in_volatile->slew_setting.raw_type.type >=
-          (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax ||
-      g_params_in_volatile->slew_setting.raw_stable_rtc_correction_value
-              .stable_rtc_correction_value < 0 ||
-      g_params_in_volatile->slew_setting.raw_stable_sync_number
-              .stable_sync_number < 0) {
-    EsfClockManagerLoadFromPsm(g_params_in_volatile, tag);
+
+  bool load_flag = false;
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+
+    if (g_params_in_volatile == NULL) {
+      (void)pthread_mutex_unlock(&s_params_in_volatile_mutex);
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- g_params_in_volatile is NULL\n",
+                       "clock_manager_setting.c", __LINE__, __func__);
+      return kClockManagerInternalError;
+    }
+
+    if (g_params_in_volatile->connect.hostname[0] == '\0' ||
+        (strnlen(g_params_in_volatile->connect.hostname,
+                 ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
+         (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) ||
+        g_params_in_volatile->common.raw_sync_interval.sync_interval < 0 ||
+        g_params_in_volatile->common.raw_polling_time.polling_time < 0 ||
+        g_params_in_volatile->skip_and_limit.raw_type.type >=
+            (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax ||
+        g_params_in_volatile->skip_and_limit.raw_limit_packet_time
+                .limit_packet_time < 0 ||
+        g_params_in_volatile->skip_and_limit.raw_limit_rtc_correction_value
+                .limit_rtc_correction_value < 0 ||
+        g_params_in_volatile->skip_and_limit.raw_sanity_limit.sanity_limit <
+            0 ||
+        g_params_in_volatile->slew_setting.raw_type.type >=
+            (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax ||
+        g_params_in_volatile->slew_setting.raw_stable_rtc_correction_value
+                .stable_rtc_correction_value < 0 ||
+        g_params_in_volatile->slew_setting.raw_stable_sync_number
+                .stable_sync_number < 0) {
+      load_flag = true;
+    }
+
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
   }
 
-  EsfClockManagerPsmParams2Params(params_obj, g_params_in_volatile);
+  EsfClockManagerParamsForPsm *tmp_params = NULL;
+  EsfClockManagerReturnValue rv = kClockManagerSuccess;
+
+  if (load_flag) {
+    tmp_params = calloc(1, sizeof(*tmp_params));
+    if (tmp_params == NULL) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:%s --- calloc failed\n",
+                       "clock_manager_setting.c", __LINE__, __func__);
+      return kClockManagerInternalError;
+    }
+
+    rv = EsfClockManagerLoadFromPsm(tmp_params, tag);
+    if (rv != kClockManagerSuccess) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- EsfClockManagerLoadFromPsm failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv);
+      free(tmp_params);
+      return kClockManagerInternalError;
+    }
+  }
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      free(tmp_params);
+      return kClockManagerInternalError;
+    }
+
+    if (load_flag) {
+      memcpy(g_params_in_volatile, tmp_params,
+             sizeof(EsfClockManagerParamsForPsm));
+
+      free(tmp_params);
+      tmp_params = NULL;
+    }
+
+    rv = EsfClockManagerPsmParams2Params(params_obj, g_params_in_volatile);
+    if (rv != kClockManagerSuccess) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:%s --- EsfClockManagerPsmParams2Params failed:%d\n",
+          "clock_manager_setting.c", __LINE__, __func__, rv);
+      (void)pthread_mutex_unlock(&s_params_in_volatile_mutex);
+      return kClockManagerInternalError;
+    }
+
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+  }
 
   return kClockManagerSuccess;
 }
@@ -1247,16 +1424,52 @@ EsfClockManagerReturnValue EsfClockManagerGetParamsInternal(
 EsfClockManagerReturnValue EsfClockManagerSaveParamsInternal(void) {
   const EsfClockManagerParamsForPsmMask psm_mask = {
       {1}, {1, 1}, {1, 1, 1, 1}, {1, 1, 1}};
+
+  EsfClockManagerParamsForPsm *tmp_params = calloc(1, sizeof(*tmp_params));
+  if (tmp_params == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:%s --- calloc failed\n",
+                     "clock_manager_setting.c", __LINE__, __func__);
+    return kClockManagerInternalError;
+  }
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      free(tmp_params);
+      return kClockManagerInternalError;
+    }
+
+    memcpy(tmp_params, g_params_in_volatile,
+           sizeof(EsfClockManagerParamsForPsm));
+
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      free(tmp_params);
+      return kClockManagerInternalError;
+    }
+  }
+
   const EsfParameterStorageManagerStatus status =
-      EsfParameterStorageManagerSave(
-          g_psm_handle, (EsfParameterStorageManagerMask)&psm_mask,
-          (EsfParameterStorageManagerData)g_params_in_volatile,
-          &kClockManagerParamStructInfo, NULL);
+      EsfParameterStorageManagerSave(g_psm_handle,
+                                     (EsfParameterStorageManagerMask)&psm_mask,
+                                     (EsfParameterStorageManagerData)tmp_params,
+                                     &kClockManagerParamStructInfo, NULL);
+
+  free(tmp_params);
+
   if (status != kEsfParameterStorageManagerStatusOk) {
     WRITE_ELOG_ERROR(MODULE_ID_SYSTEM, (uint16_t)0x810A);
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:%s --- PSM could not save:%d\n",
                      "clock_manager_setting.c", __LINE__, __func__, status);
+    return kClockManagerInternalError;
   }
+
   return kClockManagerSuccess;
 }
 
@@ -1286,29 +1499,152 @@ EsfClockManagerReturnValue EsfClockManagerUnregisterFactoryResetCb(void) {
   return kClockManagerSuccess;
 }
 
+EsfClockManagerReturnValue EsfClockManagerGetMigrationData(void *dst,
+                                                           size_t dst_size) {
+  EsfClockManagerReturnValue ret = kClockManagerSuccess;
+
+  ret = (EsfClockManagerReturnValue)PlClockManagerGetMigrationDataImpl(
+      dst, dst_size);
+  if (ret != kClockManagerSuccess) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to get migration data. result=%d",
+                     "clock_manager_setting.c", __LINE__, ret);
+    return kClockManagerInternalError;
+  }
+  return ret;
+}
+
+EsfClockManagerReturnValue EsfClockManagerMigrateSettings(void) {
+  EsfClockManagerReturnValue ret = kClockManagerSuccess;
+  EsfClockManagerParamsForPsm current_params_psm = {0};
+  EsfClockManagerParams migrate_param = {0};
+  EsfClockManagerParamsMask mask = {0};
+  char *migrated_ntp_url = calloc(ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,
+                                  sizeof(char));
+
+  if (migrated_ntp_url == NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to allocate memory for migrated NTP URL",
+                     "clock_manager_setting.c", __LINE__);
+    return kClockManagerInternalError;
+  }
+
+  ret = EsfClockManagerGetMigrationData(migrated_ntp_url,
+                                        ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE);
+  if (ret != kClockManagerSuccess) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to get migrated NTP URL. result=%d",
+                     "clock_manager_setting.c", __LINE__, ret);
+    free(migrated_ntp_url);
+    return ret;
+  }
+
+  ret = EsfClockManagerLoadFromPsmDirect(&current_params_psm);
+  if (ret != kClockManagerSuccess) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to get current parameters. result=%d",
+                     "clock_manager_setting.c", __LINE__, ret);
+    free(migrated_ntp_url);
+    return ret;
+  }
+
+  // Check if NTP server is already configured in DB (migration completion
+  // marker)
+  bool ntp_already_configured =
+      (current_params_psm.connect.hostname[0] != '\0');
+
+  if (!ntp_already_configured) {
+    // Update hostname with migrated NTP URL
+    strncpy(migrate_param.connect.hostname, migrated_ntp_url,
+            ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE - 1);
+    migrate_param.connect.hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE - 1] =
+        '\0';
+
+    mask.connect.hostname = 1;
+
+    // Write NTP server to DB
+    ret = EsfClockManagerSetParamsForcibly(&migrate_param, &mask);
+    if (ret != kClockManagerSuccess) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:Failed to set new parameters. result=%d",
+                       "clock_manager_setting.c", __LINE__, ret);
+      free(migrated_ntp_url);
+      return ret;
+    }
+
+    // Log the migration success
+    WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                    "%s-%d:Successfully migrated NTP URL from '%s' to '%s'",
+                    "clock_manager_setting.c", __LINE__,
+                    current_params_psm.connect.hostname, migrated_ntp_url);
+  } else {
+    WRITE_DLOG_INFO(
+        MODULE_ID_SYSTEM,
+        "%s-%d:NTP server already configured in DB ('%s'), skipping DB write",
+        "clock_manager_setting.c", __LINE__,
+        current_params_psm.connect.hostname);
+  }
+
+  free(migrated_ntp_url);
+
+  // Setup migration configuration
+  PlClockManagerReturnValue ps_setup_ret = PlClockManagerSetupMigration();
+  if (ps_setup_ret != kPlClockManagerSuccess) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:Failed to setup migration configuration. result=%d",
+                     "clock_manager_setting.c", __LINE__, ps_setup_ret);
+    return kClockManagerInternalError;
+  }
+
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                  "%s-%d:Successfully setup migration configuration",
+                  "clock_manager_setting.c", __LINE__);
+
+  return kClockManagerSuccess;
+}
+
 /**
  * Definitions of private functions --- i.e., functions given storage-class
  * specifier static.
  */
 
 STATIC void EsfClockManagerFreeResource(void) {
-  free(g_params_in_volatile);
-  g_params_in_volatile = NULL;
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+    }
 
-  free(g_temporary_for_params);
-  g_temporary_for_params = NULL;
+    free(g_params_in_volatile);
+    g_params_in_volatile = NULL;
 
-  if (g_cond_for_rw != NULL) {
-    EsfClockManagerDeinitCondBase(&(g_cond_for_rw->m_cond_base));
-    free(g_cond_for_rw);
-    g_cond_for_rw = NULL;
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+    }
   }
 
-  if (g_barrier_prevent_params_from_writing != NULL) {
-    EsfClockManagerDeinitMutexBase(
-        &(g_barrier_prevent_params_from_writing->m_mutex_base));
-    free(g_barrier_prevent_params_from_writing);
-    g_barrier_prevent_params_from_writing = NULL;
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+    }
+
+    free(g_temporary_for_params);
+    g_temporary_for_params = NULL;
+
+    rv_mutex = pthread_mutex_unlock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+    }
   }
 
   if (g_psm_handle != ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE) {
@@ -1319,7 +1655,6 @@ STATIC void EsfClockManagerFreeResource(void) {
   return;
 }
 
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
 STATIC bool EsfClockManagerCheckParamConnect(
     const EsfClockManagerConnection *const connect,
     const EsfClockManagerConnectionMask *const mask_connect) {
@@ -1451,7 +1786,6 @@ STATIC bool EsfClockManagerCheckParam(
 
   return true;
 }
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
 
 STATIC bool EsfClockManagerIsHostnameMaskEnabled(
     EsfParameterStorageManagerMask mask) {
@@ -1519,28 +1853,48 @@ STATIC EsfParameterStorageManagerStatus
 EsfClockManagerOnFactoryReset(void *private_data) {
   NOT_USED(private_data);
 
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemNTPServer);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemNTPSyncInterval);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemNTPPollingTime);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemSkipModeSettings);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemLimitPacketTime);
-  EsfClockManagerGetPsmDefault(
-      g_params_in_volatile,
-      kEsfParameterStorageManagerItemLimitRTCCorrectionValue);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemSanityLimit);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemSlewModeSettings);
-  EsfClockManagerGetPsmDefault(
-      g_params_in_volatile,
-      kEsfParameterStorageManagerItemStableRTCCorrectionValue);
-  EsfClockManagerGetPsmDefault(g_params_in_volatile,
-                               kEsfParameterStorageManagerItemStableSyncNumber);
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+    }
+
+    EsfClockManagerGetPsmDefault(g_params_in_volatile,
+                                 kEsfParameterStorageManagerItemNTPServer);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile, kEsfParameterStorageManagerItemNTPSyncInterval);
+    EsfClockManagerGetPsmDefault(g_params_in_volatile,
+                                 kEsfParameterStorageManagerItemNTPPollingTime);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile, kEsfParameterStorageManagerItemSkipModeSettings);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile, kEsfParameterStorageManagerItemLimitPacketTime);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile,
+        kEsfParameterStorageManagerItemLimitRTCCorrectionValue);
+    EsfClockManagerGetPsmDefault(g_params_in_volatile,
+                                 kEsfParameterStorageManagerItemSanityLimit);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile, kEsfParameterStorageManagerItemSlewModeSettings);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile,
+        kEsfParameterStorageManagerItemStableRTCCorrectionValue);
+    EsfClockManagerGetPsmDefault(
+        g_params_in_volatile, kEsfParameterStorageManagerItemStableSyncNumber);
+
+    if (rv_mutex == 0) {
+      rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+      if (rv_mutex != 0) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM, "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+            "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      }
+    }
+  }
+
+  (void)PlClockManagerDeleteConfFiles();
 
   return kEsfParameterStorageManagerStatusOk;
 }
@@ -1605,6 +1959,29 @@ STATIC EsfClockManagerReturnValue EsfClockManagerLoadFromPsm(
         psm_obj, kEsfParameterStorageManagerItemStableSyncNumber);
   } else {
     EsfClockManagerCheckPsmDataThenSubstituteDefaultForIfNecessary(psm_obj);
+  }
+
+  return kClockManagerSuccess;
+}
+
+STATIC EsfClockManagerReturnValue
+EsfClockManagerLoadFromPsmDirect(EsfClockManagerParamsForPsm *const psm_obj) {
+  if (psm_obj == NULL) {
+    return kClockManagerParamError;
+  }
+
+  const EsfClockManagerParamsForPsmMask psm_mask = {
+      {1}, {1, 1}, {1, 1, 1, 1}, {1, 1, 1}};
+
+  const EsfParameterStorageManagerStatus status =
+      EsfParameterStorageManagerLoad(g_psm_handle,
+                                     (EsfParameterStorageManagerMask)&psm_mask,
+                                     (EsfParameterStorageManagerData)psm_obj,
+                                     &kClockManagerParamStructInfo, NULL);
+  if (status != kEsfParameterStorageManagerStatusOk) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:%s --- PSM could not load:%d\n",
+                     "clock_manager_setting.c", __LINE__, __func__, status);
+    return kClockManagerInternalError;
   }
 
   return kClockManagerSuccess;
@@ -1833,59 +2210,113 @@ STATIC void EsfClockManagerGetPsmDefault(
   return;
 }
 
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
 STATIC EsfClockManagerReturnValue EsfClockManagerSubstituteForVolatileObj(
     const EsfClockManagerParams *const data,
     const EsfClockManagerParamsMask *const mask) {
-  EsfClockManagerParams2PsmParams(g_temporary_for_params, data);
-  if (mask->connect.hostname) {
-    snprintf(g_params_in_volatile->connect.hostname,
-             ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE, "%s",
-             g_temporary_for_params->connect.hostname);
-    EsfClockManagerCheckPsmConnectThenSubstituteDefaultForIfNecessary(
-        g_params_in_volatile);
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+
+    EsfClockManagerReturnValue rv =
+        EsfClockManagerParams2PsmParams(g_temporary_for_params, data);
+    if (rv != kClockManagerSuccess) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:%s --- EsfClockManagerParams2PsmParams failed:%d\n",
+          "clock_manager_setting.c", __LINE__, __func__, rv);
+      (void)pthread_mutex_unlock(&s_temporary_for_params_mutex);
+      return kClockManagerInternalError;
+    }
+
+    rv_mutex = pthread_mutex_unlock(&s_temporary_for_params_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
   }
-  if (mask->common.sync_interval) {
-    g_params_in_volatile->common.raw_sync_interval.sync_interval =
-        g_temporary_for_params->common.raw_sync_interval.sync_interval;
-  }
-  if (mask->common.polling_time) {
-    g_params_in_volatile->common.raw_polling_time.polling_time =
-        g_temporary_for_params->common.raw_polling_time.polling_time;
-  }
-  if (mask->skip_and_limit.type) {
-    g_params_in_volatile->skip_and_limit.raw_type.type =
-        g_temporary_for_params->skip_and_limit.raw_type.type;
-  }
-  if (mask->skip_and_limit.limit_packet_time) {
-    g_params_in_volatile->skip_and_limit.raw_limit_packet_time
-        .limit_packet_time = g_temporary_for_params->skip_and_limit
-                                 .raw_limit_packet_time.limit_packet_time;
-  }
-  if (mask->skip_and_limit.limit_rtc_correction_value) {
-    g_params_in_volatile->skip_and_limit.raw_limit_rtc_correction_value
-        .limit_rtc_correction_value =
-        g_temporary_for_params->skip_and_limit.raw_limit_rtc_correction_value
-            .limit_rtc_correction_value;
-  }
-  if (mask->skip_and_limit.sanity_limit) {
-    g_params_in_volatile->skip_and_limit.raw_sanity_limit.sanity_limit =
-        g_temporary_for_params->skip_and_limit.raw_sanity_limit.sanity_limit;
-  }
-  if (mask->slew_setting.type) {
-    g_params_in_volatile->slew_setting.raw_type.type =
-        g_temporary_for_params->slew_setting.raw_type.type;
-  }
-  if (mask->slew_setting.stable_rtc_correction_value) {
-    g_params_in_volatile->slew_setting.raw_stable_rtc_correction_value
-        .stable_rtc_correction_value =
-        g_temporary_for_params->slew_setting.raw_stable_rtc_correction_value
-            .stable_rtc_correction_value;
-  }
-  if (mask->slew_setting.stable_sync_number) {
-    g_params_in_volatile->slew_setting.raw_stable_sync_number
-        .stable_sync_number = g_temporary_for_params->slew_setting
-                                  .raw_stable_sync_number.stable_sync_number;
+
+  {  // Lock the mutex to access shared resources
+    int rv_mutex = pthread_mutex_lock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_lock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
+
+    if ((g_params_in_volatile == NULL) || (g_temporary_for_params == NULL)) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- g_params_in_volatile or "
+                       "g_temporary_for_params is NULL\n",
+                       "clock_manager_setting.c", __LINE__, __func__);
+      (void)pthread_mutex_unlock(&s_params_in_volatile_mutex);
+      return kClockManagerInternalError;
+    }
+
+    if (mask->connect.hostname) {
+      snprintf(g_params_in_volatile->connect.hostname,
+               ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE, "%s",
+               g_temporary_for_params->connect.hostname);
+      EsfClockManagerCheckPsmConnectThenSubstituteDefaultForIfNecessary(
+          g_params_in_volatile);
+    }
+    if (mask->common.sync_interval) {
+      g_params_in_volatile->common.raw_sync_interval.sync_interval =
+          g_temporary_for_params->common.raw_sync_interval.sync_interval;
+    }
+    if (mask->common.polling_time) {
+      g_params_in_volatile->common.raw_polling_time.polling_time =
+          g_temporary_for_params->common.raw_polling_time.polling_time;
+    }
+    if (mask->skip_and_limit.type) {
+      g_params_in_volatile->skip_and_limit.raw_type.type =
+          g_temporary_for_params->skip_and_limit.raw_type.type;
+    }
+    if (mask->skip_and_limit.limit_packet_time) {
+      g_params_in_volatile->skip_and_limit.raw_limit_packet_time
+          .limit_packet_time = g_temporary_for_params->skip_and_limit
+                                   .raw_limit_packet_time.limit_packet_time;
+    }
+    if (mask->skip_and_limit.limit_rtc_correction_value) {
+      g_params_in_volatile->skip_and_limit.raw_limit_rtc_correction_value
+          .limit_rtc_correction_value =
+          g_temporary_for_params->skip_and_limit.raw_limit_rtc_correction_value
+              .limit_rtc_correction_value;
+    }
+    if (mask->skip_and_limit.sanity_limit) {
+      g_params_in_volatile->skip_and_limit.raw_sanity_limit.sanity_limit =
+          g_temporary_for_params->skip_and_limit.raw_sanity_limit.sanity_limit;
+    }
+    if (mask->slew_setting.type) {
+      g_params_in_volatile->slew_setting.raw_type.type =
+          g_temporary_for_params->slew_setting.raw_type.type;
+    }
+    if (mask->slew_setting.stable_rtc_correction_value) {
+      g_params_in_volatile->slew_setting.raw_stable_rtc_correction_value
+          .stable_rtc_correction_value =
+          g_temporary_for_params->slew_setting.raw_stable_rtc_correction_value
+              .stable_rtc_correction_value;
+    }
+    if (mask->slew_setting.stable_sync_number) {
+      g_params_in_volatile->slew_setting.raw_stable_sync_number
+          .stable_sync_number = g_temporary_for_params->slew_setting
+                                    .raw_stable_sync_number.stable_sync_number;
+    }
+
+    rv_mutex = pthread_mutex_unlock(&s_params_in_volatile_mutex);
+    if (rv_mutex != 0) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:%s --- pthread_mutex_unlock failed:%d\n",
+                       "clock_manager_setting.c", __LINE__, __func__, rv_mutex);
+      return kClockManagerInternalError;
+    }
   }
 
   return kClockManagerSuccess;
@@ -1946,7 +2377,6 @@ EsfClockManagerParamsType2PsmParamsType(EsfClockManagerParamType type) {
   }
   return rv;
 }
-#endif  // CONFIG_EXTERNAL_TARGET_RPI
 
 STATIC EsfClockManagerReturnValue EsfClockManagerPsmParams2Params(
     EsfClockManagerParams *const params,

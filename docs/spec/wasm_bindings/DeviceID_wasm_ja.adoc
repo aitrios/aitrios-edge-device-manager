@@ -1,0 +1,402 @@
+= DeviceID_wasm 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.5
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== 目的と適用範囲
+
+本書は、Wasm Appから、DeviceIDを取得するために必要なWasm Bindngブロックを定義します。 +
+XXのバージョンXXに適用されます。
+
+<<<
+
+== 用語
+=== WAMR
+
+WebAssembly Micro Runtime組み込みに特化したWasm Runtimeの一種
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+Wasm Bindngブロックは、Wasm AppからESFのAPIを呼び出し可能にする機能を提供します。 
+
+.概要図
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Wasm export API]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+
+    subgraph Wasm App
+        wasm_export_api_if[Wasm export API IF]
+    end
+
+wasm_export_api_if --> | Call Native API | wasm_export
+wasm_export --> | Call ESF API | ESFAPI
+wasm_export --> | resault | wasm_export_api_if
+ESFAPI --> | result | wasm_export
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+Wasm Bindngブロックの機能としては、主にWasmアプリケーションの領域にあるアドレス空間から、ESFアドレスの空間に変換を実施し、ESFのAPIを実行します。
+
+.データフロー図
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[アドレス空間変換]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+    subgraph Wasm App
+        wasm_export_api_if[Wasm export API IF]
+    end
+wasm_export_api_if --> | Wasm adder/ESF adder | wasm_export
+wasm_export --> | ESF adder | ESFAPI
+ESFAPI --> | ESF adder | wasm_export
+wasm_export --> | Wasm adder/ESF adder | wasm_export_api_if
+....
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|wamr
+|wasm空間のアドレス操作に使用
+|バージョン: 2.1.0
+|===
+
+<<<
+
+=== 状態遷移
+DeviceID_wasmは状態を持ちません。
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|DeviceID取得機能
+|Wasm AppからDeviceIDを取得する機能です。
+|<<#_DeviceID取得機能>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_DeviceID取得機能]
+==== DeviceID取得機能
+
+* 機能概要
+  ** Wasm AppからDeviceIDを取得する機能
+* 前提条件
+  ** Wasm Appを起動する前に、link:Wasm_binding_ja.adoc#_WasmBindingInit[WasmBindingInit]を実行してください。
+  *** esf mainを有効にした場合はWasmBindingInitの実行は不要になります。
+  ** 本機能は、Wasm Appから呼び出してください。
+* 機能詳細
+  ** 詳細挙動
+      *** デバイスのHW情報を読み込んで、DeviceIDを取得します。
+  
+  ** エラー時の挙動
+      *** DeviceIDの取得に失敗した場合エラーを返します。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|連続処理実行時間
+|最大でかかる処理時間です。
+|<<#_連続処理実行時間>>
+
+|スタックメモリ使用量
+|最大で使用するスタックメモリ量です。
+|<<#_スタックメモリ使用量>>
+
+|ヒープメモリ使用量
+|最大で使用するヒープメモリ量です。
+|<<#_ヒープメモリ使用量>>
+
+|静的メモリ使用量
+|使用する静的メモリ量です。
+|<<#_静的メモリ使用量>>
+
+|スレッド使用数
+|使用するスレッド数です。
+|<<#_スレッド使用数>>
+
+|===
+
+<<<
+
+[#_コンポーネントの非機能要件説明]
+=== コンポーネントの非機能要件説明
+[#_連続処理実行時間]
+==== 連続処理実行時間
+T.B.D
+
+[#_スタックメモリ使用量]
+==== スタックメモリ使用量
+T.B.D
+
+[#_ヒープメモリ使用量]
+==== ヒープメモリ使用量
+T.B.D
+
+[#_静的メモリ使用量]
+==== 静的メモリ使用量
+T.B.D
+
+[#_スレッド使用数]
+==== スレッド使用数
+T.B.D
+
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|EsfDeviceIdResult
+|APIの実行結果を定義する列挙型です。
+|<<#_EsfDeviceIdResult>>
+|ESF_DEVICEID_MAX_SIZE
+|DeviceIDのデータサイズを定義するマクロです。
+|<<#_ESF_DEVICEID_MAX_SIZE>>
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|EsfSystemGetDeviceID
+|DeviceIDを取得します。
+|<<#_EsfGetDeviceId>>
+|===
+
+
+<<<
+
+=== データ型定義
+[#_EsfDeviceIdResult]
+==== EsfDeviceIdResult
+APIの実行結果を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kEsfDeviceIdResultOk,
+  kEsfDeviceIdResultParamError,
+  kEsfDeviceIdResultInternalError,
+  kEsfDeviceIdResultEmptyData
+} EsfDeviceIdResult;
+....
+
+
+* *値* 
+
+[#_TableReturnValue]
+.EsfDeviceIdResultの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kEsfDeviceIdResultOk
+|処理に成功しました。
+|kEsfDeviceIdResultParamError
+|引数が無効な値です
+|kEsfDeviceIdResultInternalError
+|内部でエラーが発生しました。
+|kEsfDeviceIdResultEmptyData
+|取得対象のデータが格納されていません。
+|===
+
+* *書式*
+
+[#_ESF_DEVICEID_MAX_SIZE]
+==== ESF_DEVICEID_MAX_SIZE
+Device IDの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define WASM_BINDING_DEVICEID_MAX_SIZE (41)
+....
+
+<<<
+
+=== API定義
+
+[#_EsfGetDeviceId]
+==== EsfSystemGetDeviceID
+
+* *機能* 
++
+Wasm AppからコールするDeviceIDを取得するAPIになります。
+
+* *書式* +
++
+``** EsfDeviceIdResult EsfSystemGetDeviceID(char *data )**``  
+
+* *引数の説明* +
++
+**``[OUT] char *data``**:: 
+取得したDeviceIDが格納されます。 +
+<<#_ESF_DEVICEID_MAX_SIZE,WASM_BINDING_DEVICEID_MAX_SIZE>>で確保したバッファを指定してください。 +
+- バッファサイズが<<#_ESF_DEVICEID_MAX_SIZE,WASM_BINDING_DEVICEID_MAX_SIZE>>未満の場合はメモリを書きつぶす可能性がありますのでご注意ください。
+
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** Wasm AppはEsfSystemGetDeviceIDが定義されている link:../../../src/wasm_binding/include/wasm_binding.h[wasm_binding.h]をインクルードしてください。
+
+** エラー情報
+
+[#_EsfDeviceIdResultの戻り値の説明]
+.EsfDeviceIdResultの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | OUT引数の状態 | 復旧方法
+|kEsfDeviceIdResultParamError
+|``data == NULL``の場合です。
+|変更されません。
+|正しい引数を設定してリトライしてください。
+
+|kEsfDeviceIdResultInternalError
+|DeviceIDの取得に失敗した場合。
+|不定値が格納されている可能性があります。
+|復旧できません。
+
+|kEsfDeviceIdResultEmptyData
+|デバイスにHW情報が格納されていない場合です。
+|変更されません。
+|デバイスに正しくHW情報を設定してください。
+
+|===
+
+<<<
+
+== API使用時の呼び出し例
+各APIを使用する場合の呼び出し例を以下に示します。 +
+
+[#_DeviceID取得関数の呼び出し]
+=== DeviceID取得関数の呼び出し
+
+DeviceID取得関数の呼び出し例は以下になります。
+
+[source, mermaid]
+....
+
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant EsfSystemGetDeviceID
+    participant デバイス
+
+    App ->> +EsfSystemGetDeviceID: DeviceID取得要求
+    EsfSystemGetDeviceID ->> +デバイス: デバイスのHW情報要求
+    デバイス -->> -EsfSystemGetDeviceID: デバイスのHW情報
+    EsfSystemGetDeviceID ->> EsfSystemGetDeviceID: デバイスのHW情報解析
+    EsfSystemGetDeviceID -->> -App: DeviceID
+
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== Config
+[#_Config一覧]
+.Config一覧
+[width="100%",options="header"]
+
+|===
+|変数名 |値  |デフォルト値|ファイル | 説明
+|EXTERNAL_DEVICE_ID_WASM
+|tristate
+|``n``
+|src/wasm_binding/deviceid/Kconfig
+|DeviceID_wasmモジュールを有効にします。
+|===
+
+<<< 
+
+== 使用しているOSSの一覧
+
+* wamr
+  ** ライセンス: Apache 2.0 license (2024/9/24時点最新)
+
+== 参考文献
+
+* wasm-micro-runtime
+** https://github.com/bytecodealliance/wasm-micro-runtime
+
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|初版リリース
+|v0.1.1
+|Wasmから呼び出すAPI名の変更
+|v0.1.2
+|EsfGetDeviceId_wasmの項目を削除
+|v0.1.3
+|DeviceID取得方法の変更
+|v0.1.4
+|EsfDeviceIdResultの変更
+|v0.1.5
+|EsfSystemGetDeviceIDのバッファサイズの注意事項追加
+|===

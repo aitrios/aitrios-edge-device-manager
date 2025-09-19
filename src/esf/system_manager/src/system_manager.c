@@ -2823,7 +2823,7 @@ EsfSystemManagerResult EsfSystemManagerMigration(void) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:Failed to migrate RootAuth data. result=%d",
                      "system_manager.c", __LINE__, ret);
-    return ret;
+    return kEsfSystemManagerResultInternalError;
   }
 
   // Migrate DeviceManifest data (ID = 1)
@@ -2832,7 +2832,7 @@ EsfSystemManagerResult EsfSystemManagerMigration(void) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:Failed to migrate DeviceManifest data. result=%d",
                      "system_manager.c", __LINE__, ret);
-    return ret;
+    return kEsfSystemManagerResultInternalError;
   }
 
   // Migrate HwInfo data (ID = 2)
@@ -2841,7 +2841,7 @@ EsfSystemManagerResult EsfSystemManagerMigration(void) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:Failed to migrate HwInfo data. result=%d",
                      "system_manager.c", __LINE__, ret);
-    return ret;
+    return kEsfSystemManagerResultInternalError;
   }
 
   // Migrate Old EVP Setup Info data (ID = 3)
@@ -2851,7 +2851,7 @@ EsfSystemManagerResult EsfSystemManagerMigration(void) {
         MODULE_ID_SYSTEM,
         "%s-%d:Failed to migrate Old EVP Setup Info data. result=%d",
         "system_manager.c", __LINE__, ret);
-    return ret;
+    return kEsfSystemManagerResultInternalError;
   }
 
   // Erase migration data after successful migration

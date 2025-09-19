@@ -46,7 +46,9 @@ PlErrCode PlLheapUnmap(void *vaddr);
 PlErrCode PlLheapGetMeminfo(PlLheapMeminfo *info);
 bool PlLheapIsValid(const PlLheapHandle handle);
 PlErrCode PlLheapPwrite(const PlLheapHandle handle, const char *buf,
-                            uint32_t size, uint32_t offset);
+                            uint32_t count, uint32_t offset);
+PlErrCode PlLheapPread(const PlLheapHandle handle, char *buf,
+                        uint32_t count, uint32_t offset);
 PlErrCode PlLheapFopen(const PlLheapHandle handle, int *pfd);
 PlErrCode PlLheapFclose(const PlLheapHandle handle, int fd);
 PlErrCode PlLheapFseek(const PlLheapHandle handle, int fd,

@@ -1,0 +1,401 @@
+= DeviceID_wasm Functional Specification (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.5
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document defines the Wasm Binding block required to obtain the DeviceID from a Wasm App. +
+It applies to version XX of XX.
+
+<<<
+
+== Terminology
+=== WAMR
+
+A type of WebAssembly runtime specialized for embedded WebAssembly Micro Runtime.
+
+<<<
+
+== Component Description
+=== Component Overview
+
+The Wasm Binding block provides functionality that enables a Wasm App to invoke ESF APIs.
+
+.Overview Diagram
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Wasm export API]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+
+    subgraph Wasm App
+        wasm_export_api_if[Wasm export API IF]
+    end
+
+wasm_export_api_if --> | Call Native API | wasm_export
+wasm_export --> | Call ESF API | ESFAPI
+wasm_export --> | resault | wasm_export_api_if
+ESFAPI --> | result | wasm_export
+....
+
+<<<
+
+=== Detailed Component Description
+
+The primary function of the Wasm Binding block is to convert addresses in the Wasm application's memory space to the ESF address space, and execute ESF APIs accordingly.
+
+.Data Flow Diagram
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Address Space Conversion]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+    subgraph Wasm App
+        wasm_export_api_if[Wasm export API IF]
+    end
+wasm_export_api_if --> | Wasm addr/ESF addr | wasm_export
+wasm_export --> | ESF addr | ESFAPI
+ESFAPI --> | ESF addr | wasm_export
+wasm_export --> | Wasm addr/ESF addr | wasm_export_api_if
+....
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Comments
+
+|wamr
+|Used for address manipulation within the Wasm memory space
+|Version: 2.1.0
+|===
+
+<<<
+
+=== State Transitions
+
+DeviceID_wasm does not maintain any state.
+
+<<<
+
+=== List of Component Functions
+
+A list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section Number
+|DeviceID Retrieval Function
+|Function to retrieve the DeviceID from the Wasm App.
+|<<#_DeviceIDRetrievalFunction>>
+|===
+
+<<<
+
+=== Component Function Description
+[#_DeviceIDRetrievalFunction]
+==== DeviceID Retrieval Function
+
+* Function Overview
+  ** Function to retrieve the DeviceID from the Wasm App
+* Prerequisites
+  ** Execute link:Wasm_binding_ja.adoc#_WasmBindingInit[WasmBindingInit] before launching the Wasm App.
+  *** If `esf main` is enabled, executing WasmBindingInit is not required.
+  ** This function must be called from the Wasm App.
+* Function Details
+  ** Behavior Details
+      *** Reads the device's hardware information to retrieve the DeviceID.
+  
+  ** Behavior on Error
+      *** Returns an error if DeviceID retrieval fails.
+
+<<<
+
+=== List of Non-Functional Requirements
+
+A list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Description |Section Number
+|Continuous Processing Time
+|Maximum processing time required.
+|<<#_Continuous_Processing_Time>>
+
+|Stack Memory Usage
+|Maximum amount of stack memory used.
+|<<#_Stack_Memory_Usage>>
+
+|Heap Memory Usage
+|Maximum amount of heap memory used.
+|<<#_Heap_Memory_Usage>>
+
+|Static Memory Usage
+|Amount of static memory used.
+|<<#_Static_Memory_Usage>>
+
+|Number of Threads Used
+|Number of threads used.
+|<<#_Number_of_Threads_Used>>
+
+|===
+
+<<<
+
+[#_Component_Non_Functional_Requirements_Description]
+=== Description of Non-Functional Requirements
+[#_Continuous_Processing_Time]
+==== Continuous Processing Time
+T.B.D
+
+[#_Stack_Memory_Usage]
+==== Stack Memory Usage
+T.B.D
+
+[#_Heap_Memory_Usage]
+==== Heap Memory Usage
+T.B.D
+
+[#_Static_Memory_Usage]
+==== Static Memory Usage
+T.B.D
+
+[#_Number_of_Threads_Used]
+==== Number of Threads Used
+T.B.D
+
+== API Specification
+=== List of Definitions
+==== List of Data Types
+A list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section Number
+|EsfDeviceIdResult
+|Enumeration type that defines the API execution result.
+|<<#_EsfDeviceIdResult>>
+|ESF_DEVICEID_MAX_SIZE
+|Macro that defines the data size of the DeviceID.
+|<<#_ESF_DEVICEID_MAX_SIZE>>
+|===
+
+==== API List
+
+A list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description |Section Number
+|EsfSystemGetDeviceID
+|Retrieves the DeviceID.
+|<<#_EsfGetDeviceId>>
+|===
+
+<<<
+
+=== Data Type Definition
+
+[#_EsfDeviceIdResult]
+==== EsfDeviceIdResult
+
+An enumeration that defines the result of API execution.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfDeviceIdResultOk,
+  kEsfDeviceIdResultParamError,
+  kEsfDeviceIdResultInternalError,
+  kEsfDeviceIdResultEmptyData
+} EsfDeviceIdResult;
+....
+
+* *Values*
+
+[#_TableReturnValue]
+.Description of EsfDeviceIdResult Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|kEsfDeviceIdResultOk
+|The operation was successful.
+|kEsfDeviceIdResultParamError
+|The argument is invalid.
+|kEsfDeviceIdResultInternalError
+|An internal error occurred.
+|kEsfDeviceIdResultEmptyData
+|The target data was not stored.
+|===
+
+[#_ESF_DEVICEID_MAX_SIZE]
+==== ESF_DEVICEID_MAX_SIZE
+
+A macro that defines the maximum size of the DeviceID.
+
+* *Format*
+
+[source, C]
+....
+#define WASM_BINDING_DEVICEID_MAX_SIZE (41)
+....
+
+<<<
+
+=== API Definition
+
+[#_EsfGetDeviceId]
+==== EsfSystemGetDeviceID
+
+* *Function* +
+API to retrieve the DeviceID, called from the Wasm App.
+
+* *Format* +
++
+``** EsfDeviceIdResult EsfSystemGetDeviceID(char *data )**``
+
+* *Parameter Description* +
++
+**``[OUT] char *data``**::  
+The retrieved DeviceID will be stored in this buffer. +
+Specify a buffer allocated with <<#_ESF_DEVICEID_MAX_SIZE,WASM_BINDING_DEVICEID_MAX_SIZE>>. +
+- If the buffer size is less than <<#_ESF_DEVICEID_MAX_SIZE,WASM_BINDING_DEVICEID_MAX_SIZE>>, memory corruption may occur.
+
+* *Return Value* +
++
+Returns one of the values listed in <<#_TableReturnValue>>, depending on the execution result.
+
+* *Description* +
+** The Wasm App must include link:../../../src/wasm_binding/include/wasm_binding.h[wasm_binding.h], where EsfSystemGetDeviceID is defined.
+
+** Error Information
+
+[#_EsfDeviceIdResult_Return_Values]
+.Description of EsfDeviceIdResult Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+|kEsfDeviceIdResultParamError
+|When ``data == NULL``.
+|Not modified.
+|Set a valid argument and retry.
+
+|kEsfDeviceIdResultInternalError
+|When DeviceID retrieval fails.
+|May contain an undefined value.
+|Cannot be recovered.
+
+|kEsfDeviceIdResultEmptyData
+|When no hardware information is stored in the device.
+|Not modified.
+|Properly set the hardware information on the device.
+|===
+
+<<<
+
+== Example API Usage
+
+The following is an example of how to use each API. +
+
+[#_DeviceID_Function_Call]
+=== DeviceID Function Call
+
+Below is an example of calling the DeviceID retrieval function.
+
+[source, mermaid]
+....
+
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant EsfSystemGetDeviceID
+    participant Device
+
+    App ->> +EsfSystemGetDeviceID: Request to retrieve DeviceID
+    EsfSystemGetDeviceID ->> +Device: Request for hardware information
+    Device -->> -EsfSystemGetDeviceID: Hardware information
+    EsfSystemGetDeviceID ->> EsfSystemGetDeviceID: Analyze hardware information
+    EsfSystemGetDeviceID -->> -App: DeviceID
+
+....
+
+<<<
+
+== Special Notes and Component-Specific Information
+
+=== Config
+[#_Config_List]
+.Config List
+[width="100%",options="header"]
+|===
+|Variable Name |Value |Default |File |Description
+|EXTERNAL_DEVICE_ID_WASM
+|tristate
+|``n``
+|src/wasm_binding/deviceid/Kconfig
+|Enables the DeviceID_wasm module.
+|===
+
+<<<
+
+== List of OSS Used
+
+* wamr  
+  ** License: Apache 2.0 license (as of 2024/09/24)
+
+== References
+
+* wasm-micro-runtime  
+** https://github.com/bytecodealliance/wasm-micro-runtime
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|Initial release
+|v0.1.1
+|Changed the API name called from Wasm
+|v0.1.2
+|Removed EsfGetDeviceId_wasm entry
+|v0.1.3
+|Modified DeviceID retrieval method
+|v0.1.4
+|Updated EsfDeviceIdResult
+|v0.1.5
+|Added note on buffer size for EsfSystemGetDeviceID
+|===
