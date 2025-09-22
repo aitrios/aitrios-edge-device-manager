@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.10
+:revnumber: 0.1.11
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -96,6 +96,9 @@ SystemManagerは状態を持ちません。
 |エクセプション情報アップロード機能
 |エクセプション情報をBulkDlogでクラウドにアップロードする機能です。
 |<<#_エクセプション情報アップロード機能>>
+|データマイグレーション機能
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
+|<<#_データマイグレーション機能>>
 |===
 
 <<<
@@ -189,6 +192,21 @@ SystemManagerは状態を持ちません。
              エクセプション情報が存在しない場合は何も行いません。
     ** エラー時の挙動、復帰方法
         *** ParameterStorageManager/PowerManager/LogManagerのAPI呼び出しに失敗した場合はエラーを返します。
+
+[#_データマイグレーション機能]
+==== データマイグレーション機能
+* 機能概要
+    ** 過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
+* 前提条件
+    ** ParameterStorageManagerが初期化されていること。
+* 機能詳細
+    ** 以下のデータタイプの移行を順次実行します：
+        *** RootAuth: Root証明書データとそのSHA-256ハッシュ値の移行
+        *** DeviceManifest: デバイスマニフェストデータの移行
+        *** HwInfo: ハードウェア情報データの移行
+        *** EVP Setup Info: EVP設定情報（Address/Port）の移行
+    ** 移行処理完了後、旧形式のデータファイルを削除します。
+    ** 移行対象データが空の場合は、正常終了として扱います。
 
 <<<
 
@@ -411,6 +429,10 @@ ParameterStorageManagerからInitialSettingFlagを読みだせなかった際に
 |HwInfo Sensor Model Nameのデータサイズを定義するマクロです。
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>
 
+|ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+|HwInfo Device Nameのデータサイズを定義するマクロです。
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE>>
+
 |EsfSystemManagerInitialSettingFlag
 |InitialSettingFlagの設定値を定義する列挙型です。
 |<<#_EsfSystemManagerInitialSettingFlag>>
@@ -614,6 +636,10 @@ APIの一覧を示します。
 |EsfSystemManagerExecReboot
 |指定されたリブートタイプでシステム再起動を実行します。
 |<<#_EsfSystemManagerExecReboot>>
+
+|EsfSystemManagerMigration
+|System Managerの設定データの移行処理を実行する。
+|<<#_EsfSystemManagerMigration>>
 
 |===
 
@@ -829,6 +855,7 @@ typedef struct EsfSystemManagerHwInfo{
   char sensor_id[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE];
   char application_processor_type[ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE];
   char sensor_model_name[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];
+  char device_name[ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE];
 } EsfSystemManagerHwInfo;
 ....
 
@@ -861,6 +888,9 @@ typedef struct EsfSystemManagerHwInfo{
 
 |sensor_model_name
 |Sensor Model Name
+
+|device_name
+|Device Name
 |===
 
 
@@ -952,6 +982,17 @@ HwInfo Sensor Model Nameのデータサイズを定義するマクロです。
 [source, C]
 ....
 #define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+HwInfo Device Nameのデータサイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE (33)
 ....
 
 [#_EsfSystemManagerInitialSettingFlag]
@@ -2816,7 +2857,20 @@ a|
 実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
 
 * *説明* +
-** 起動要因とエクセプション情報を保存します。
+** PowerManagerから取得した起動要因に基づいて、エクセプション情報と起動要因をParameterStorageManagerに保存します。
+** 処理の流れ：
+*** PowerManagerから起動要因を取得します。
+*** 起動要因がkEsfPwrMgrResetCauseWDTまたはkEsfPwrMgrResetCauseCoreSoftの場合：
+**** PowerManagerからExceptionInfoを取得します。
+**** ExceptionInfoが存在する場合、ParameterStorageManagerに保存します。
+**** PowerManagerのExceptionInfoをクリアします。
+*** ExceptionInfoが存在しない場合：
+**** 既にEVPによる起動要因が保存されている場合は何もしません。
+**** 既に起動要因が保存されている場合は何もしません。
+*** 起動要因の判定・保存：
+**** 初回起動の場合、kEsfSystemManagerResetCauseSysChipPowerOnResetを保存します。
+**** kEsfPwrMgrResetCauseSysChipPowerOnResetまたはkEsfPwrMgrResetCauseCoreSoftで、ExceptionInfoがない場合は異常系として扱います。
+**** その他の起動要因は適切な値に変換して保存します。
 
 ** 実行情報
 *** 同時に呼び出し可能です。
@@ -2832,8 +2886,13 @@ a|
 |戻り値 |条件 | OUT引数の状態 | 復旧方法
 
 |kEsfSystemManagerResultInternalError
-|ParameterStorageManagerでエラーが発生した場合。 +
- PowerManagerでエラーが発生した場合。
+a|
+* PowerManagerから起動要因を取得する際にエラーが発生した場合
+* PowerManagerからExceptionInfoを取得する際にエラーが発生した場合（WDT起動時のみ）
+* ParameterStorageManagerでエラーが発生した場合
+* PowerManagerのExceptionInfoクリアでエラーが発生した場合
+* EVPによる起動要因の取得でエラーが発生した場合
+* 起動要因の取得・設定でエラーが発生した場合
 | -
 |復旧できません。
 
@@ -2934,8 +2993,9 @@ LogManagerでエラーが発生した場合。
 ``** EsfSystemManagerResult EsfSystemManagerIsNeedReboot( bool *reset_flag )**``
 
 * *引数の説明* +
-**``[IN] bool *reset_flag``**::
-再起動の必要性を返すポインタです。 +
+**``[OUT] bool *reset_flag``**::
+関数が再起動の必要性を返すために使用する出力用ポインタです。 +
+``true``：再起動が必要、``false``：再起動不要 +
 ``NULL``が指定された場合、``kEsfSystemManagerResultParamError``を返して終了します。
 
 
@@ -2944,7 +3004,12 @@ LogManagerでエラーが発生した場合。
 実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
 
 * *説明* +
-** 起動要因によるシステム再起動の必要性を判定します。
+** PowerManagerから取得した起動要因に基づいてシステム再起動の必要性を判定します。
+** 処理の流れ：
+*** PowerManagerから起動要因を取得します。
+*** 起動要因がkEsfPwrMgrResetCauseCoreSoftの場合、ParameterStorageManagerからExceptionInfoの存在を確認します。
+*** ExceptionInfoが存在する場合、起動要因をkEsfPwrMgrResetCauseWDTとして扱います。
+*** PlSystemManagerIsNeedRebootを呼び出して、再起動の必要性を判定します。
 ** ``reset_flag``が``true``で返ってきた場合は、システム再起動を行ってください。
 
 ** 実行情報
@@ -2967,7 +3032,10 @@ a|
 |正しい引数を設定してリトライしてください。
 
 |kEsfSystemManagerResultInternalError
-|PlSystemManagerでエラーが発生した場合です。
+a|
+* PowerManagerから起動要因を取得する際にエラーが発生した場合
+* ParameterStorageManagerでエラーが発生した場合
+* PlSystemManagerでエラーが発生した場合
 |不定値が格納されている可能性があります。
 |復旧できません。
 
@@ -3012,6 +3080,57 @@ a|
 |戻り値なし
 |正常時はシステム再起動を実行するため、この関数は戻りません。
 |該当なし
+
+|===
+
+
+[#_EsfSystemManagerMigration]
+==== EsfSystemManagerMigration
+* *機能*
++
+System Managerの設定データの移行処理を実行する。
+
+* *書式* +
++
+``** EsfSystemManagerResult EsfSystemManagerMigration( void )**``
+
+* *引数の説明* +
++
+なし
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValue>>のいずれかの値が返ります。
+
+* *説明* +
+** 旧形式で保存されているデータを新形式に移行します。
+** 以下のデータタイプを順次移行します：
+*** RootAuth : Root証明書データとそのSHA-256ハッシュ値
+*** DeviceManifest : デバイスマニフェストデータ
+*** HwInfo : ハードウェア情報データ
+*** EVP Setup Info : EVP設定情報
+** 各データの移行が完了すると、対応する旧形式のデータファイルを削除します。
+** 移行対象データが存在しない場合、正常終了として処理します。
+** 実行情報
+*** 同時に呼び出し可能です。
+*** 複数のスレッドからの呼び出し可能です。
+*** 複数のタスクからの呼び出しが可能です。
+*** API内部でブロッキングします。
+** エラー情報
++
+[#_EsfSystemManagerMigrationの戻り値の説明]
+.EsfSystemManagerMigrationの戻り値の説明
+[width="100%",options="header"]
+|===
+|戻り値 |条件 | 復旧方法
+
+|kEsfSystemManagerResultInternalError
+a|
+* PlSystemManagerでエラーが発生した場合
+* ParameterStorageManagerへのデータ保存でエラーが発生した場合
+* メモリ確保に失敗した場合
+* SHA-256ハッシュ計算に失敗した場合（RootAuthのみ）
+|復旧できません。
 
 |===
 
@@ -3117,18 +3236,34 @@ main ->> +SystemManager: EsfSystemManagerSetExceptionInfo()
 SystemManager ->> +PowerManager: EsfPwrMgrGetResetCause()
 PowerManager -->> -SystemManager: 起動要因
 
-alt 起動要因がkEsfPwrMgrResetCauseWDTの場合
+alt 起動要因がkEsfPwrMgrResetCauseWDTまたはkEsfPwrMgrResetCauseCoreSoftの場合
 	SystemManager ->> +PowerManager: EsfPwrMgrGetExceptionInfo()
     PowerManager -->> -SystemManager: エクセプション情報
-    SystemManager ->> +ParameterStorageManager: エクセプション情報を保存
-    ParameterStorageManager -->> -SystemManager: -
-    SystemManager ->> +PowerManager: EsfPwrMgrClearExceptionInfo()
-    PowerManager -->> -SystemManager: kEsfPwrMgrOk
+    
+    opt エクセプション情報が存在する場合
+        SystemManager ->> +ParameterStorageManager: エクセプション情報を保存
+        ParameterStorageManager -->> -SystemManager: -
+        SystemManager ->> +PowerManager: EsfPwrMgrClearExceptionInfo()
+        PowerManager -->> -SystemManager: kEsfPwrMgrOk
+        Note over SystemManager: ExceptionInfo処理完了、起動要因保存処理へ
+    end
+    
+    opt エクセプション情報が存在しない場合
+        SystemManager ->> +ParameterStorageManager: EVPによる起動要因が保存されているか確認
+        ParameterStorageManager -->> -SystemManager: EVPによる起動要因
+        opt EVPによる起動要因が保存されている場合
+            Note over SystemManager: EVPによる起動要因が優先されるためリターンで処理終了
+            SystemManager -->> main: kEsfSystemManagerResultOk
+        end
 
-    SystemManager ->> +ParameterStorageManager: EVPによる起動要因
-    ParameterStorageManager -->> -SystemManager: -
+        SystemManager ->> +ParameterStorageManager: 起動要因が保存されているか確認
+        ParameterStorageManager -->> -SystemManager: 起動要因
+        opt 起動要因が保存されている場合
+            SystemManager -->> main: kEsfSystemManagerResultOk
+        end
+    end
 
-else
+else その他の起動要因の場合
     SystemManager ->> +ParameterStorageManager: EVPによる起動要因が保存されているか確認
     ParameterStorageManager -->> -SystemManager: EVPによる起動要因
     opt EVPによる起動要因が保存されている場合
@@ -3154,6 +3289,17 @@ SystemManager -->> -main: kEsfSystemManagerResultOk
 
 %%---Reboot判定処理
 main ->> +SystemManager: EsfSystemManagerIsNeedReboot()
+SystemManager ->> +PowerManager: EsfPwrMgrGetResetCause()
+PowerManager -->> -SystemManager: 起動要因
+
+alt 起動要因がkEsfPwrMgrResetCauseCoreSoftの場合
+    SystemManager ->> +ParameterStorageManager: ExceptionInfoサイズ確認
+    ParameterStorageManager -->> -SystemManager: サイズ
+    opt ExceptionInfoサイズ > 0の場合
+        Note over SystemManager: 起動要因をkEsfPwrMgrResetCauseWDTに変更
+    end
+end
+
 SystemManager ->> +PlSystemManager: PlSystemManagerIsNeedReboot()
 PlSystemManager -->> -SystemManager: リブート判断結果(true or false) 
 SystemManager -->> -main: リブート判断結果(true or false) 
@@ -3324,4 +3470,11 @@ a|
 ** ``EsfSystemManagerUploadExceptionInfo``を追加
 ** ``EsfSystemManagerIsNeedReboot``を追加
 ** ``EsfSystemManagerExecReboot``を追加
+|v0.1.11
+a|
+** ``ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE``を追加
+** ``EsfSystemManagerHwInfo``に``device_name``を追加
+** ``EsfSystemManagerMigration``を追加
+** ``EsfSystemManagerSetExceptionInfo``の説明を更新
+** ``EsfSystemManagerIsNeedReboot``の説明を更新
 |===

@@ -5,11 +5,6 @@
 subdir('esf')
 subdir('hal')
 subdir('porting_layer')
-if get_option('target') == 't4r'
-  subdir('t4r')
-else
-  subdir('rpi')
-endif
 
 subdir('utility')
 subdir('wasm_binding')

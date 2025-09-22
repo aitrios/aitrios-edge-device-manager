@@ -1,0 +1,312 @@
+= Wasm_Binding Functional Specification (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.0
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+== Purpose and Scope
+
+This document defines the Wasm Binding block required to enable API calls from a Wasm App. +
+It applies to version XX of XX.
+
+<<<
+
+== Terminology
+=== WAMR
+
+WebAssembly Micro Runtime, a type of Wasm runtime specialized for embedded systems.
+
+<<<
+
+== Component Description
+=== Component Overview
+The Wasm Binding block provides functionality that enables API calls from a Wasm App to the ESF.
+
+.Overview Diagram
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Wasm export API]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+
+    subgraph WasmApp
+        wasm_export_api_if[Wasm export API IF]
+    end
+
+wasm_export_api_if --> | Call Native API | wasm_export
+wasm_export --> | Call ESF API | ESFAPI
+wasm_export --> | result | wasm_export_api_if
+ESFAPI --> | result | wasm_export
+....
+
+<<<
+
+=== Detailed Component Description
+The main function of the Wasm Binding block is to convert the address space from the Wasm application domain to the ESF address domain and execute ESF APIs.
+
+.Data Flow Diagram
+[source,mermaid]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Address Space Conversion]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+    subgraph WasmApp
+        wasm_export_api_if[Wasm export API IF]
+    end
+wasm_export_api_if --> | Wasm addr/ESF addr | wasm_export
+wasm_export --> | ESF addr | ESFAPI
+ESFAPI --> | ESF addr | wasm_export
+wasm_export --> | Wasm addr/ESF addr | wasm_export_api_if
+....
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Comments
+|EVP Runtime
+|Used to register the Wasm Binding API to Wamr
+|
+|wamr
+|Used to manipulate the address in the Wasm space
+|Version: 2.1.0
+|===
+
+<<<
+
+=== State Transitions
+WasmBinding does not maintain any states.
+
+<<<
+
+=== Function List
+<<#_TableFunction>> lists the available functions.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description  |Section Number
+|WasmBinding Initialization Function
+|Initializes the WasmBinding.
+|<<#_WasmBindingInitFunction>>
+|===
+
+<<<
+
+=== Function Descriptions
+[#_WasmBindingInitFunction]
+==== WasmBinding Initialization Function
+
+* Function Overview
+  ** Initializes the WasmBinding.
+* Prerequisites
+  ** The EVP Agent must not be running.
+* Detailed Behavior
+  ** Registers the WasmBinding API with Wamr via EVP (EVP_wasm_runtime_register_natives).
+  
+  ** Error Behavior
+      *** Returns false if function registration fails.
+
+<<<
+
+=== Non-Functional Requirements
+
+<<#_TableNonFunction>> lists the non-functional requirements.
+
+[#_TableNonFunction]
+.Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description  |Section Number
+|Continuous Processing Time
+|Maximum execution time.
+|<<#_ContinuousProcessingTime>>
+
+|Stack Memory Usage
+|Maximum stack memory usage.
+|<<#_StackMemoryUsage>>
+
+|Heap Memory Usage
+|Maximum heap memory usage.
+|<<#_HeapMemoryUsage>>
+
+|Static Memory Usage
+|Amount of static memory used.
+|<<#_StaticMemoryUsage>>
+
+|Thread Usage
+|Number of threads used.
+|<<#_ThreadUsage>>
+
+|===
+
+<<<
+
+[#_NonFunctionalRequirementsDescription]
+=== Non-Functional Requirements Description
+[#_ContinuousProcessingTime]
+==== Continuous Processing Time
+T.B.D
+
+[#_StackMemoryUsage]
+==== Stack Memory Usage
+T.B.D
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+T.B.D
+
+[#_StaticMemoryUsage]
+==== Static Memory Usage
+T.B.D
+
+[#_ThreadUsage]
+==== Thread Usage
+T.B.D
+
+
+== API Specification
+=== Definitions
+==== Data Type List
+
+There are no data type definitions.
+
+==== API List
+<<#_TableAPI>> lists the available APIs.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description  |Section Number
+|WasmBindingInit
+|Initializes the WasmBinding.
+|<<#_WasmBindingInit>>
+|===
+
+
+<<<
+
+=== Data Type Definitions
+
+
+<<<
+
+=== API Definitions
+
+[#_WasmBindingInit]
+==== WasmBindingInit
+
+* *Function* 
++ Initializes the WasmBinding.
+
+* *Format* 
++ ``** bool WasmBindingInit(void)**``  
+
+* *Argument Descriptions* 
++ There are no arguments.
+
+* *Return Values* 
+[#_WasmBindingInitReturnValues]
+.WasmBindingInit Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Description 
+|true
+|Successfully completed.
+
+|false
+|Function registration failed.
+|===
+
+* *Description* 
+** Allows Wasm App to call the WasmBinding API.
+
+** Execution Information
+*** Must be called before starting the EVP Agent.
+
+<<<
+
+== Example Usage of the API
+The following example shows how to use each API. +
+[#_WasmBindingInitExample]
+=== WasmBindingInit Example
+
+Example of calling WasmBindingInit. Must be called before starting the EVP Agent.  +
+If esf main is enabled, calling WasmBindingInit is unnecessary.
+
+[source, C]
+....
+
+if (!WasmBindingInit()) {
+  printf("WasmBindingInit failed\n");
+}
+
+// Start EvpAgent.
+extern int evp_agent_main(int, FAR char **);
+pid = task_create("EVP Agent",
+                  101,
+                  CONFIG_DEFAULT_TASK_STACKSIZE,
+                  evp_agent_main,
+                  NULL);
+
+....
+
+<<<
+
+== Special Notes and Component-Specific Explanations
+=== Config
+[#_ConfigList]
+.Config List
+[width="100%",options="header"]
+
+|===
+|Variable Name |Value  |Default Value|File |Description
+|CONFIG_EXTERNAL_WASM_BINDING_INIT
+|tristate
+|``n``
+|src/wasm_binding/binding/Kconfig
+|Enables the WasmBinding initialization module.
+|===
+
+<<< 
+
+== List of OSS Used
+* wamr
+  ** License: Apache 2.0 license (latest as of 2024/9/24)
+
+== References
+
+* wasm-micro-runtime
+** https://github.com/bytecodealliance/wasm-micro-runtime
+
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|Initial release.
+|===

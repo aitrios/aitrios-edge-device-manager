@@ -1,0 +1,668 @@
+= Codec_Jpeg_Wasm Functional Specification (LLM Translation)
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.2
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+This document defines the Wasm Binding block required to invoke the Codec (Jpeg) block from the Wasm App to perform JPEG encoding (memory access and FileIO access). +
+It applies to version XX of XX.
+
+<<<
+
+== Terminology
+=== WAMR
+WebAssembly Micro Runtime  
+A type of Wasm runtime specialized for embedded systems.
+
+<<<
+
+== Component Description
+=== Component Overview
+The Wasm Binding block provides functionality to enable the Wasm App to call ESF APIs.
+
+.Overview Diagram
+[{mermaid_block}]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[Wasm export API]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+
+    subgraph WasmApp
+        wasm_export_api_if[Wasm export API IF]
+    end
+wasm_export_api_if --> | Call Native API | wasm_export
+wasm_export --> | Call ESF API | ESFAPI
+wasm_export --> | result | wasm_export_api_if
+ESFAPI --> | result | wasm_export
+....
+
+<<<
+
+=== Detailed Component Description
+The main function of the Wasm Binding block is to convert the address space from the Wasm application domain to the ESF address space and execute the ESF APIs.
+
+.Data Flow Diagram
+[{mermaid_block}]
+....
+graph TB;
+    subgraph ESF
+	    subgraph WasmBindings
+    	    wasm_export[アドレス空間変換]
+		end
+    	style WasmBindings fill:#f9f
+    	subgraph ESFAPI
+		end
+    end
+    subgraph WasmApp
+        wasm_export_api_if[Wasm export API IF]
+    end
+wasm_export_api_if --> | Wasm adder/ESF adder | wasm_export
+wasm_export --> | ESF adder | ESFAPI
+ESFAPI --> | ESF adder | wasm_export
+wasm_export --> | Wasm adder/ESF adder | wasm_export_api_if
+....
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Comment
+
+|JPEG Encoding (Memory Access)
+|Used to perform JPEG encoding via memory access from the Wasm App
+|
+
+|JPEG Encoding (FileIO Access)
+|Used to perform JPEG encoding via FileIO access from the Wasm App
+|
+
+|wamr
+|Used for address operations in the Wasm address space
+|Version: 2.1.0
+|===
+
+<<<
+
+=== State Transition
+Codec_Jpeg_Wasm does not maintain any state.
+
+<<<
+
+=== List of Component Functions
+A list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section
+
+|JPEG Encoding (Memory Access) Function
+|Enables the Wasm App to invoke the JPEG encoding function via memory access
+|<<#_JPEGエンコード(メモリアクセス)機能>>
+
+|JPEG Encoding (FileIO Access) Function
+|Enables the Wasm App to invoke the JPEG encoding function via FileIO access
+|<<#_JPEGエンコード(FileIOアクセス)機能>>
+|===
+
+<<<
+
+=== Component Function Description
+
+[#_JPEGエンコード(メモリアクセス)機能]
+==== JPEG Encoding (Memory Access) Function
+* *Function Overview*
+    ** Provides the ability to invoke the JPEG encoding function via memory access from the Wasm App
+* *Prerequisites*
+    ** Before launching the Wasm App, execute link:Wasm_binding_ja.adoc#_WasmBindingInit[WasmBindingInit].
+    *** If `esf main` is enabled, executing WasmBindingInit is not required.
+    ** This function must be invoked from the Wasm App.
+* *Function Details*
+    ** Converts the address received from the Wasm App into an ESF address and obtains the result of calling the JPEG encoding function via memory access
+    ** Behavior on Error
+      *** If JPEG encoding fails, an error is returned.
+
+[#_JPEGエンコード(FileIOアクセス)機能]
+==== JPEG Encoding (FileIO Access) Function
+* *Function Overview*
+    ** Provides the ability to invoke the JPEG encoding function via FileIO access from the Wasm App
+* *Prerequisites*
+    ** Before launching the Wasm App, execute link:Wasm_binding_ja.adoc#_WasmBindingInit[WasmBindingInit].
+    *** If `esf main` is enabled, executing WasmBindingInit is not required.
+    ** This function must be invoked from the Wasm App.
+* *Function Details*
+    ** Converts the address received from the Wasm App into an ESF address and performs JPEG encoding via FileIO access, outputting the result to a file using FileIO
+    ** Behavior on Error
+      *** If JPEG encoding fails, an error is returned.
+
+<<<
+
+=== List of Non-functional Requirements for the Component
+None
+
+<<<
+
+=== Description of Non-functional Requirements for the Component
+None
+
+<<<
+
+== API Specification
+=== Definition List
+==== Data Type List
+A list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview |Section
+
+|EsfCodecJpegError
+|An enumeration that defines the execution result of the API
+|<<#_EsfCodecJpegError>>
+
+|EsfCodecJpegInputFormat
+|An enumeration that defines the input data format
+|<<#_EsfCodecJpegInputFormat>>
+
+|EsfCodecJpegOutputBuf
+|A structure that defines output buffer information
+|<<#_EsfCodecJpegOutputBuf>>
+
+|EsfCodecJpegEncParam
+|A structure that defines JPEG encoding parameters
+|<<#_EsfCodecJpegEncParam>>
+
+|EsfCodecJpegInfo
+|A structure that defines JPEG encoding parameters
+|<<#_EsfCodecJpegInfo>>
+
+|EsfMemoryManagerHandle
+|A type that defines a memory operation handle
+|<<#_EsfMemoryManagerHandle>>
+
+|===
+
+==== API List
+A list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Overview |Section
+
+|EsfCodecEncodeJpeg
+|This API is called from the Wasm App. It reads input data from memory, performs JPEG encoding, and outputs the JPEG image to memory.
+|<<#_EsfCodecEncodeJpeg>>
+
+|EsfCodecJpegEncodeHandle
+|This API is called from the Wasm App. It reads input data from FileIO, performs JPEG encoding, and outputs the JPEG image to a file using FileIO.
+|<<#_EsfCodecJpegEncodeHandle>>
+|===
+
+<<<
+
+=== Data Type Definitions
+An enumeration that defines the execution result of the API. +
+[#_EsfCodecJpegError]
+==== EsfCodecJpegError
+An enumeration that defines the execution result of the API.
+
+* *Format*
++
+[source, C]
+....
+typedef enum{
+  kJpegSuccess,
+  kJpegParamError,
+  kJpegOssInternalError,
+  kJpegMemAllocError,
+  kJpegOtherError,
+  kJpegOutputBufferFullError
+} EsfCodecJpegError;
+....
+
+* *Values*
++
+[#_EsfCodecJpegErrorの値の説明]
+.Description of EsfCodecJpegError Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kJpegSuccess
+|Normal completion
+
+|kJpegParamError
+|Parameter error
+
+|kJpegOssInternalError
+|OSS internal error
+
+|kJpegMemAllocError
+|Memory allocation error
+
+|kJpegOtherError
+|Other error
+
+|kJpegOutputBufferFullError
+|Output buffer full error
+|===
+
+
+[#_EsfCodecJpegInputFormat]
+==== EsfCodecJpegInputFormat
+An enumeration that defines the input data format.
+
+* *Format*
++
+[source, C]
+....
+typedef enum{
+  kJpegInputRgbPlanar_8,
+  kJpegInputRgbPacked_8,
+  kJpegInputBgrPacked_8,
+  kJpegInputGray_8,
+  kJpegInputYuv_8
+} EsfCodecJpegInputFormat;
+....
+
+* *Values*
++
+[#_EsfCodecJpegInputFormatの値の説明]
+.Description of EsfCodecJpegInputFormat Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|kJpegInputRgbPlanar_8
+|RGB Planar 8-bit
+
+|kJpegInputRgbPacked_8
+|RGB Packed 8-bit
+
+|kJpegInputBgrPacked_8
+|BGR Packed 8-bit
+
+|kJpegInputGray_8
+|Grayscale 8-bit
+
+|kJpegInputYuv_8
+|YUV (NV12) 8-bit
+|===
+
+[#_EsfCodecJpegOutputBuf]
+==== EsfCodecJpegOutputBuf
+A structure that defines the output buffer.
+
+* *Format*
++
+[source, C]
+....
+typedef struct{
+  uint64_t output_adr_handle;
+  int32_t output_buf_size;
+} EsfCodecJpegOutputBuf;
+....
+
+* *Values*
++
+[#_EsfCodecJpegOutputBufの値の説明]
+.Description of EsfCodecJpegOutputBuf Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|output_adr_handle
+|Starting address for JPEG image output. A value of 0 is not allowed.
+
+|output_buf_size
+|Size of the output buffer
+|===
+
+
+[#_EsfCodecJpegEncParam]
+==== EsfCodecJpegEncParam
+A structure that defines parameters for JPEG encoding.
+
+* *Format*
++
+[source, C]
+....
+typedef struct{
+  uint64_t input_adr_handle;
+  struct EsfCodecJpegOutputBuf out_buf;
+  EsfCodecJpegInputFormat input_fmt;
+  int32_t width;
+  int32_t height;
+  int32_t stride;
+  int32_t quality;
+} EsfCodecJpegEncParam;
+....
+
+* *Values*
++
+[#_EsfCodecJpegEncParamの値の説明]
+.Description of EsfCodecJpegEncParam Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|input_adr_handle
+|Starting address of input data. A value of 0 is not allowed.
+
+|out_buf
+|Output buffer information
+
+|input_fmt
+|Input data format
+
+|width
+|Width of the input image (in pixels). Values less than or equal to 0 are not allowed.
+
+|height
+|Height of the input image (in pixels). Values less than or equal to 0 are not allowed.
+
+|stride
+|Stride (in bytes) of the input image including padding. Values smaller than the number of bytes per row of the image are not allowed.
+
+|quality
+|Image quality (0: low quality ~ 100: high quality)
+|===
+
+[#_EsfCodecJpegInfo]
+==== EsfCodecJpegInfo
+A structure that defines parameters for JPEG encoding.
+
+* *Format*
++
+[source, C]
+....
+typedef struct{
+  EsfCodecJpegInputFormat input_fmt;
+  int32_t width;
+  int32_t height;
+  int32_t stride;
+  int32_t quality;
+} EsfCodecJpegInfo;
+....
+
+* *Values*
++
+[#_EsfCodecJpegInfoの値の説明]
+.Description of EsfCodecJpegInfo Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+
+|input_fmt
+|Input data format
+
+|width
+|Width of the input image (in pixels). Values less than or equal to 0 are not allowed.
+
+|height
+|Height of the input image (in pixels). Values less than or equal to 0 are not allowed.
+
+|stride
+|Stride (in bytes) of the input image including padding. Values smaller than the number of bytes per image row are not allowed.
+
+|quality
+|Image quality (0: low quality ~ 100: high quality)
+|===
+
+
+[#_EsfMemoryManagerHandle]
+==== EsfMemoryManagerHandle
+Defines a handle for memory operations targeting LargeHeap, DMA, and WasmHeap regions.
+
+<<<
+
+=== API Definition
+
+[#_EsfCodecEncodeJpeg]
+==== EsfCodecEncodeJpeg
+* *Function* 
++
+This API is called from the Wasm App.  
+It reads input data from memory, performs JPEG encoding, and outputs the JPEG image to memory.
+
+* *Format* +
++
+``** EsfCodecJpegError EsfCodecEncodeJpeg( const EsfCodecJpegEncParam *enc_param, int32_t *jpeg_size ) **``
+
+* *Argument Description* +
++
+**``[IN] const EsfCodecJpegEncParam *enc_param``**::  
+Parameters for JPEG encoding  
+**``[OUT] int32_t *jpeg_size``**::  
+Size of the encoded JPEG image to be output
+
+* *Return Value* +
++
+Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depending on the result.
+
+* *Description* +
+** The Wasm App must include link:../../../src/wasm_binding/include/wasm_binding.h[wasm_binding.h], which defines `EsfCodecEncodeJpeg`.  
+** This API reads input data from memory, performs JPEG encoding, and writes the result to memory. +
+It performs JPEG encoding with appropriate preprocessing and parameter settings.  
+** For processing efficiency, the input and output addresses (`enc_param->input_adr_handle`, `enc_param->out_buf.output_adr_handle`) should be 4-byte aligned.  
+** If the addresses are not 4-byte aligned, processing efficiency may be reduced.  
+** The caller must allocate sufficient memory to hold the encoded JPEG image. If the allocated size is insufficient, `kJpegOutputBufferFullError` will be returned.  
+** Can be invoked concurrently.  
+** Can be called from multiple threads.  
+** Can be called from multiple tasks.  
+
+** Error Information
++
+[#_EsfCodecEncodeJpegの戻り値の説明]
+.Description of EsfCodecEncodeJpeg Return Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kJpegParamError
+|・`enc_param` is NULL +
+・Values within `enc_param` are invalid (see <<#_EsfCodecJpegEncParamの値の説明>> for details) +
+・`jpeg_size` is NULL
+
+|kJpegOssInternalError
+|An internal error occurred in the OSS
+
+|kJpegMemAllocError
+|Memory allocation failed
+
+|kJpegOtherError
+|Other error
+
+|kJpegOutputBufferFullError
+|Output buffer is full
+|===
+
+[#_EsfCodecJpegEncodeHandle]
+==== EsfCodecJpegEncodeHandle
+* *Function* 
++
+This API is called from the Wasm App.  
+It reads input data from FileIO, performs JPEG encoding, outputs the JPEG image to a file using FileIO, and returns the handle for that FileIO.
+
+* *Format* +
++
+``** EsfCodecJpegError EsfCodecJpegEncodeHandle(EsfMemoryManagerHandle input_file_handle, EsfMemoryManagerHandle *output_file_handle, const EsfCodecJpegInfo *info, int32_t *jpeg_size) **``
+
+* *Argument Description* +
++
+**``[IN] EsfMemoryManagerHandle input_file_handle``**::  
+FileIO handle of the Memory Manager for input  
+**``[OUT] EsfMemoryManagerHandle *output_file_handle``**::  
+FileIO handle of the Memory Manager for output  
+**``[IN] const EsfCodecJpegInfo *info``**::  
+Parameters for JPEG encoding  
+**``[OUT] int32_t *jpeg_size``**::  
+Size of the encoded JPEG image to be output
+
+* *Return Value* +
++
+Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depending on the result.
+
+* *Description* +
+** The Wasm App must include link:../../../src/wasm_binding/include/wasm_binding.h[wasm_binding.h], which defines `EsfCodecJpegEncodeHandle`.  
+** This API reads input data from FileIO, performs JPEG encoding, outputs the JPEG image to a file using FileIO, and returns the output file's handle.  
+** JPEG encoding is performed using `EsfCodecJpegEncodeFileIo()` in Codec Jpeg.  
+** `input_file_handle` must be passed in an open state, as returned by `EsfMemoryManagerFopen()` of the Memory Manager.  
+** `output_file_handle` is generated by `EsfMemoryManagerAllocate()` in the LargeHeap region, and returned in an open state using `EsfMemoryManagerFopen()`.  
+** Can be invoked concurrently.  
+** Can be called from multiple threads.  
+** Can be called from multiple tasks.  
+
+** Error Information
++
+[#_EsfCodecJpegEncodeHandleの戻り値の説明]
+.Description of EsfCodecJpegEncodeHandle Return Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+
+|kJpegParamError
+|・`info` is NULL +
+・`info` contains invalid values (see <<#_EsfCodecJpegInfoの値の説明>> for details) +
+・`jpeg_size` is NULL +
+・`input_file_handle` is not a FileIO handle (e.g., LargeHeap, WasmHeap, DMA memory) +
+・`input_file_handle` is a closed FileIO handle
+
+|kJpegOssInternalError
+|An internal error occurred in the OSS
+
+|kJpegMemAllocError
+|Memory allocation failed
+
+|kJpegOtherError
+|Other error +
+・An error occurred while generating the `output_file_handle` using `EsfMemoryManagerAllocate()` +
+・An error occurred while opening the `output_file_handle` using `EsfMemoryManagerFopen()`
+
+|kJpegOutputBufferFullError
+|Output buffer is full
+|===
+
+<<<
+
+== Example API Calls
+Examples of how to call each API are shown below. +
+[#_JPEGエンコード(メモリアクセス)関数の呼び出し]
+=== JPEG Encoding (Memory Access) Function Call
+Example of calling the JPEG Encoding (Memory Access) function  
+EsfCodecEncodeJpeg call example is shown below.
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant EsfCodecEncodeJpeg
+    participant Device
+
+    App ->> +EsfCodecEncodeJpeg: Request JPEG encoding of input data in memory
+    EsfCodecEncodeJpeg ->> +Device: Request JPEG encoding of input data in memory
+    Device ->> Device: Perform JPEG encoding, output JPEG image to memory
+    Device -->> -EsfCodecEncodeJpeg: JPEG image
+    EsfCodecEncodeJpeg -->> -App: JPEG image
+....
+
+[#_JPEGエンコード(FileIOアクセス)関数の呼び出し]
+=== JPEG Encoding (FileIO Access) Function Call
+Example of calling the JPEG Encoding (FileIO Access) function  
+EsfCodecJpegEncodeHandle call example is shown below.
+
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App
+    participant EsfCodecJpegEncodeHandle
+    participant Device
+
+    App ->> +EsfCodecJpegEncodeHandle: Request JPEG encoding of input data from FileIO
+    EsfCodecJpegEncodeHandle ->> +Device: Request JPEG encoding of input data from FileIO
+    Device ->> Device: Perform JPEG encoding, output JPEG image to file using FileIO
+    Device -->> -EsfCodecJpegEncodeHandle: FileIO handle for output
+    EsfCodecJpegEncodeHandle -->> -App: FileIO handle for output
+....
+
+<<<
+
+== Special Notes and Component-specific Details
+=== Config
+[#_Config一覧]
+.Config List
+[width="100%",options="header"]
+
+|===
+|Variable Name |Type |Default Value |File |Description
+|EXTERNAL_CODEC_JPEG_WASM
+|tristate
+|``n``
+|src/wasm_binding/codec/jpeg/Kconfig
+|Enables the Codec_Jpeg_Wasm module (JPEG Encoding with Memory Access)
+|EXTERNAL_CODEC_JPEG_FILEIO_WASM
+|tristate
+|``n``
+|src/wasm_binding/codec/jpeg/Kconfig
+|Enables the Codec_Jpeg_Wasm module (JPEG Encoding with FileIO Access)
+|===
+
+<<<
+
+== List of OSS Used
+* wamr  
+** License: Apache 2.0 license (as of 2024/9/24)
+
+<<<
+
+== References
+
+* wasm-micro-runtime  
+** https://github.com/bytecodealliance/wasm-micro-runtime
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|Initial release
+|v0.1.1
+|Renamed APIs called from Wasm
+|v0.1.2
+|Removed EsfCodecJpegEncode_wasm item, added EsfCodecJpegEncodeHandle
+|===

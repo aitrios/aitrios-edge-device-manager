@@ -84,8 +84,6 @@ typedef void *PlClockManagerNtpStatus;
 // """Waits for terminating the NTP client daemon.
 
 // This function waits for the NTP client daemon to terminate.
-// In the current implementation, it immediately returns success
-// as the daemon termination is handled synchronously.
 
 // Args:
 //    no arguments.
@@ -99,9 +97,8 @@ PlClockManagerReturnValue PlClockManagerWaitForTerminatingDaemon(void);
 
 // """Deletes all NTP client configuration files.
 
-// This function removes all chronyd configuration files created by the
-// clock manager. It calls the underlying chrony implementation to delete
-// server.conf, maxchange.conf, and makestep.conf files.
+// This function removes all NTP client configuration files created by the
+// clock manager.
 
 // Args:
 //    no arguments.
@@ -116,8 +113,8 @@ PlClockManagerReturnValue PlClockManagerDeleteConfFiles(void);
 
 // """Gets the current NTP synchronization status.
 
-// This function allocates memory for a boolean status value and queries
-// the chronyd tracking status. The returned status pointer can be used
+// This function allocates memory for a status value and queries
+// the NTP client tracking status. The returned status pointer can be used
 // with PlClockManagerJudgeNtpTimeSyncComplete to determine sync completion.
 // The caller is responsible for freeing the returned pointer.
 
@@ -126,7 +123,7 @@ PlClockManagerReturnValue PlClockManagerDeleteConfFiles(void);
 
 // Returns:
 //    Pointer to NTP status data (bool*), or NULL if failed.
-//    The status indicates whether chronyd is tracking normally.
+//    The status indicates whether the NTP client is tracking normally.
 
 // """
 PlClockManagerNtpStatus PlClockManagerGetNtpStatus(void);
@@ -145,9 +142,12 @@ PlClockManagerNtpStatus PlClockManagerGetNtpStatus(void);
 
 // Returns:
 //    Synchronization status. The following values are returned:
-//    kNtpTimeSyncSuccess: time synchronization completed successfully
-//    kNtpTimeSyncFailure: time synchronization failed (currently not used)
-//    kHasNotCompletedYet: synchronization not completed or status is NULL
+//    kPlClockManagerNtpTimeSyncSuccess:
+//      time synchronization completed successfully
+//    kPlClockManagerNtpTimeSyncFailure:
+//      time synchronization failed (currently not used)
+//    kPlClockManagerHasNotCompletedYet:
+//      synchronization not completed or status is NULL
 
 // """
 PlClockManagerNtpTimeSyncStatus PlClockManagerJudgeNtpTimeSyncComplete(
@@ -155,10 +155,9 @@ PlClockManagerNtpTimeSyncStatus PlClockManagerJudgeNtpTimeSyncComplete(
 
 // """Starts the NTP client daemon with specified parameters.
 
-// This function configures and starts the chronyd NTP client daemon.
-// It creates the configuration directory, sets up server configuration,
-// maximum change limits, and step mode settings based on the provided
-// parameters, then restarts the chronyd service to apply the new configuration.
+// This function configures and starts the NTP client daemon.
+// It sets up server configuration, synchronization intervals, and filtering
+// rules based on the provided parameters, then starts the daemon.
 
 // Args:
 //    param: Pointer to PlClockManagerParams structure containing:
@@ -172,14 +171,40 @@ PlClockManagerNtpTimeSyncStatus PlClockManagerJudgeNtpTimeSyncComplete(
 //    kPlClockManagerSuccess: success
 //    kPlClockManagerParamError: parameter validation failed
 //    kPlClockManagerInternalError: configuration setup failed
-//    kPlClockManagerStateTransitionError: chronyd restart failed
+//    kPlClockManagerStateTransitionError: daemon start failed
 
 // """
 PlClockManagerReturnValue PlClockManagerStartNtpClientDaemon(
     const PlClockManagerParams *param);
 
+// """Restarts the NTP client daemon.
+
+// This function restarts the NTP client daemon to apply any configuration
+// changes or recover from errors.
+
+// Args:
+//    no arguments.
+
+// Returns:
+//    Results. The following value is returned.
+//    kPlClockManagerSuccess: success
+//    kPlClockManagerStateTransitionError: restart failed
+
+// """
 PlClockManagerReturnValue PlClockManagerRestartNtpClientDaemon(void);
 
+// """Checks if the NTP client daemon is active.
+
+// This function checks whether the NTP client daemon is currently running
+// and active.
+
+// Args:
+//    no arguments.
+
+// Returns:
+//    true if the daemon is active, false otherwise.
+
+// """
 bool PlClockManagerIsNtpClientDaemonActive(void);
 
 /**

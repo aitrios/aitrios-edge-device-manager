@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <inttypes.h>
 #include <stdio.h>
 
 #include "network_manager.h"
@@ -74,7 +75,7 @@ static void EsfStubPrintStructInfo(
 #endif
 
 static void EsfStubPrintMask(const EsfParameterStorageManagerMask mask) {
-  printf("[STUB] EsfStubPrintMask START mask=0x%x\n", mask);
+  printf("[STUB] EsfStubPrintMask START mask=0x%" PRIxPTR "\n", mask);
   EsfNetworkManagerParameterMask *param =
       (EsfNetworkManagerParameterMask *)mask;
 
@@ -119,7 +120,7 @@ static void EsfStubPrintMask(const EsfParameterStorageManagerMask mask) {
 }
 
 static void EsfStubPrintData(const EsfParameterStorageManagerData data) {
-  printf("[STUB] EsfStubPrintData START data=0x%x\n", data);
+  printf("[STUB] EsfStubPrintData START data=0x%" PRIxPTR "\n", data);
   EsfNetworkManagerParameterInternal *param =
       (EsfNetworkManagerParameterInternal *)data;
 
@@ -172,9 +173,9 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerSave(
     EsfParameterStorageManagerMask mask, EsfParameterStorageManagerData data,
     const EsfParameterStorageManagerStructInfo *info, void *private_data) {
   printf(
-      "[STUB] EsfParameterStorageManagerSave START handle=%d mask=0x%x "
-      "data=0x%x "
-      "info=%p private_data=%p\n",
+      "[STUB] EsfParameterStorageManagerSave START handle=%d mask=0x%" PRIxPTR
+      " data=0x%" PRIxPTR
+      " info=%p private_data=%p\n",
       handle, mask, data, info, private_data);
   if (parameter == NULL) {
     printf("[STUB] EsfParameterStorageManagerSave error parameter=%p\n",
@@ -204,9 +205,9 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerLoad(
     EsfParameterStorageManagerMask mask, EsfParameterStorageManagerData data,
     const EsfParameterStorageManagerStructInfo *info, void *private_data) {
   printf(
-      "[STUB] EsfParameterStorageManagerLoad START handle=%d mask=0x%x "
-      "data=0x%x "
-      "info=%p private_data=%p\n",
+      "[STUB] EsfParameterStorageManagerLoad START handle=%d mask=0x%" PRIxPTR
+      " data=0x%" PRIxPTR
+      " info=%p private_data=%p\n",
       handle, mask, data, info, private_data);
   if (parameter == NULL) {
     printf("[STUB] EsfParameterStorageManagerLoad error parameter=%p\n",
