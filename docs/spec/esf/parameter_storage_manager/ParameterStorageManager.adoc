@@ -94,15 +94,6 @@ ds              -->|"Data"| repo
 <<<
 
 [#_ComponentDetails]
-=== Component Details
-
-This component provides three types of data access APIs: save, load, and delete. +
-It accesses only the minimal necessary data based on the given mask information. +
-In addition, the Factory Reset API allows stored data to be restored to its factory default state.
-
-<<<
-
-[#_ComponentDetails]
 === Component Detailed Description
 
 This component provides three types of data access APIs: save, retrieve, and delete. +
@@ -496,7 +487,7 @@ Depends on ``**EXTERNAL_PARAMETER_STORAGE_MANAGER_EVENT_LOG**``.
 
 <<<
 
-[#_データ型一覧]
+[#_DataTypeList]
 ==== Data Type List
 
 The list of data types is shown in <<#_TableDataType>>.
@@ -4729,7 +4720,7 @@ It is used for storing data. +
         Other attributes such as member type or declaration order must not be modified. +
         Define array size using ``**#define**``. +
     ** There are some devices and data IDs where <<#_OffsetSpecifiedBinaryData, Offset Binary Data>> cannot be used. +
-        For details, refer to <<#_DeviceSpecificSpecifications, Device-specific Specifications and Limitations>>. +
+        For details, refer to <<#_NotesandComponentSpecificDescriptions, Device-specific Specifications and Limitations>>. +
     ** You may define data members as arrays. +
 
 [#_DataStructures_DataTypes]
@@ -6960,7 +6951,7 @@ No OSS is used.
 == References
 
 * PL Storage Function Specification +
-    link:../../hal/hal_impl_storage_ja.adoc[docs/spec/hal/hal_impl_storage_ja.adoc]
+    link:../../porting_layer/parameter_storage_manager/pl_storage.adoc[docs/spec/porting_layer/parameter_storage_manager/pl_storage.adoc]
 
 <<<
 

@@ -85,26 +85,26 @@ SystemManagerは状態を持ちません。
 |機能名 |概要  |節番号
 |データ取得機能
 |指定されたデータをParameterStorageManagerから取得する機能です。
-|<<#_データ取得機能>>
+|<<#_DataRetrievalFunction>>
 
 |データ設定機能
 |指定されたデータをParameterStorageManagerに設定する機能です。
-|<<#_データ設定機能>>
+|<<#_DataSettingFunction>>
 |デバイス起動要因通知機能
 |デバイス起動要因をElogで通知する機能です。
-|<<#_デバイス起動要因通知機能>>
+|<<#_ResetCauseNortifyFunction>>
 |エクセプション情報アップロード機能
 |エクセプション情報をBulkDlogでクラウドにアップロードする機能です。
-|<<#_エクセプション情報アップロード機能>>
+|<<#_ExceptionInfoUploadFunction>>
 |データマイグレーション機能
 |過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
-|<<#_データマイグレーション機能>>
+|<<#_DataMigrationFunction>>
 |===
 
 <<<
 
 === コンポーネントの機能説明
-[#_データ取得機能]
+[#_DataRetrievalFunction]
 ==== データ取得機能
 * 機能概要
     ** 指定されたデータをParameterStorageManagerから取得する機能です。
@@ -115,9 +115,9 @@ SystemManagerは状態を持ちません。
         *** ParameterStorageManagerをオープンしてデータを取得し、ParameterStorageManagerをクローズしてデータを返します。
     ** エラー時の挙動、復帰方法
         *** ParameterStorageManagerのAPI呼び出しに失敗した場合はエラーを返します。
-        *** ParameterStorageManagerから取得したデータが空だった場合、コンフィグ（<<#_Config一覧>>）によって定義されるデフォルト値を返します。ParameterStorageManagerから取得したデータが空であることが許されないデータに関しては、デフォルト値のコンフィグは存在せず、エラーを返します。
+        *** ParameterStorageManagerから取得したデータが空だった場合、コンフィグ（<<#_ConfigList>>）によって定義されるデフォルト値を返します。ParameterStorageManagerから取得したデータが空であることが許されないデータに関しては、デフォルト値のコンフィグは存在せず、エラーを返します。
 
-[#_データ設定機能]
+[#_DataSettingFunction]
 ==== データ設定機能
 * 機能概要
     ** 指定されたデータをParameterStorageManagerに設定する機能です。
@@ -129,7 +129,7 @@ SystemManagerは状態を持ちません。
     ** エラー時の挙動、復帰方法
         *** ParameterStorageManagerのAPI呼び出しに失敗した場合はエラーを返します。
 
-[#_デバイス起動要因通知機能]
+[#_ResetCauseNortifyFunction]
 ==== デバイス起動要因通知機能
 * 機能概要
     ** デバイス起動要因をElogで通知する機能です。
@@ -141,7 +141,7 @@ SystemManagerは状態を持ちません。
     ** エラー時の挙動、復帰方法
         *** ParameterStorageManagerのAPI呼び出し、またはPowerManagerのAPI呼び出しに失敗した場合はエラーを返します。
 
-[#_デバイス起動要因のElog一覧]
+[#_DeviceResetCauseElogList]
 .デバイス起動要因のElog一覧
 [width="100%",options="header"]
 |===
@@ -173,7 +173,7 @@ SystemManagerは状態を持ちません。
 |===
 
 
-[#_エクセプション情報アップロード機能]
+[#_ExceptionInfoUploadFunction]
 ==== エクセプション情報アップロード機能
 * 機能概要
     ** エクセプション情報をBulkDlogでクラウドにアップロードする機能です。
@@ -193,7 +193,7 @@ SystemManagerは状態を持ちません。
     ** エラー時の挙動、復帰方法
         *** ParameterStorageManager/PowerManager/LogManagerのAPI呼び出しに失敗した場合はエラーを返します。
 
-[#_データマイグレーション機能]
+[#_DataMigrationFunction]
 ==== データマイグレーション機能
 * 機能概要
     ** 過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
@@ -221,48 +221,48 @@ SystemManagerは状態を持ちません。
 |機能名 |概要  |節番号
 |連続処理実行時間
 |最大でかかる処理時間です。
-|<<#_連続処理実行時間>>
+|<<#_ContinuousProcessingTime>>
 
 |スタックメモリ使用量
 |最大で使用するスタックメモリ量です。
-|<<#_スタックメモリ使用量>>
+|<<#_StackMemoryUsage>>
 
 |ヒープメモリ使用量
 |最大で使用するヒープメモリ量です。
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |静的メモリ使用量
 |使用する静的メモリ量です。
-|<<#_静的メモリ使用量>>
+|<<#_StaticMemoryUsage>>
 
 |スレッド使用数
 |使用するスレッド数です。
-|<<#_スレッド使用数>>
+|<<#_NumberofThreadsUsed>>
 
 |===
 
 <<<
 
-[#_コンポーネントの非機能要件説明]
+[#_DescriptionofNonFunctionalRequirementsoftheComponent]
 === コンポーネントの非機能要件説明
-[#_連続処理実行時間]
+[#_ContinuousProcessingTime]
 ==== 連続処理実行時間
 本コンポーネントの処理時間は最大10msです。 +
 他モジュールに依存するデータアクセスやサービス設定の所要時間は、上記処理時間から除きます。
 
-[#_スタックメモリ使用量]
+[#_StackMemoryUsage]
 ==== スタックメモリ使用量
 最大で1024Byteです。
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== ヒープメモリ使用量
 ヒープメモリを使用しません。
 
-[#_静的メモリ使用量]
+[#_StaticMemoryUsage]
 ==== 静的メモリ使用量
 静的メモリを使用しません。
 
-[#_スレッド使用数]
+[#_NumberofThreadsUsed]
 ==== スレッド使用数
 スレッドを使用しません。
 
@@ -272,7 +272,7 @@ SystemManagerは状態を持ちません。
 === 定義一覧
 
 ==== Config一覧
-[#_Config一覧]
+[#_ConfigList]
 .Config一覧
 [width="100%", options="header"]
 |===
@@ -451,7 +451,7 @@ ParameterStorageManagerからInitialSettingFlagを読みだせなかった際に
 
 |===
 
-[#_API一覧]
+[#_APIList]
 ==== API一覧
 APIの一覧を示します。
 
@@ -611,7 +611,7 @@ APIの一覧を示します。
 |<<#_EsfSystemManagerSetResetCause>>
 |===
 
-[#_その他API]
+[#_OtherAPI]
 .その他API一覧
 [width="100%",options="header"]
 |===
@@ -1205,7 +1205,7 @@ Device Manifestを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetDeviceManifestの戻り値の説明]
+[#_EsfSystemManagerGetDeviceManifestReturnValue]
 .EsfSystemManagerGetDeviceManifestの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1271,7 +1271,7 @@ Dps URLを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetDpsUrlの戻り値の説明]
+[#_EsfSystemManagerGetDpsUrlReturnValue]
 .EsfSystemManagerGetDpsUrlの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1331,7 +1331,7 @@ Dps URLを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetDpsUrlの戻り値の説明]
+[#_EsfSystemManagerSetDpsUrlReturnValue]
 .EsfSystemManagerSetDpsUrlの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1388,7 +1388,7 @@ Common Nameを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetCommonNameの戻り値の説明]
+[#_EsfSystemManagerGetCommonNameReturnValue]
 .EsfSystemManagerGetCommonNameの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1448,7 +1448,7 @@ Common Nameを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetCommonNameの戻り値の説明]
+[#_EsfSystemManagerSetCommonNameReturnValue]
 .EsfSystemManagerSetCommonNameの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1505,7 +1505,7 @@ Dps Scope IDを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetDpsScopeIdの戻り値の説明]
+[#_EsfSystemManagerGetDpsScopeIdReturnValue]
 .EsfSystemManagerGetDpsScopeIdの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1565,7 +1565,7 @@ Dps Scope IDを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetDpsScopeIdの戻り値の説明]
+[#_EsfSystemManagerSetDpsScopeIdReturnValue]
 .EsfSystemManagerSetDpsScopeIdの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1622,7 +1622,7 @@ Project IDを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetProjectIdの戻り値の説明]
+[#_EsfSystemManagerGetProjectIdReturnValue]
 .EsfSystemManagerGetProjectIdの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1682,7 +1682,7 @@ Project IDを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetProjectIdの戻り値の説明]
+[#_EsfSystemManagerSetProjectIdReturnValue]
 .EsfSystemManagerSetProjectIdの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1739,7 +1739,7 @@ Register Tokenを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetRegisterTokenの戻り値の説明]
+[#_EsfSystemManagerGetRegisterTokenReturnValue]
 .EsfSystemManagerGetRegisterTokenの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1799,7 +1799,7 @@ Register Tokenを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetRegisterTokenの戻り値の説明]
+[#_EsfSystemManagerSetRegisterTokenReturnValue]
 .EsfSystemManagerSetRegisterTokenの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1856,7 +1856,7 @@ EVP Hub URLを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetEvpHubUrlの戻り値の説明]
+[#_EsfSystemManagerGetEvpHubUrlReturnValue]
 .EsfSystemManagerGetEvpHubUrlの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1916,7 +1916,7 @@ EVP Hub URLを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetEvpHubUrlの戻り値の説明]
+[#_EsfSystemManagerSetEvpHubUrlReturnValue]
 .EsfSystemManagerSetEvpHubUrlの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -1973,7 +1973,7 @@ EVP Hub Portを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetEvpHubPortの戻り値の説明]
+[#_EsfSystemManagerGetEvpHubPortReturnValue]
 .EsfSystemManagerGetEvpHubPortの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2033,7 +2033,7 @@ EVP Hub Portを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetEvpHubPortの戻り値の説明]
+[#_EsfSystemManagerSetEvpHubPortReturnValue]
 .EsfSystemManagerSetEvpHubPortの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2090,7 +2090,7 @@ EVP IoT Platformを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetEvpIotPlatformの戻り値の説明]
+[#_EsfSystemManagerGetEvpIotPlatformReturnValue]
 .EsfSystemManagerGetEvpIotPlatformの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2150,7 +2150,7 @@ EVP IoT Platformを設定します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetEvpIotPlatformの戻り値の説明]
+[#_EsfSystemManagerSetEvpIotPlatformReturnValue]
 .EsfSystemManagerSetEvpIotPlatformの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2201,7 +2201,7 @@ EVP TLSを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetEvpTlsの戻り値の説明]
+[#_EsfSystemManagerGetEvpTlsReturnValue]
 .EsfSystemManagerGetEvpTlsの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2253,7 +2253,7 @@ EVP TLSの設定値です。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetEvpTlsの戻り値の説明]
+[#_EsfSystemManagerSetEvpTlsReturnValue]
 .EsfSystemManagerSetEvpTlsの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2306,7 +2306,7 @@ Root証明書を取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetRootCaの戻り値の説明]
+[#_EsfSystemManagerGetRootCaRetrunValue]
 .EsfSystemManagerGetRootCaの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2372,7 +2372,7 @@ Root証明書を取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetRootCaHashの戻り値の説明]
+[#_EsfSystemManagerGetRootCaHashReturnValue]
 .EsfSystemManagerGetRootCaHashの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2432,7 +2432,7 @@ QRモードタイムアウト値を取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetQrModeTimeoutValueの戻り値の説明]
+[#_EsfSystemManagerGetQrModeTimeoutValueReturnValue]
 .EsfSystemManagerGetQrModeTimeoutValueの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2479,7 +2479,7 @@ QRモードタイムアウト値です。int32_tの範囲で指定可能です�
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetQrModeTimeoutValueの戻り値の説明]
+[#_EsfSystemManagerSetQrModeTimeoutValueReturnValue]
 .EsfSystemManagerSetQrModeTimeoutValueの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2521,7 +2521,7 @@ InitialSettingFlagを取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetInitialSettingFlagの戻り値の説明]
+[#_EsfSystemManagerGetInitialSettingFlagReturnValue]
 .EsfSystemManagerGetInitialSettingFlagの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2573,7 +2573,7 @@ InitialSettingFlagの設定値です。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetInitialSettingFlagの戻り値の説明]
+[#_EsfSystemManagerSetInitialSettingFlagReturnValue]
 .EsfSystemManagerSetInitialSettingFlagの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2624,7 +2624,7 @@ InitialSettingFlagの設定値です。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetHwInfoの戻り値の説明]
+[#_EsfSystemManagerGetHwInfoReturnValue]
 .EsfSystemManagerGetHwInfoの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2677,7 +2677,7 @@ EVPによる起動要因を取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetEvpResetCauseの戻り値の説明]
+[#_EsfSystemManagerGetEvpResetCauseReturnValue]
 .EsfSystemManagerGetEvpResetCauseの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2725,7 +2725,7 @@ EVPによる起動要因です。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetEvpResetCauseの戻り値の説明]
+[#_EsfSystemManagerSetEvpResetCauseReturnValue]
 .EsfSystemManagerSetEvpResetCauseの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2772,7 +2772,7 @@ PowerManagerによる起動要因を取得します。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerGetResetCauseの戻り値の説明]
+[#_EsfSystemManagerGetResetCauseReturnValue]
 .EsfSystemManagerGetResetCauseの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2820,7 +2820,7 @@ PowerManagerによる起動要因です。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetResetCauseの戻り値の説明]
+[#_EsfSystemManagerSetResetCauseReturnValue]
 .EsfSystemManagerSetResetCauseの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2879,7 +2879,7 @@ a|
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSetExceptionInfoの戻り値の説明]
+[#_EsfSystemManagerSetExceptionInfoReturnValue]
 .EsfSystemManagerSetExceptionInfoの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2917,7 +2917,7 @@ a|
 
 * *説明* +
 ** ParameterStorageManagerからEVPによる起動要因又はPowerManagerによる起動要因を取得し、Elogで通知します。
-** 通知するElogの詳細は<<#_デバイス起動要因のElog一覧>>を参照してください。
+** 通知するElogの詳細は<<#_DeviceResetCauseElogList>>を参照してください。
 ** EVPによる起動要因の通知が優先されます。
 ** Elog通知完了後、ParameterStorageManagerに保存されているEVPによる起動要因は削除。PowerManagerによる起動要因は``kEsfSystemManagerResetCauseDefault``が書き込まれます。
 
@@ -2928,7 +2928,7 @@ a|
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerSendResetCauseの戻り値の説明]
+[#_EsfSystemManagerSendResetCauseReturnValue]
 .EsfSystemManagerSendResetCauseの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -2968,7 +2968,7 @@ a|
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerUploadExceptionInfoの戻り値の説明]
+[#_EsfSystemManagerUploadExceptionInfoReturnValue]
 .EsfSystemManagerUploadExceptionInfoの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -3019,7 +3019,7 @@ LogManagerでエラーが発生した場合。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerIsNeedRebootの戻り値の説明]
+[#_EsfSystemManagerIsNeedRebootReturnValue]
 .EsfSystemManagerIsNeedRebootの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -3071,7 +3071,7 @@ a|
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerExecRebootの戻り値の説明]
+[#_EsfSystemManagerExecRebootReturnValue]
 .EsfSystemManagerExecRebootの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -3118,7 +3118,7 @@ System Managerの設定データの移行処理を実行する。
 *** API内部でブロッキングします。
 ** エラー情報
 +
-[#_EsfSystemManagerMigrationの戻り値の説明]
+[#_EsfSystemManagerMigrationReturnValue]
 .EsfSystemManagerMigrationの戻り値の説明
 [width="100%",options="header"]
 |===
@@ -3385,7 +3385,7 @@ OSSは使用しません。
 |初版リリース
 |v0.1.1
 a|
-* <<#_Config一覧>>を追加
+* <<#_ConfigList>>を追加
 * ``kEsfSystemManagerResultOutOfRange``、``kEsfSystemManagerResultEmptyData``を追加
 * 他のAPIとの統一感を持たせるため、<<#_EsfSystemManagerGetEvpTls>>と<<#_EsfSystemManagerSetEvpTls>>の仮引数名を``value``から``data``に変更
 * <<#_EsfSystemManagerGetEvpHubUrl>>を追加
@@ -3411,7 +3411,7 @@ a|
 |v0.1.5
 a|
 * <<#_データ型一覧>>に``ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE``、``ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE``を追加
-* <<#_API一覧>>に``EsfSystemManagerGetHwInfo``を追加
+* <<#_APIList>>に``EsfSystemManagerGetHwInfo``を追加
 * <<#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE>>、<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>を追加
 * <<#_EsfSystemManagerGetHwInfo>>を追加
 |v0.1.6

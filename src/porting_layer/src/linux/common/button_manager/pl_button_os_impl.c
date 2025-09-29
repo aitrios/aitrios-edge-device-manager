@@ -540,7 +540,8 @@ static PlErrCode ButtonOpen(uint32_t button_id) {
 
   err_code = PlButtonOpenCamImpl(pin);
   if (err_code != kPlErrCodeOk) {
-    LOG_ERR(kPlButtonEventErrorId0x29, "PlButtonOpenCamImpl error=%d.", err_code);
+    LOG_ERR(kPlButtonEventErrorId0x29,
+            "PlButtonOpenCamImpl error=%d.", err_code);
     goto err_free;
   }
 

@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.7
+:revnumber: 0.1.8
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
@@ -757,9 +757,10 @@ sequenceDiagram
       HAL -->> -esf_main : Reboot Message
       rect rgba(200, 150, 255,0.5)
         Note left of esf_main: Reboot Process (EsfMainProcessReboot)
+        esf_main ->> +esf_modules : EsfSystemManagerSetResetCause(kEsfSystemManagerResetCauseSoftResetNormal);
         Note over esf_main : Executes processes described by each module
         esf_main ->> esf_main : EsfMainFinish (Termination Process)
-        esf_main ->> +esf_modules : EsfPwrMgrExecuteReboot (Execute Reboot)
+        esf_main ->> +esf_modules : EsfPwrMgrExecuteRebootEx (Execute Reboot)
         Note over OS, HAL : OS Reboot
         Deactivate esf_main
       end
@@ -926,7 +927,7 @@ EsfMainError EsfMainProcessReboot(void) {
     // fallthrough
   }
 
-  EsfPwrMgrExecuteReboot();
+  EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
 
   return kEsfMainOk;
 }
@@ -986,7 +987,7 @@ EsfMainError EsfMainProcessFactoryReset(bool is_downgrade) {
     // fallthrough
   }
 
-  EsfPwrMgrExecuteReboot();
+  EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
 
   return kEsfMainOk;
 }
@@ -1075,4 +1076,9 @@ No OSS is used.
 * Added PL Main to list of required module functions
 * Added Configuration Settings
 
+|0.1.8
+|Content update
+
+* Change EsfPwrMgrExecuteReboot to EsfPwrMgrExecuteRebootEx on EsfMainProcessReboot and EsfMainProcessFactoryReset
+* Added EsfSystemManagerSetResetCause in <<#__System_Shutdown_Management_Sequence_Example>> diagram
 |===

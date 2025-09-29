@@ -9,6 +9,8 @@ static const PlMainDeviceInformation kDeviceInformation[] = {};
 static const size_t kDeviceInformationSize =
     sizeof(kDeviceInformation) / sizeof(kDeviceInformation[0]);
 
-static const PlMainFeatureType kFeatureTypes[] = {};
+static const PlMainFeatureType kFeatureTypes[] = {
+    PlMainFeatureReboot
+};
 static const size_t kFeatureTypesSize =
     sizeof(kFeatureTypes) / sizeof(kFeatureTypes[0]);

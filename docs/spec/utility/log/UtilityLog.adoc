@@ -730,10 +730,10 @@ None.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogInit_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogInit_ReturnDescriptions]
+.UtilityLogInit Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -766,10 +766,10 @@ None.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogDeinit_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogDeinit_ReturnDescriptions]
+.UtilityLogDeinit Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -810,10 +810,10 @@ If NULL or an empty string is specified, no data is output, but this does not re
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogWriteDLog_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogWriteDLog_ReturnDescriptions]
+.UtilityLogWriteDLog Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -913,10 +913,10 @@ The va_list argument.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogWriteVDLog_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogWriteVDLog_ReturnDescriptions]
+.UtilityLogWriteVDLog Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -956,10 +956,10 @@ Specify a unique error code.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogWriteELog_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogWriteELog_ReturnDescriptions]
+.UtilityLogWriteELog Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -998,10 +998,10 @@ If NULL or an empty string is specified, no data is output, but this does not re
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogForcedOutputToUart_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogForcedOutputToUart_ReturnDescriptions]
+.UtilityLogForcedOutputToUart Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1053,10 +1053,10 @@ User data. Set NULL if not used.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogBulkDLog_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogBulkDLog_ReturnDescriptions]
+.UtilityLogBulkDLog Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1127,10 +1127,10 @@ If an empty string is specified, no data is output, but this does not result in 
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogWriteBulkDLogNonNotify_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogWriteBulkDLogNonNotify_ReturnDescriptions]
+.UtilityLogWriteBulkDLogNonNotify Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1193,10 +1193,10 @@ Callback function for setting the log level.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogRegisterSetDlogLevelCallback_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogRegisterSetDlogLevelCallback_ReturnDescriptions]
+.UtilityLogSetDlogLevelCallback Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1234,10 +1234,10 @@ The module ID.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_UtilityLogStatus>> based on the execution result.
+Returns one of the values from <<#_UtilityLogUnregisterSetDLogLevelCallback_ReturnDescriptions>> based on the execution result.
 
-[#_UtilityLogStatus_ReturnDescriptions]
-.UtilityLogStatus Return Value Descriptions
+[#_UtilityLogUnregisterSetDLogLevelCallback_ReturnDescriptions]
+.UtilityLogUnregisterSetDLogLevelCallback Return Value Descriptions
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description

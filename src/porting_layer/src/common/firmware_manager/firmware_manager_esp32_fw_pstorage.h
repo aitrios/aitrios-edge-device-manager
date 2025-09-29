@@ -39,4 +39,4 @@ PlErrCode FwMgrEsp32FwSaveHashAndDate(FwMgrPlOtaImgBootseq target_partition,
                                       const uint8_t *hash,
                                       const char *update_date);
 
-#endif  // ESF_PORTING_LAYER_FIRMWARE_MANAGER_FIRMWARE_MANAGER_ESP32_FW_PSTORAGE_H_
+#endif  // ESF_PORTING_LAYER_FIRMWARE_MANAGER_FIRMWARE_MANAGER_ESP32_FW_PSTORAGE_H_  // NOLINT

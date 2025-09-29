@@ -206,10 +206,10 @@ UtilityLogの取り得る状態を<<#_TableStates>>に示します。
 
 |===
 
-UtilityLogでは各APIを呼び出すことで<<#_状態遷移図>>に示す状態遷移を行います。 +
+UtilityLogでは各APIを呼び出すことで<<#_StateTransitionDiagram>>に示す状態遷移を行います。 +
 また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
 
-[#_状態遷移図]
+[#_StateTransitionDiagram]
 .状態遷移図
 [{mermaid_block}]
 ....
@@ -257,42 +257,42 @@ stateDiagram-v2
 |機能名 |概要  |節番号
 |初期化機能
 |UtilityLogを初期化します。
-|<<#_初期化機能>>
+|<<#_InitializationFunction>>
 
 |終了機能
 |UtilityLogを終了します。
-|<<#_終了機能>>
+|<<#_FinalizationFunction>>
 
 |UARTログ出力
 |UARTにDlogデータを出力する機能です。
-|<<#_UARTログ出力>>
+|<<#_UARTLogOutput>>
 
 |Dlogログ蓄積
 |Dlogデータの蓄積を行う機能です。
-|<<#_Dlogログ蓄積>>
+|<<#_DlogStorage>>
 
 |強制UARTログ出力
 |強制的にUARTにログ出力します。
-|<<#_強制UARTログ出力>>
+|<<#_ForcedUARTLogOutput>>
 
 |多量ログ出力・送信機能
 |多量のログをUARTに出力またはクラウドへ送信します。
-|<<#_多量ログ出力・送信機能>>
+|<<#_BulkLogOutputTransmissionFunction>>
 
 |Elogログ出力
 |Elogデータの出力を行う機能です。
-|<<#_Elogログ出力>>
+|<<#_ElogOutput>>
 
 |モジュール別ログレベル管理機能
 |モジュール別でログレベルを管理できる機能です。
-|<<#_モジュール別ログレベル管理機能>>
+|<<#_ModuleSpecificLogLevelManagement>>
 
 |===
 
 <<<
 
 === コンポーネントの機能説明
-[#_初期化機能]
+[#_InitializationFunction]
 ==== 初期化機能
 * 機能概要
     ** UtilityLogの初期化を行います。
@@ -305,7 +305,7 @@ stateDiagram-v2
     ** 初期化処理でLogManagerからDlogのパラメータを受け取るためにコールバック関数を登録します。登録できなかった場合はログレベルをInfo・ログ出力先情報をUART出力に設定してUtilityLogを動作させます。
 
 
-[#_終了機能]
+[#_FinalizationFunction]
 ==== 終了機能
 * 機能概要
     ** UtilityLogの終了処理を行います。
@@ -316,7 +316,7 @@ stateDiagram-v2
 * 機能詳細
     ** LogManagerに登録したコールバック関数を解除して、UtilityLogの状態をinactiveにします。
 
-[#_UARTログ出力]
+[#_UARTLogOutput]
 ==== UARTログ出力
 * 機能概要
     ** DlogデータをUARTにログ出力します。
@@ -330,7 +330,7 @@ stateDiagram-v2
     ** ログレベルはCriticalが最上位、Traceが最下位です。ユーザーがUtilityLogに対してDlog出力を要求する際に指定したDlogレベルが、LogManagerに設定されているDlogレベルより低い場合、出力を行いません。
     ** ログレベルが不正の場合はエラーとなります。
 
-[#_Dlogログ蓄積]
+[#_DlogStorage]
 ==== Dlogログ蓄積
 * 機能概要
     ** Dlogデータの蓄積を行います。
@@ -347,7 +347,7 @@ stateDiagram-v2
     ** ログレベルが不正の場合もエラーとなります。
 
 
-[#_強制UARTログ出力]
+[#_ForcedUARTLogOutput]
 ==== 強制UARTログ出力
 * 機能概要
     ** 強制的にUARTにログ出力します。
@@ -360,7 +360,7 @@ stateDiagram-v2
     ** 主にDlogデータの出力が抑制されているときに使用するものです。 
 
 
-[#_多量ログ出力・送信機能]
+[#_BulkLogOutputTransmissionFunction]
 ==== 多量ログ出力・送信機能
 * 機能概要
     ** 多量のログをUARTに出力またはクラウドへ送信します。
@@ -374,7 +374,7 @@ stateDiagram-v2
     ** UART出力またはクラウド送信後ユーザが指定したコールバック関数を呼び完了通知を行います。Dlog出力先情報がBothの場合はクラウドへ送信が完了したタイミングで完了通知を実行します。
 
 
-[#_Elogログ出力]
+[#_ElogOutput]
 ==== Elogログ出力
 * 機能概要
     ** Elogデータの送信を行います。
@@ -386,7 +386,7 @@ stateDiagram-v2
     ** Elogデータには時間情報、ログレベル、モジュールID、イベントIDが含まれています。
     ** 送信用APIの戻り値がエラーの場合、Elogデータの送信は行わずエラー値を返します。
 
-[#_モジュール別ログレベル管理機能]
+[#_ModuleSpecificLogLevelManagement]
 ==== モジュール別ログレベル管理機能
 * 機能概要
     ** モジュール別でログレベルを管理できる機能です。
@@ -413,19 +413,19 @@ stateDiagram-v2
 |機能名 |概要  |節番号
 |Stack最大使用量
 |256 byte
-|<<#_Stack最大使用量>>
+|<<#_MaximumStackUsage>>
 
 |スレッド使用数
 |スレッドは使用しません
-|<<#_スレッド使用数>>
+|<<#_ThreadUsage>>
 
 |最大処理時間
 |XXXX ms
-|<<#_最大処理時間>>
+|<<#_MaximumProcessingTime>>
 
 |ヒープメモリ使用量
 |XXXX byte
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |===
 
@@ -434,19 +434,19 @@ stateDiagram-v2
 === コンポーネントの非機能要件説明
 2024/12/06 現在、最大処理時間、ヒープメモリ使用量はT.B.Dです。
 
-[#_Stack最大使用量]
+[#_MaximumStackUsage]
 ==== Stack最大使用量
 設計時点での目標値は 256byte。
 
-[#_スレッド使用数]
+[#_ThreadUsage]
 ==== スレッド使用数
 スレッドは使用しません。
 
-[#_最大処理時間]
+[#_MaximumProcessingTime]
 ==== 最大処理時間
 設計時点での目標値は XXms。
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== ヒープメモリ使用量
 設計時点での目標値は XXXbyte。
 
@@ -571,7 +571,7 @@ typedef enum{
 
 * *値* 
 +
-[#_UtilityLogStatusの値の説明]
+[#_UtilityLogStatus]
 .UtilityLogStatusの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -608,7 +608,7 @@ typedef enum{
 
 * *値* 
 +
-[#_UtilityLogDlogLevelの値の説明]
+[#_UtilityLogDlogLevel_ValueDescriptions]
 .UtilityLogDlogLevelの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -651,7 +651,7 @@ typedef enum{
 
 * *値* 
 +
-[#_UtilityLogElogLevelの値の説明]
+[#_UtilityLogElogLevel_ValueDescriptions]
 .UtilityLogElogLevelの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -723,9 +723,9 @@ UtilityLogの初期化を行います。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogInit_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogInit_ReturnDescriptions]
+.UtilityLogInitの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -757,9 +757,9 @@ UtilityLogの終了処理を行います。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogDeinit_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogDeinit_ReturnDescriptions]
+.UtilityLogDeinitの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -799,9 +799,9 @@ NULLもしくは空文字が指定された場合、データが出力されな�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogWriteDLog_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogWriteDLog_ReturnDescriptions]
+.UtilityLogWriteDLogの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -823,7 +823,7 @@ UtilityLogのログ出力先 +
 formatの表示は最大512Byte(終端文字を含めません)です。それ以上は破棄され表示されません。 +
 本APIは、多重呼び出し可能です。 +
 表示形式は、``<年>-<月>-<日>T<時>:<分>:<秒>.<ミリ秒><タイムゾーンオフセット>:<ログレベル>:<module_id>:<format>``です。詳細は以下です。 +
-[#_Dlogログ出力形式の説明]
+[#_DlogLogOutputFormatDescriptions]
 .Dlogログ出力形式の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -892,9 +892,9 @@ va_listです。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogWriteVDLog_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogWriteVDLog_ReturnDescriptions]
+.UtilityLogWriteVDLogの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -934,9 +934,9 @@ Elogデータのログレベルを<<_UtilityLogElogLevel>>より設定くださ�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogWriteELog_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogWriteELog_ReturnDescriptions]
+.UtilityLogWriteELogの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -973,9 +973,9 @@ NULLもしくは空文字が指定された場合、データ出力されない�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogForcedOutputToUart_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogForcedOutputToUart_ReturnDescriptions]
+.UtilityLogForcedOutputToUartの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -1026,8 +1026,8 @@ Dlog出力のログレベルを<<#_UtilityLogDlogLevel>>より設定ください
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
+実行結果に応じて<<#_UtilityLogBulkDLog_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogBulkDLog_ReturnDescriptions]
 .UtilityLogStatusの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1048,7 +1048,7 @@ callbackがNULLの場合
 UtilityLogがLogManagerから受け取ったDlog出力先情報により、多量のログをUARTに出力またはクラウドへ送信を行います。 +
 本APIの処理中に``bulk_log``を保持する処理は行いません。 +
 詳細は以下の表になります。 +
-[#_UtilityLogWriteBulkDLogの説明表]
+[#_UtilityLogWriteBulkDLog_DescriptionTable]
 .UtilityLogWriteBulkDLogの説明表
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1092,9 +1092,9 @@ Dlog出力のログレベルを<<#_UtilityLogDlogLevel>>より設定ください
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogWriteBulkDLogNonNotify_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogWriteBulkDLogNonNotify_ReturnDescriptions]
+.UtilityLogWriteBulkDLogNonNotifyの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -1112,7 +1112,7 @@ bulk_logがNULLの場合
 * *説明* +
 UtilityLogがLogManagerから受け取ったDlog出力先情報により、多量のログをUARTに出力またはクラウドへ送信を行います。
 本APIの処理中に``bulk_log``を保持する処理を行います。詳細は以下の表になります。 +
-[#_UtilityLogWriteBulkDLogNonNotifyの説明表]
+[#_UtilityLogWriteBulkDLogNonNotify_DescriptionTable]
 .UtilityLogWriteBulkDLogNonNotifyの説明表
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1151,9 +1151,9 @@ UtilityLogがLogManagerから受け取ったDlog出力先情報により、多�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogRegisterSetDlogLevelCallback_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogRegisterSetDlogLevelCallback_ReturnDescriptions]
+.UtilityLogRegisterSetLogLevelCallbackの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
@@ -1189,9 +1189,9 @@ UtilityLogRegisterSetLogLevelCallbackで登録したログレベル設定コー�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_UtilityLogStatus>>のいずれかの値が返ります。
-[#_UtilityLogStatusの戻り値の説明]
-.UtilityLogStatusの戻り値の説明
+実行結果に応じて<<#_UtilityLogUnregisterSetDLogLevelCallback_ReturnDescriptions>>のいずれかの値が返ります。
+[#_UtilityLogUnregisterSetDLogLevelCallback_ReturnDescriptions]
+.UtilityLogUnregisterSetDLogLevelCallbackの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明

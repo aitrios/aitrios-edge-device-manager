@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.1
+:revnumber: 0.0.2
 :toc: left
 :toc-title: 目次
 :toclevels: 3
@@ -126,6 +126,25 @@ image::./images/pl_power_manager_state.png[scaledwidth="100%",align="center"]
 |×
 |PL_RUNNING
 
+|``**PlPowerMgrSwWdtKeepalive**``
+|PL_READY
+|PL_RUNNING
+
+|``**PlPowerMgrEnableSwWdt**``
+|PL_READY
+|PL_RUNNING
+
+|``**PlPowerMgrDisableSwWdt**``
+|PL_READY
+|PL_RUNNING
+
+|``**PlPowerMgrGetMigrationData**``
+|PL_READY
+|PL_RUNNING
+
+|``**PlPowerMgrEraseMigrationData**``
+|PL_READY
+|PL_RUNNING
 |===
 <<<
 
@@ -145,6 +164,13 @@ image::./images/pl_power_manager_state.png[scaledwidth="100%",align="center"]
 |USB通信を有効化する。
 |<<#_Function2>>
 
+|プロセス死活監視機能 
+|Edge device coreプロセスの死活監視機能を提供します。
+|<<#_Function3>>
+
+|マイグレーション機能
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
+|<<#_Function4>>
 |===
 
 <<<
@@ -180,6 +206,35 @@ PL PowerManagerが初期化済みであること。
 検討事項::
 なし
 
+[#_Function3]
+==== プロセス死活監視機能 
+機能概要::
+Edge device coreプロセスの死活監視機能を提供します。
+前提条件::
+なし
+機能詳細::
+詳細は<<#_PlPowerMgrEnableSwWdt, _PlPowerMgrEnableSwWdt>>を参照してください。
+詳細挙動::
+詳細は<<#_PlPowerMgrEnableSwWdt, _PlPowerMgrEnableSwWdt>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlPowerMgrEnableSwWdt, _PlPowerMgrEnableSwWdt>>を参照してください。
+検討事項::
+なし
+
+[#_Function4]
+==== データマイグレーション機能
+機能概要::
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
+前提条件::
+なし
+機能詳細::
+詳細は<<#_PlPowerMgrGetMigrationData, PlPowerMgrGetMigrationData>>を参照してください。
+詳細挙動::
+詳細は<<#_PlPowerMgrGetMigrationData, PlPowerMgrGetMigrationData>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlPowerMgrGetMigrationData, PlPowerMgrGetMigrationData>>を参照してください。
+検討事項::
+なし
 
 === コンポーネントの非機能要件一覧
 
@@ -219,10 +274,15 @@ PL PowerManagerが初期化済みであること。
 
 [#_NonFunctionPerformance]
 ==== パフォーマンス
-*** PlPowerMgrInitialize    : CONFIG_EXTRENAL_PL_POWER_MGR_CC_CTRL_ENABLE_WAIT_MS[ms] = 1[sec]
-*** PlPowerMgrFinalize      : 1[ms]未満
-*** PlPowerMgrGetSupplyType : 1[ms]未満
-*** PlPowerMgrSetupUsb      : 1[ms]未満
+*** PlPowerMgrInitialize          : CONFIG_EXTRENAL_PL_POWER_MGR_CC_CTRL_ENABLE_WAIT_MS[ms] = 1[sec]
+*** PlPowerMgrFinalize            : 1[ms]未満
+*** PlPowerMgrGetSupplyType       : 1[ms]未満
+*** PlPowerMgrSetupUsb            : 1[ms]未満
+*** PlPowerMgrSwWdtKeepalive      : 1[ms]未満
+*** PlPowerMgrEnableSwWdt         : 1[ms]未満
+*** PlPowerMgrDisableSwWdt        : 1[ms]未満
+*** PlPowerMgrGetMigrationData    : 1[ms]未満
+*** PlPowerMgrEraseMigrationData  : 1[ms]未満
 
 ※下位モジュールの処理時間は含みません。
 
@@ -245,17 +305,17 @@ PL PowerManagerが初期化済みであること。
 |enum PlPowerMgrSupplyType
 |電源供給種別を定義する列挙型です。
 |<<#_PlPowerMgrSupplyType, 4.3.2>>
+
+|enum PlPowerMgrMigrationDataId
+|マイグレーションデータの種類を定義する列挙型です。
+|<<#_PlPowerMgrMigrationDataId, 4.3.3>>
 |===
 
 ==== API一覧
-<<#_TablePublicAPI>>および<<#_TablePrivateAPI>>にAPIの一覧を示します。
+<<#_TablePublicAPI>>にAPIの一覧を示します。
 
 [#_TablePublicAPI]
 .上位レイヤーから直接使用可能なAPI
-なし
-
-[#_TablePrivateAPI]
-.HAL内部でのみ使用されるAPI
 [width="100%", cols="10%,60%,20%",options="header"]
 |===
 |API名 |概要 |節番号
@@ -271,6 +331,21 @@ PL PowerManagerが初期化済みであること。
 |PlPowerMgrSetupUsb
 |USB通信を有効化します。
 |<<#_PlPowerMgrSetupUsb, 4.3.4>>
+|PlPowerMgrSwWdtKeepalive
+|プロセス死活監視のためのKeepAliveを送信します。
+|<<#_PlPowerMgrSwWdtKeepalive, 4.3.5>>
+|PlPowerMgrEnableSwWdt
+|プロセス死活監視を開始します。
+|<<#_PlPowerMgrEnableSwWdt, 4.3.6>>
+|PlPowerMgrDisableSwWdt
+|プロセス死活監視を停止します。
+|<<#_PlPowerMgrDisableSwWdt, 4.3.7>>
+|PlPowerMgrGetMigrationData
+|旧形式の設定データを取得します。
+|<<#_PlPowerMgrGetMigrationData, 4.3.8>>
+|PlPowerMgrEraseMigrationData
+|旧形式の設定データを削除します。
+|<<#_PlPowerMgrEraseMigrationData, 4.3.9>>
 |===
 
 <<<
@@ -316,6 +391,18 @@ typedef enum {
 } PlPowerMgrSupplyType;
 ....
 
+[#_PlPowerMgrMigrationDataId]
+==== PlPowerMgrMigrationDataId
+マイグレーションデータの種類を定義する列挙型です。
+
+* *書式* +
+[source, C]
+....
+typedef enum {
+  kPlPowerMgrMigrationDataIdHoursMeter = 0,
+} PlPowerMgrMigrationDataId;
+....
+
 <<<
 
 === 各APIの説明
@@ -339,7 +426,6 @@ PlErrCode PlPowerMgrInitialize(void)
 * *説明* +
 ** PL PowerManagerに関する初期化処理を行います。
 
-[#_PlPowerMgrInitialize]
 .API詳細情報
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -406,7 +492,6 @@ PlErrCode PlPowerMgrFinalize(void)
 ** PL PowerManagerに関する終了処理を行います。
 ** 本APIはPlPowerMgrInitializeの実行後に使用可能です。
 
-[#_PlPowerMgrFinalize]
 .API詳細情報
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -474,7 +559,6 @@ PlErrCode PlPowerMgrGetSupplyType(PlPowerMgrSupplyType *type)
 ** 電源供給種別を取得します。
 ** 本APIはPlPowerMgrInitializeの実行後に使用可能です。
 
-[#_PlPowerMgrGetSupplyType]
 .API詳細情報
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -547,7 +631,6 @@ PlErrCode PlPowerMgrSetupUsb(void)
 ** USB通信を有効化します。
 ** 本APIはPlPowerMgrInitializeの実行後に使用可能です。
 
-[#_PlPowerMgrSetupUsb]
 .API詳細情報
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -591,8 +674,296 @@ PL PowerManager APIが他のコンテキストで動作中の場合、完了を�
 |不要
 |===
 
-<<<
+[#_PlPowerMgrSwWdtKeepalive]
+==== PlPowerMgrSwWdtKeepalive
+* *機能* +
+プロセス死活監視のためのKeepAliveを送信します。
 
+* *書式* +
+[source, C]
+....
+PlErrCode PlPowerMgrSwWdtKeepalive(uint32_t id)
+....
+
+* *引数の説明* +
+**[IN] uint32_t id**::
+KeepAliveをしたいモジュールID。このIDに対するPlPowerMgrSwWdtKeepaliveが CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC 以上行われなくなった場合、Edge device coreプロセス全体を停止させます。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** プロセス死活監視のためのKeepAliveを送信します。
+
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。
+PlPowerMgrSwWdtKeepalive / PlPowerMgrEnableSwWdt / PlPowerMgrDisableSwWdt のいずれかが他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|OSエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlPowerMgrEnableSwWdt]
+==== PlPowerMgrEnableSwWdt
+* *機能* +
+プロセス死活監視を開始します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlPowerMgrEnableSwWdt(uint32_t id)
+....
+
+* *引数の説明* +
+**[IN] uint32_t id**::
+監視を開始したいモジュールID。このIDに対するPlPowerMgrSwWdtKeepaliveが CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC 以上行われなくなった場合、Edge device coreプロセス全体を停止させます。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** プロセス死活監視を開始します。
+
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。
+PlPowerMgrSwWdtKeepalive / PlPowerMgrEnableSwWdt / PlPowerMgrDisableSwWdt のいずれかが他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|OSエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlPowerMgrDisbleSwWdt]
+==== PlPowerMgrDisableSwWdt
+* *機能* +
+プロセス死活監視を停止します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlPowerMgrDisableSwWdt(uint32_t id)
+....
+
+* *引数の説明* +
+**[IN] uint32_t id**::
+監視を停止したいモジュールID。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** プロセス死活監視を停止します。
+
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。
+PlPowerMgrSwWdtKeepalive / PlPowerMgrEnableSwWdt / PlPowerMgrDisableSwWdt のいずれかが他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|OSエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlPowerMgrGetMigrationData]
+==== PlPowerMgrGetMigrationData
+* *機能* +
+旧形式の設定データを取得します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlPowerMgrGetMigrationData(PlPowerMgrMigrationDataId id, void *dst, size_t dst_size)
+....
+
+* *引数の説明* +
+**[IN] PlPowerMgrMigrationDataId id**::
+取得したいマイグレーションデータの種類。
+**[OUT] void *dst**::
+取得結果。
+**[IN] size_t dst_size**::
+dstのサイズ[Byte]。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 旧形式の設定データを取得します。
+
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。
+PL PowerManager APIが他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|OSエラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlPowerMgrEraseMigrationData]
+==== PlPowerMgrEraseMigrationData
+* *機能* +
+旧形式の設定データを削除します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlPowerMgrEraseMigrationData(PlPowerMgrMigrationDataId id)
+....
+
+* *引数の説明* +
+**[IN] PlPowerMgrMigrationDataId id**::
+削除したいマイグレーションデータの種類。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 旧形式の設定データを削除します。
+
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|可能
+|複数スレッドからの呼び出し
+|可能
+|複数タスクからの呼び出し
+|可能
+|API内部でブロッキングするか
+|ブロッキングする。
+PL PowerManager APIが他のコンテキストで動作中の場合、完了を待ってから実行されます。
+|===
+
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrLock/kPlErrUnlock (仮)
+|ブロッキングエラー
+|-
+|影響なし
+|不要
+
+|kPlErrInternal (仮)
+|OSエラー
+|-
+|影響なし
+|不要
+|===
+
+<<<
 
 == API使用時の呼び出し例
 === 電源供給種別の取得、USB通信の有効化/無効化の一例
@@ -616,4 +987,6 @@ image::./images/pl_power_manager_example.png[scaledwidth="100%",align="center"]
 |Version |Changes 
 |0.0.1
 |初版
+|0.0.2
+|プロセス死活監視機能、マイグレーション機能を追記
 |===

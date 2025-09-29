@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.7
+:revnumber: 0.1.8
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -1078,5 +1078,10 @@ OSSを使用していません。
 * 他モジュールに要求する機能にPL Mainを追加
 * コンフィグ設定を追加
 
+|0.1.8
+|記載内容の最新化
+
+* EsfMainProcessRebootとEsfMainProcessFactoryReset関数内のEsfPwrMgrExecuteRebootをEsfPwrMgrExecuteRebootExに変更
+* <<#__System_Shutdown_Management_Sequence_Example>> にEsfSystemManagerSetResetCauseを追加
 |===
 

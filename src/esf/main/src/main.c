@@ -681,8 +681,6 @@ static EsfMainError EsfMainBoot(void) {
     }
 #endif  // CONFIG_EXTERNAL_WASM_BINDING_INIT
     {
-#if (defined(CONFIG_EXTERNAL_SENSOR_MAIN) || \
-     defined(CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB))
       ESF_MAIN_DBG("EsfMainEsfSensorInitialize start.");
       EsfMainError ext_ret = EsfMainEsfSensorInitialize();
       if (kEsfMainOk != ext_ret) {
@@ -692,8 +690,6 @@ static EsfMainError EsfMainBoot(void) {
       } else {
         ESF_MAIN_INFO("EsfMainEsfSensorInitialize finish.");
       }
-#endif  // (CONFIG_EXTERNAL_SENSOR_MAIN ||
-        // CONFIG_EXTERNAL_MAIN_ENABLE_SENSOR_MAIN_STUB)
     }
     {
       bool need_migration = false;

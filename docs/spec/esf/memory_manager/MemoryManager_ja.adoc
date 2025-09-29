@@ -607,59 +607,55 @@ EsfMemoryManagerFopenはEsfMemoryManagerAllocateで確保したメモリ領域�
 
 |メモリ初期化機能
 |PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域に対する初期化を行う機能。
-|<<#_メモリ初期化機能>>
+|<<#_MemoryInitialization>>
 
 |メモリ終了機能
 |PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域に対する終了処理を行う機能。
-|<<#_メモリ終了機能>>
+|<<#_MemoryFinalization>>
 
 |メモリ確保機能
 |指定されたメモリ領域から指定サイズ分のメモリ確保を行い、確保したメモリに対するメモリ操作ハンドル生成を行う機能。
-|<<#_メモリ確保機能>>
+|<<#_MemoryAllocation>>
 
 |メモリ解放機能
 |取得したメモリ操作ハンドルで保持しているメモリの解放を行い、メモリ操作ハンドルの破棄を行う機能。
-|<<#_メモリ解放機能>>
+|<<#_MemoryDeallocation>>
 
 |メモリマップ機能
 |取得したメモリ操作ハンドルを用いて確保したメモリのマップを行う機能。
-|<<#_メモリマップ機能>>
+|<<#_MemoryMapping>>
 
 |メモリアンマップ機能
 |取得したメモリ操作ハンドルを用いてマップしたメモリのアンマップを行う機能。
-|<<#_メモリアンマップ機能>>
-
-|メモリアンマップ機能
-|取得したメモリ操作ハンドルを用いてマップしたメモリのアンマップを行う機能。
-|<<#_メモリアンマップ機能>>
+|<<#_MemoryUnmapping>>
 
 |メモリファイルオープン機能
 |取得したメモリ操作ハンドルを用いて取得メモリに対するファイルアクセスを行うためのファイルディスクリプタ"fd"の取得を行う機能。
-|<<#_メモリファイルオープン機能>>
+|<<#_MemoryFileOpen>>
 
 |メモリファイルクローズ機能
 |メモリファイルオープンで取得したファイルディスクリプタ"fd"の返却を行う機能。
-|<<#_メモリファイルクローズ機能>>
+|<<#_MemoryFileClose>>
 
 |メモリファイルシーク機能
 |取得したメモリのファイルディスクリプタ"fd"を用いてファイルポインタを任意位置への設定を行う機能。
-|<<#_メモリファイルシーク機能>>
+|<<#_MemoryFileSeek>>
 
 |メモリファイルライト機能
 |取得したメモリのファイルディスクリプタ"fd"を用いてファイルポインタが指す位置へデータの書き込みを行う機能。
-|<<#_メモリファイルライト機能>>
+|<<#_MemoryFileWrite>>
 
 |メモリファイルリード機能
 |取得したメモリのファイルディスクリプタ"fd"を用いてファイルポインタが指す位置からデータの読み出しを行う機能。
-|<<#_メモリファイルリード機能>>
+|<<#_MemoryFileRead>>
 
 |マップ機能サポートチェック
 |取得したメモリ操作ハンドルを用いて対象領域に対するマップ機能のサポート/未サポートのチェックを行う機能。
-|<<#_マップ機能サポートチェック>>
+|<<#_MapSupportCheck>>
 
 |ハンドル情報取得機能
 |取得したメモリ操作ハンドルに紐づく対象領域、サイズ情報の取得を行う機能。
-|<<#_ハンドル情報取得機能>>
+|<<#_HandleInformationRetrieval>>
 
 |===
 
@@ -671,15 +667,15 @@ EsfMemoryManagerFopenはEsfMemoryManagerAllocateで確保したメモリ領域�
 
 |Wasmメモリ確保機能
 |指定領域から指定サイズ分のメモリ確保を行う機能。
-|<<#_Wasmメモリ確保機能>>
+|<<#_WasmMemoryAllocation>>
 
 |Wasmメモリサイズ変更機能
 |確保したWasmメモリのサイズ変更を行う機能。
-|<<#_Wasmメモリサイズ変更機能>>
+|<<#_WasmMemoryResize>>
 
 |Wasmメモリ解放機能
 |確保したWasmメモリの解放を行う機能。
-|<<#_Wasmメモリ解放機能>>
+|<<#_WasmMemoryDeallocation>>
 
 |===
 
@@ -687,7 +683,7 @@ EsfMemoryManagerFopenはEsfMemoryManagerAllocateで確保したメモリ領域�
 
 === コンポーネントの機能説明
 
-[#_メモリ初期化機能]
+[#_MemoryInitialization]
 ==== メモリ初期化機能
 * 機能概要
     ** PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域の初期化を行います。
@@ -701,9 +697,9 @@ EsfMemoryManagerFopenはEsfMemoryManagerAllocateで確保したメモリ領域�
     
 この機能はシステム起動時、メモリマネージャー使用前に実行することを想定しています。 +
 ※未初期化状態でメモリマネージャーのメモリ操作API実行時はメモリ未初期化のエラーを返します +
-（<<#_メモリ初期化のシーケンス図>>を参照）
+（<<#_MemoryInitializationSequence>>を参照）
 
-[#_メモリ初期化のシーケンス図]
+[#_MemoryInitializationSequence]
 .メモリ初期化のシーケンス図
 [{mermaid_block}]
 ....
@@ -734,7 +730,7 @@ sequenceDiagram
 ....
 ※各初期化にてエラーコード(初期化済)が返ってきた場合は無視して初期化処理を進める
 
-[#_メモリ終了機能]
+[#_MemoryFinalization]
 ==== メモリ終了機能
 * 機能概要
     ** PLメモリが管理するLargeHeap領域、WasmHeap領域、DMA領域の終了を行います。
@@ -747,9 +743,9 @@ sequenceDiagram
     
 この機能はシステム起動時、メモリマネージャー使用前に実行することを想定しています。 +
 ※未初期化状態でメモリマネージャーのメモリ操作API実行時はメモリ未初期化のエラーを返します +
-（<<#_メモリ終了のシーケンス図>>を参照）
+（<<#_MemoryFinalizationSequence>>を参照）
 
-[#_メモリ終了のシーケンス図]
+[#_MemoryFinalizationSequence]
 .メモリ終了のシーケンス図
 [{mermaid_block}]
 ....
@@ -778,7 +774,7 @@ sequenceDiagram
 ※各初期化にてエラーコード(終了済)が返ってきた場合は無視して終了処理を進める
 
 
-[#_メモリ確保機能]
+[#_MemoryAllocation]
 ==== メモリ確保機能
 * 機能概要
     ** 指定サイズのメモリ確保を行います。
@@ -797,9 +793,9 @@ sequenceDiagram
 
     
 この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
-EsfMemoryManagerAllocateを呼び出す際、”WASMモジュール管理情報"を指定することで該当領域に対するメモリ確保を行います。（<<#_メモリ確保のシーケンス図>>を参照）
+EsfMemoryManagerAllocateを呼び出す際、”WASMモジュール管理情報"を指定することで該当領域に対するメモリ確保を行います。（<<#_MemoryAllocationSequence>>を参照）
 
-[#_メモリ確保のシーケンス図]
+[#_MemoryAllocationSequence]
 .メモリ確保のシーケンス図
 [{mermaid_block}]
 ....
@@ -853,7 +849,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリ解放機能]
+[#_MemoryDeallocation]
 ==== メモリ解放機能
 * 機能概要
     ** メモリ操作ハンドルで保持しているメモリの解放を行います。
@@ -866,9 +862,9 @@ sequenceDiagram
 
     
 この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
-EsfMemoryManagerFreeを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリ解放を行います。（<<#_メモリ解放のシーケンス図>>を参照）
+EsfMemoryManagerFreeを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリ解放を行います。（<<#_MemoryFreeSequence>>を参照）
 
-[#_メモリ解放のシーケンス図]
+[#_MemoryFreeSequence]
 .メモリ解放のシーケンス図
 [{mermaid_block}]
 ....
@@ -925,7 +921,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリマップ機能]
+[#_MemoryMapping]
 ==== メモリマップ機能
 * 機能概要
     ** 指定メモリのマップを行います。
@@ -944,9 +940,9 @@ sequenceDiagram
     *** 上記でマップした仮想アドレスをマップアドレスとして上位へ返す。 +
 
 この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
-EsfMemoryManagerMapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリマップを行います。（<<#_メモリマップのシーケンス図>>を参照）
+EsfMemoryManagerMapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリマップを行います。（<<#_MemoryMapSequenceDiagram>>を参照）
 
-[#_メモリマップのシーケンス図]
+[#_MemoryMapSequenceDiagram]
 .メモリマップのシーケンス図
 EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合 +
 [{mermaid_block}]
@@ -1033,7 +1029,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリアンマップ機能]
+[#_MemoryUnmapping]
 ==== メモリアンマップ機能
 * 機能概要
     ** 指定メモリのアンマップを行います。
@@ -1052,9 +1048,9 @@ sequenceDiagram
 
 
 この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
-EsfMemoryManagerUnmapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリアンマップを行います。（<<#_メモリアンマップのシーケンス図>>を参照）
+EsfMemoryManagerUnmapを呼び出す際、メモリ操作ハンドルを指定することで該当領域に対するメモリアンマップを行います。（<<#_MemoryUnmapSequenceDiagram>>を参照）
 
-[#_メモリアンマップのシーケンス図]
+[#_MemoryUnmapSequenceDiagram]
 .メモリアンマップのシーケンス図
 EsfMemoryManagerAllocateにより取得したメモリ操作ハンドルを使用する場合 +
 [{mermaid_block}]
@@ -1138,7 +1134,7 @@ sequenceDiagram
 
 ....
 
-[#_メモリファイルオープン機能]
+[#_MemoryFileOpen]
 ==== メモリファイルオープン機能
 * 機能概要
     ** 指定メモリのファイルオープンを行います。
@@ -1151,7 +1147,7 @@ sequenceDiagram
     ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するファイルオープンを行い、ファイルディスクリプタ"fd"の取得を行う。 +
     ** 取得したファイルディスクリプタ"fd"をメモリ操作ハンドルに紐づけて格納
 
-[#_メモリファイルオープンのシーケンス図]
+[#_MemoryFileOpenSequenceDiagram]
 .メモリファイルオープンのシーケンス図
 [{mermaid_block}]
 ....
@@ -1178,7 +1174,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリファイルクローズ機能]
+[#_MemoryFileClose]
 ==== メモリファイルクローズ機能
 * 機能概要
     ** 指定メモリのファイルクローズを行います。
@@ -1189,7 +1185,7 @@ sequenceDiagram
 * 機能詳細
     ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するファイルクローズを行い、ファイルディスクリプタ"fd"の返却を行う。 +
 
-[#_メモリファイルクローズのシーケンス図]
+[#_MemoryFileCloseSequenceDiagram]
 .メモリファイルクローズのシーケンス図
 [{mermaid_block}]
 ....
@@ -1215,7 +1211,7 @@ sequenceDiagram
   end
 ....
 
-[#_メモリファイルシーク機能]
+[#_MemoryFileSeek]
 ==== メモリファイルシーク機能
 * 機能概要
     ** 指定メモリのファイルシークを行います。
@@ -1227,7 +1223,7 @@ sequenceDiagram
     ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリに対するファイルシークを行い、ファイルディスクリプタ"fd"の位置設定を行う。 +
 
 
-[#_メモリファイルシークのシーケンス図]
+[#_MemoryFileSeekSequenceDiagram]
 .メモリファイルシークのシーケンス図
 [{mermaid_block}]
 ....
@@ -1254,7 +1250,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリファイルライト機能]
+[#_MemoryFileWrite]
 ==== メモリファイルライト機能
 * 機能概要
     ** 指定メモリのファイルライトを行います。
@@ -1266,7 +1262,7 @@ sequenceDiagram
     ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリのファイルディスクリプタ"fd"で設定された任意位置に指定データのファイルライトを行う。 +
     ** EsfMemoryManagerFpwrite時はメモリファイルシークを併せて行う。
 
-[#_メモリファイルライトのシーケンス図]
+[#_MemoryFileWriteSequenceDiagram]
 .メモリファイルライトのシーケンス図
 [{mermaid_block}]
 ....
@@ -1297,7 +1293,7 @@ sequenceDiagram
   end
 ....
 
-[#_メモリファイルリード機能]
+[#_MemoryFileRead]
 ==== メモリファイルリード機能
 * 機能概要
     ** 指定メモリのファイルリードを行います。
@@ -1309,7 +1305,7 @@ sequenceDiagram
     ** メモリ操作ハンドルに紐づくメモリ管理情報(領域情報、メモリ情報など)に基づき、該当メモリのファイルディスクリプタ"fd"で設定された任意位置から指定データのファイルリードを行う。 +
     ** EsfMemoryManagerFpread時はメモリファイルシークを併せて行う。
 
-[#_メモリファイルリードのシーケンス図]
+[#_MemoryFileReadSequenceDiagram]
 .メモリファイルリードのシーケンス図
 [{mermaid_block}]
 ....
@@ -1341,7 +1337,7 @@ sequenceDiagram
 ....
 
 
-[#_マップ機能サポートチェック]
+[#_MapSupportCheck]
 ==== マップ機能サポートチェック
 * 機能概要
     ** 指定メモリに対するMap機能サポートのチェックを行います。
@@ -1357,7 +1353,7 @@ sequenceDiagram
       メモリファイルオープン機能、メモリファイルクローズ機能、メモリファイルシーク機能、 +
       メモリファイルライト機能、メモリファイルリード機能を用いてメモリ操作を行う。
 
-[#_マップ機能サポートチェックのシーケンス図]
+[#_MapSupportCheckSequenceDiagram]
 .マップ機能サポートチェックのシーケンス図
 [{mermaid_block}]
 ....
@@ -1416,7 +1412,7 @@ sequenceDiagram
   end
 ....
 
-[#_ハンドル情報取得機能]
+[#_HandleInformationRetrieval]
 ==== ハンドル情報取得機能
 * 機能概要
     ** 指定ハンドルに紐づく対象領域、サイズ情報の取得を行います。
@@ -1437,12 +1433,12 @@ sequenceDiagram
     *** それ以外の領域 +
       上記LargeHeap領域、DMA領域、WasmHeap領域以外の場合に"それ以外の領域"とする。
 
-[#_ハンドル情報取得機能のシーケンス図]
+[#_HandleInfoRetrievalSequenceDiagram]
 .ハンドル情報取得機能のシーケンス図
  - 省略
 
 
-[#_Wasmメモリ確保機能]
+[#_WasmMemoryAllocation]
 ==== Wasmメモリ確保機能
 * 機能概要
     ** 指定領域から指定サイズ分のメモリ確保を行います。
@@ -1458,10 +1454,10 @@ sequenceDiagram
     
 この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
 
-[#_Wasmメモリサイズ変更機能]
+[#_WasmMemoryResize]
 ==== Wasmメモリサイズ変更機能
 * 機能概要
-    ** <<#_Wasmメモリ確保機能>>により確保したメモリのサイズ変更を行います。
+    ** <<#_WasmMemoryAllocation>>により確保したメモリのサイズ変更を行います。
     ** サイズ変更したメモリブロックのポインタを返します。
 * 前提条件
     ** -
@@ -1471,10 +1467,10 @@ sequenceDiagram
     
 この機能は排他的に操作を行うため、複数のスレッドから呼び出しが可能です。
 
-[#_Wasmメモリ解放機能]
+[#_WasmMemoryDeallocation]
 ==== Wasmメモリ解放機能
 * 機能概要
-    ** <<#_Wasmメモリ確保機能>>により確保したメモリの解放を行います。
+    ** <<#_WasmMemoryAllocation>>により確保したメモリの解放を行います。
 * 前提条件
     ** -
 * 機能詳細
@@ -1496,27 +1492,27 @@ sequenceDiagram
 |機能名 |概要  |節番号
 |最大処理時間
 |XXXX ms
-|<<#_最大処理時間>>
+|<<#_MaximumProcessingTime>>
 
 |Stack最大使用量
 |512 byte
-|<<#_Stack最大使用量>>
+|<<#_MaximumStackUsage>>
 
 |ヒープメモリ使用量
 |XXXX byte
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |===
 
 <<<
 
 === コンポーネントの非機能要件説明
-[#_最大処理時間]
+[#_MaximumProcessingTime]
 ==== 最大処理時間
-設計時点でのT3S3の実測値を<<#_最大処理時間表>>に示す。
+設計時点でのT3S3の実測値を<<#_MaximumProcessingTimeTable>>に示す。
 ※2024/2/28時点、未計測
 
-[#_最大処理時間表]
+[#_MaximumProcessingTimeTable]
 .最大処理時間表
 [width="100%",options="header"]
 |===
@@ -1562,11 +1558,11 @@ sequenceDiagram
 |===
 
 
-[#_Stack最大使用量]
+[#_MaximumStackUsage]
 ==== Stack最大使用量
 設計時点での目標値は 512byte。
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== ヒープメモリ使用量
 メモリ操作ハンドルの取得数に依存します。
 
@@ -1705,7 +1701,7 @@ typedef enum{
 
 * *値* 
 +
-[#_EsfMemoryManagerResultの値の説明]
+[#_EsfMemoryManagerResultDescription]
 .EsfMemoryManagerResultの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1748,7 +1744,7 @@ typedef enum{
 
 * *値* 
 +
-[#_EsfMemoryManagerTargetAreaの値の説明]
+[#_EsfMemoryManagerTargetAreaDescription]
 .EsfMemoryManagerTargetAreaの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1782,7 +1778,7 @@ typedef enum{
 
 * *値* 
 +
-[#_EsfMemoryManagerMapSupportの値の説明]
+[#_EsfMemoryManagerMapSupportDescription]
 .EsfMemoryManagerMapSupportの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1813,7 +1809,7 @@ typedef enum {
 
 * *値* 
 +
-[#_EsfMemoryManagerWasmMemoryUsageの値の説明]
+[#_EsfMemoryManagerWasmMemoryUsageDescription]
 .EsfMemoryManagerWasmMemoryUsageの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1830,7 +1826,7 @@ typedef enum {
 [#_EsfMemoryManagerHandle]
 ==== EsfMemoryManagerHandle
 LargeHeap領域、DMA領域、WasmHeap領域に対するメモリ操作ハンドルの定義です。 +
-※メモリ操作ハンドルに紐づくメモリ管理情報は非公開となります(参照：<<#_EsfMemoryManagerHandleについて>>) +
+※メモリ操作ハンドルに紐づくメモリ管理情報は非公開となります(参照：<<#_About_EsfMemoryManagerHandle>>) +
 
 メモリ操作ハンドルには下記2種類があります。 +
 
@@ -1865,7 +1861,7 @@ typedef uint32_t EsfMemoryManagerHandle;
 
 * *EsfMemoryManagerHandle* 
 +
-[#_EsfMemoryManagerAllocate()時に設定するEsfMemoryManagerHandleの説明]
+[#_DescriptionOfEsfMemoryManagerHandleSetByAllocate]
 .EsfMemoryManagerAllocate()時に設定するEsfMemoryManagerHandleの説明
 [width="100%", cols="10%,20%,20%,20%,30%",options="header"]
 |===
@@ -1904,7 +1900,7 @@ typedef uint32_t EsfMemoryManagerHandle;
 [#_EsfMemoryManagerHandleInfo]
 ==== EsfMemoryManagerHandleInfo
 メモリ操作ハンドルに紐づくメモリ管理情報から取得した対象領域、サイズ情報を格納するハンドル情報の定義です。 +
-※メモリ操作ハンドルに紐づくメモリ管理情報は非公開となります(参照：<<#_EsfMemoryManagerHandleについて>>) +
+※メモリ操作ハンドルに紐づくメモリ管理情報は非公開となります(参照：<<#_About_EsfMemoryManagerHandle>>) +
 
 取得を行うハンドル情報として以下の制約があります。 +
 
@@ -1925,7 +1921,7 @@ struct EsfMemoryManagerHandleInfo {
 
 * *値* 
 +
-[#_EsfMemoryManagerHandleInfoの値の説明]
+[#_EsfMemoryManagerHandleInfoDescription]
 .EsfMemoryManagerHandleInfoの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1982,9 +1978,9 @@ AppMemory使用のユースケースとして下記で指定して下さい。 +
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerAllocateReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerInitializeの戻り値の説明]
+[#_EsfMemoryManagerAllocateReturnValues]
 .EsfMemoryManagerInitializeの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2022,9 +2018,9 @@ AppMemory使用のユースケースとして下記で指定して下さい。 +
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFinalizeReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFinalizeの戻り値の説明]
+[#_EsfMemoryManagerFinalizeReturnValues]
 .EsfMemoryManagerFinalizeの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2085,9 +2081,9 @@ WASMモジュール管理情報ポインタ +
  メモリ確保失敗時：NULLを設定します。
 
 * *戻り値* +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値を設定します。
+実行結果に応じて<<#_EsfMemoryManagerAllocateReturnValues>>のいずれかの値を設定します。
 +
-[#_EsfMemoryManagerAllocateの戻り値の説明]
+[#_EsfMemoryManagerAllocateReturnValues]
 .EsfMemoryManagerAllocateの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2160,9 +2156,9 @@ WASMモジュール管理情報ポインタ +
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFreeReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFreeの戻り値の説明]
+[#_EsfMemoryManagerFreeReturnValues]
 .EsfMemoryManagerFreeの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2231,9 +2227,9 @@ WASMモジュール管理情報 +
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerMapReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerMapの戻り値の説明]
+[#_EsfMemoryManagerMapReturnValues]
 .EsfMemoryManagerMapの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2296,9 +2292,9 @@ EsfMemoryManagerAllocateにより取得したメモリ操作ハンドル、ユ�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerUnmapReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerUnmapの戻り値の説明]
+[#_EsfMemoryManagerUnmapReturnValues]
 .EsfMemoryManagerUnmapの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2344,9 +2340,9 @@ EsfMemoryManagerAllocateで取得したハンドルをもとに指定メモリ�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFopenReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFopenの戻り値の説明]
+[#_EsfMemoryManagerFopenReturnValues]
 .EsfMemoryManagerFopenの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2404,9 +2400,9 @@ EsfMemoryManagerAllocateで取得したハンドルをもとに指定メモリ�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFcloseReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFcloseの戻り値の説明]
+[#_EsfMemoryManagerFcloseReturnValues]
 .EsfMemoryManagerFcloseの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2477,9 +2473,9 @@ EsfMemoryManagerFopenでファイルオープンしたメモリのファイル�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFseekReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFseekの戻り値の説明]
+[#_EsfMemoryManagerFseekReturnValues]
 .EsfMemoryManagerFseekの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2548,9 +2544,9 @@ EsfMemoryManagerFopenでファイルオープンしたメモリのファイル�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFwriteReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFwriteの戻り値の説明]
+[#_EsfMemoryManagerFwriteReturnValues]
 .EsfMemoryManagerFwriteの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2621,9 +2617,9 @@ EsfMemoryManagerFopenでファイルオープンしたメモリの指定位置�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFpwriteReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFpwriteの戻り値の説明]
+[#_EsfMemoryManagerFpwriteReturnValues]
 .EsfMemoryManagerFpwriteの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2690,9 +2686,9 @@ EsfMemoryManagerFopenでファイルオープンしたメモリのファイル�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFreadReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFreadの戻り値の説明]
+[#_EsfMemoryManagerFreadReturnValues]
 .EsfMemoryManagerFreadの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2763,9 +2759,9 @@ EsfMemoryManagerFopenでファイルオープンしたメモリの指定位置�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerFpreadReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerFpreadの戻り値の説明]
+[#_EsfMemoryManagerFpreadReturnValues]
 .EsfMemoryManagerFpreadの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2829,9 +2825,9 @@ EsfMemoryManagerAllocateで取得したハンドルに対してMap機能をサ�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerIsMapSupportReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+[#_EsfMemoryManagerIsMapSupportReturnValues]
 .EsfMemoryManagerIsMapSupportの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2889,9 +2885,9 @@ EsfMemoryManagerAllocateで取得したハンドルに紐づく対象領域、�
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfMemoryManagerResultの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfMemoryManagerIsMapSupportReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+[#_EsfMemoryManagerIsMapSupportReturnValues]
 .EsfMemoryManagerIsMapSupportの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -3463,10 +3459,9 @@ end
 <<<
 
 == Addpendix
-[#_EsfMemoryManagerHandleについて]
+[#_About_EsfMemoryManagerHandle]
 === EsfMemoryManagerHandleについて
-EsfMemoryManagerHandleに紐づくメモリ管理情報はユーザーに対して詳細は非公開となります。ここではメモリマネージャー内で管理しているメモリ管理情報の概要を記載します。
-※あくまでもイメージです
+EsfMemoryManagerHandleに紐づくメモリ管理情報はユーザーに対して詳細は非公開となります。ここではメモリマネージャー内で管理しているメモリ管理情報の概要を記載します。※あくまでもイメージです
 
 [underline]#EsfMemoryManagerHandleに紐づくメモリ管理情報#
 
@@ -3478,7 +3473,7 @@ EsfMemoryManagerHandleに紐づくメモリ管理情報はユーザーに対し�
   ※FileIOアクセス可能時のファイルアクセス情報として管理する +
 
 [underline]#各メモリ操作に対するメモリ管理情報の参照/更新#
-[#_メモリ操作APIとメモリ管理情報の関係]
+[#_Relationship_between_MemoryOps_and_ManagementInfo]
 .メモリ操作APIとメモリ管理情報の関係
 [width="100%", cols="20%,20%,20%,20%,20%,20%",options="header"]
 |===

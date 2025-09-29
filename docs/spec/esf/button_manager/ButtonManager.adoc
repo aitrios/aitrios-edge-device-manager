@@ -1285,53 +1285,58 @@ None.
 |Initial release
 
 |v0.0.2
-|Changes: + 
-・Title updated +
-・Added notification callback API to architecture diagram; changed GPIO to Button + 
-・Modified HAL description in dependency block; added OSAL + 
-・Added OPEN sub-state to state transition diagram + 
-・Added "Enable/Disable Notification Callback Execution Function" to component function list + 
-・Modified the following in Component Function Descriptions: + 
-　- Changed explanation for Button Operation Notification Function and replaced its sequence diagram with a timing diagram + 
-　- Added <<#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press>> + 
-　- Updated Notification Callback Registration Function: added preconditions and revised description +
-　- Added preconditions to Callback Unregistration Function + 
-　- Added Enable/Disable Notification Callback Execution Function +
-・Updated Data Type List: +
-　- Removed EsfButtonManagerButtonType +
-　- Removed EsfButtonManagerButtonPressedCallbackInfo +
-　- Removed EsfButtonManagerButtonReleasedCallbackInfo +
-　- Removed EsfButtonManagerButtonLongPressedCallbackInfo +
-　- Removed EsfButtonManagerNotificationCallbackInfo  
-・API List / API Definitions: +
-　- Removed EsfButtonManagerRegisterNotificationCallback +
-　- Removed EsfButtonManagerUnregisterNotificationCallback +
-　- Added EsfButtonManagerRegisterPressedCallback +
-　- Added EsfButtonManagerRegisterReleasedCallback +
-　- Added EsfButtonManagerRegisterLongPressedCallback +
-　- Added EsfButtonManagerUnregisterPressedCallback +
-　- Added EsfButtonManagerUnregisterReleasedCallback +
-　- Added EsfButtonManagerUnregisterLongPressedCallback +
-　- Added EsfButtonManagerEnableNotificationCallback +
-　- Added EsfButtonManagerDisableNotificationCallback +
-・API Definitions: +
-　- Added notes on mutual exclusion control for EsfButtonManagerOpen and EsfButtonManagerClose +
-　- Renamed `start_second` and `end_second` to `min_second` and `max_second`; moved description to EsfButtonManagerRegisterReleasedCallback +
-　- Moved <<#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered>> under EsfButtonManagerRegisterReleasedCallback +
-・General API Call Sequence Example: +
-　- Updated timing for detection callback registration/unregistration +
-　- Replaced RegisterNotificationCallback with individual register functions +
-　- Added execution of EnableNotificationCallback +
-　- Removed `opt` +
-・Updated <<#_API_Call_Example_From_Multiple_Modules>> to refer to <<#_Timing_Diagram_of_Button_Notification_Scope>>  
-・Special Notes and Component-Specific Details: +
-　- Revised text to reflect updated state transitions
+a|
+Changes:
+
+* Title updated
+* Added notification callback API to architecture diagram; changed GPIO to Button
+* Modified HAL description in dependency block; added OSAL
+* Added OPEN sub-state to state transition diagram
+* Added "Enable/Disable Notification Callback Execution Function" to component function list 
+* Modified the following in Component Function Descriptions:
+** Changed explanation for Button Operation Notification Function and replaced its sequence diagram with a timing diagram
+** Added <<#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press>>
+** Updated Notification Callback Registration Function: added preconditions and revised description
+** Added preconditions to Callback Unregistration Function
+** Added Enable/Disable Notification Callback Execution Function
+* Updated Data Type List:
+** Removed EsfButtonManagerButtonType
+** Removed EsfButtonManagerButtonPressedCallbackInfo
+** Removed EsfButtonManagerButtonReleasedCallbackInfo
+** Removed EsfButtonManagerButtonLongPressedCallbackInfo
+** Removed EsfButtonManagerNotificationCallbackInfo
+* API List / API Definitions:
+** Removed EsfButtonManagerRegisterNotificationCallback
+** Removed EsfButtonManagerUnregisterNotificationCallback
+** Added EsfButtonManagerRegisterPressedCallback
+** Added EsfButtonManagerRegisterReleasedCallback
+** Added EsfButtonManagerRegisterLongPressedCallback
+** Added EsfButtonManagerUnregisterPressedCallback
+** Added EsfButtonManagerUnregisterReleasedCallback
+** Added EsfButtonManagerUnregisterLongPressedCallback
+** Added EsfButtonManagerEnableNotificationCallback
+** Added EsfButtonManagerDisableNotificationCallback
+* API Definitions:
+** Added notes on mutual exclusion control for EsfButtonManagerOpen and EsfButtonManagerClose
+** Renamed `start_second` and `end_second` to `min_second` and `max_second`; moved description to EsfButtonManagerRegisterReleasedCallback
+** Moved <<#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered>> under EsfButtonManagerRegisterReleasedCallback
+* General API Call Sequence Example:
+** Updated timing for detection callback registration/unregistration
+** Replaced RegisterNotificationCallback with individual register functions
+** Added execution of EnableNotificationCallback
+** Removed `opt`
+* Updated <<#_API_Call_Example_From_Multiple_Modules>> to refer to <<#_Timing_Diagram_of_Button_Notification_Scope>>
+** Special Notes and Component-Specific Details:
+** Revised text to reflect updated state transitions
 |v0.0.3
-|Changes: +
-・Renamed HAL to PL; renamed Hal_Timer to UtilityTimer +
-・Updated General API Call Sequence Example to follow changes in UtilityTimer specification
+a|
+Changes:
+
+* Renamed HAL to PL; renamed Hal_Timer to UtilityTimer
+* Updated General API Call Sequence Example to follow changes in UtilityTimer specification
 |v0.0.4
-|Minor corrections to <<#_General_API_Call_Sequence_Example>>: +
-　- Changed caller/callee of UtilityTimer-related processes from PL to UtilityTimer +
-　- Corrected [Execute Release Notification Callback] to [Unregister Elapsed-Time Detection Callback]
+a|
+* Minor corrections to <<#_General_API_Call_Sequence_Example>>:
+** Changed caller/callee of UtilityTimer-related processes from PL to UtilityTimer
+** Corrected [Execute Release Notification Callback] to [Unregister Elapsed-Time Detection Callback]
 |===

@@ -61,7 +61,7 @@ static int MakeDir(const char *path) {
     dir[i] = path[i];
     if (path[i] == '/') {
       if (i == 0) {
-        continue; // root dir
+        continue;  // root dir
       }
 
       int ret = mkdir(dir, 0755);
@@ -339,7 +339,7 @@ static PlErrCode ResetNmconnectionFile(void) {
       "method=auto\n\n"
       "[ipv6]\n"
       "method=ignore\n"
-  );
+  );  // NOLINT
   fclose(fp);
   chmod(path, 0600);
   return kPlErrCodeOk;
@@ -347,7 +347,7 @@ static PlErrCode ResetNmconnectionFile(void) {
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageOpenOsImpl(PlStorageDataId id, int oflags,
-                        PlStorageHandle *handle) {
+                              PlStorageHandle *handle) {
   PlErrCode ret;
 
   if (handle == NULL) {
@@ -412,7 +412,7 @@ out_unlock_mutex:
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageSeekOsImpl(const PlStorageHandle handle, int32_t offset,
-                        PlStorageSeekType type, int32_t *cur_pos) {
+                              PlStorageSeekType type, int32_t *cur_pos) {
   struct PlStorageSqlite3Handle *hdl = NULL;
   int position;
   int ret;
@@ -482,8 +482,8 @@ out_unlock_mutex:
 
 // ----------------------------------------------------------------------------
 static PlErrCode PlStorageReadLocked(struct PlStorageSqlite3Handle *hdl,
-             void *out_buf, uint32_t read_size,
-             uint32_t *out_size) {
+                                      void *out_buf, uint32_t read_size,
+                                      uint32_t *out_size) {
   size_t blob_size;
   int ret;
 
@@ -521,7 +521,7 @@ static PlErrCode PlStorageReadLocked(struct PlStorageSqlite3Handle *hdl,
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageReadOsImpl(const PlStorageHandle handle, void *out_buf,
-                        uint32_t read_size, uint32_t *out_size) {
+                              uint32_t read_size, uint32_t *out_size) {
   int ret;
   struct PlStorageSqlite3Handle *hdl = NULL;
 
@@ -569,7 +569,8 @@ out_unlock_mutex:
    */
 
 static PlErrCode PlStorageResizeKeepData(struct PlStorageSqlite3Handle *hdl,
-              uint32_t keep_size, uint32_t new_size) {
+                                          uint32_t keep_size,
+                                          uint32_t new_size) {
   void *buf;
   int ret;
 
@@ -622,8 +623,8 @@ err_free_buf:
 }
 // ----------------------------------------------------------------------------
 static PlErrCode PlStorageWriteLocked(struct PlStorageSqlite3Handle *hdl,
-              const void *src_buf, uint32_t write_size,
-              uint32_t *out_size) {
+                                      const void *src_buf, uint32_t write_size,
+                                      uint32_t *out_size) {
   size_t blob_size;
   int ret;
 
@@ -673,8 +674,9 @@ append:
 }
 
 // ----------------------------------------------------------------------------
-PlErrCode PlStorageWriteOsImpl(const PlStorageHandle handle, const void *src_buf,
-                         uint32_t write_size, uint32_t *out_size) {
+PlErrCode PlStorageWriteOsImpl(const PlStorageHandle handle,
+                                const void *src_buf, uint32_t write_size,
+                                uint32_t *out_size) {
   PlErrCode ret;
   struct PlStorageSqlite3Handle *hdl = NULL;
 
@@ -785,18 +787,20 @@ PlErrCode PlStorageFactoryResetOsImpl(PlStorageDataId id) {
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageDReadOsImpl(PlStorageDataId id, int oflags, void *out_buf,
-                         uint32_t read_size, uint32_t *out_size) {
+                                uint32_t read_size, uint32_t *out_size) {
   return kPlErrNoSupported;
 }
 
 // ----------------------------------------------------------------------------
-PlErrCode PlStorageDWriteOsImpl(PlStorageDataId id, int oflags, const void *src_buf,
-                          uint32_t write_size, uint32_t *out_size) {
+PlErrCode PlStorageDWriteOsImpl(PlStorageDataId id, int oflags,
+                                const void *src_buf, uint32_t write_size,
+                                uint32_t *out_size) {
   return kPlErrNoSupported;
 }
 
 // ----------------------------------------------------------------------------
-PlErrCode PlStorageGetDataInfoOsImpl(PlStorageDataId id, PlStorageDataInfo *info) {
+PlErrCode PlStorageGetDataInfoOsImpl(PlStorageDataId id,
+                                     PlStorageDataInfo *info) {
   sqlite3_blob *blob;
   int ret;
   bool hasRow;
@@ -848,13 +852,13 @@ out_unlock_mutex:
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageSwitchDataOsImpl(PlStorageTmpDataId src_id,
-                              PlStorageDataId dst_id) {
+                                    PlStorageDataId dst_id) {
   return kPlErrNoSupported;
 }
 
 // ----------------------------------------------------------------------------
 PlErrCode PlStorageGetTmpDataIdOsImpl(PlStorageDataId src_id,
-                                PlStorageTmpDataId *tmp_id) {
+                                      PlStorageTmpDataId *tmp_id) {
   return kPlErrNoSupported;
 }
 

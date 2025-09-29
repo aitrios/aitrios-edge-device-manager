@@ -28,8 +28,8 @@ XXのバージョンXXに適用されます。
 
 <<<
 
-[#_用語]
-== 用語
+[#_Terminology]
+== Terminology
 
 [#_RGB_Planar]
 === RGB Planar
@@ -246,22 +246,22 @@ Codec_Jpegは状態を持たない。
 |機能名 |概要  |節番号
 |JPEGエンコード機能（メモリアクセス）
 |JPEG画像を生成する
-|<<#_JPEGエンコード機能（メモリアクセス）>>
+|<<#_JPEG_Encoding_Function_memory_access>>
 
 |JPEGエンコード機能（FileIOアクセス）
 |入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
-|<<#_JPEGエンコード機能（FileIOアクセス）>>
+|<<#_JPEG_Encoding_Function_FileIO_access>>
 
 |JPEGエンコード機能（MemoryManager管理領域使用）
 |入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
-|<<#_JPEGエンコード機能（MemoryManager管理領域使用）>>
+|<<#_JPEG_Encoding_Function_MemoryManager_access>>
 
 |===
 
 <<<
 
 === コンポーネントの機能説明
-[#_JPEGエンコード機能（メモリアクセス）]
+[#_JPEG_Encoding_Function_memory_access]
 ==== JPEGエンコード機能（メモリアクセス）
 * 機能概要
     ** JPEGエンコードを行い、JPEG画像を出力する
@@ -269,9 +269,9 @@ Codec_Jpegは状態を持たない。
     ** 特になし
 * 機能詳細
     ** 入力データにJPEGエンコードを行い、指定されたバッファにJPEG画像を出力する。
-    ** 対応する入力データは<<#_対応入力データ>>に記載
+    ** 対応する入力データは<<#_Supported_Input_Formats>>に記載
 +
-[#_対応入力データ]
+[#_Supported_Input_Formats]
 .対応入力データ
 [width="100%",options="header"]
 |===
@@ -314,7 +314,7 @@ UV：Packed
 |===
 
 
-[#_JPEGエンコード機能（FileIOアクセス）]
+[#_JPEG_Encoding_Function_FileIO_access]
 ==== JPEGエンコード機能（FileIOアクセス）
 * 機能概要
     ** 入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
@@ -323,10 +323,10 @@ UV：Packed
 * 機能詳細
     ** 入力データをFileIOを用いて読み取り、JPEGエンコードを行い、指定された出力先にFileIOを用いて書き込みます。
     ** MemoryManagerのFileIOハンドルを引き渡してください。ハンドルはオープン状態である必要があります。FileIO以外のハンドル（LargeHeap, WasmHeap, DMAメモリ）が引き渡された場合はエラーとします。
-    ** 対応する入力データは<<#_対応入力データ>>に記載しています
+    ** 対応する入力データは<<#_Supported_Input_Formats>>に記載しています
 
 
-[#_JPEGエンコード機能（MemoryManager管理領域使用）]
+[#_JPEG_Encoding_Function_MemoryManager_access]
 ==== JPEGエンコード機能（MemoryManager管理領域使用）
 * 機能概要
     ** 入力データをMemoryManagerの管理領域から読み取り、JPEGエンコードを行い、指定された管理領域へ書き込みます。
@@ -340,7 +340,7 @@ UV：Packed
         MemoryManagerのFileIOアクセス機能を用いて、入力データをLargeHeap領域から読み取り、JPEGエンコードを行い、指定されたLargeHeap領域へ書き込みます。
     ** MemoryManagerのハンドルを引き渡してください。
     ** （Map機能非サポート時）LargeHeap領域以外のハンドル（WasmHeap, DMAメモリ）が引き渡された場合はエラーとします。
-    ** 対応する入力データは<<#_対応入力データ>>に記載しています
+    ** 対応する入力データは<<#_Supported_Input_Formats>>に記載しています
 
 <<<
 
@@ -356,27 +356,27 @@ UV：Packed
 |最大処理時間
 |128x96 : 15.065ms +
 640x480 : 324.059ms
-|<<#_最大処理時間>>
+|<<#_MaximumProcessingTime>>
 
 |Stack最大使用量
 |2352byte
-|<<#_Stack最大使用量>>
+|<<#_MaximumStackUsage>>
 
 |ヒープメモリ使用量
 |128x96 : 24328byte +
 640x480 : 40774byte
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |===
 
 <<<
 
 === コンポーネントの非機能要件説明
-[#_最大処理時間]
+[#_MaximumProcessingTime]
 ==== 最大処理時間
-設計時点でのT3S3の実測値を<<#_最大処理時間表>>に示す。
+設計時点でのT3S3の実測値を<<#_MaximumProcessingTimeTable>>に示す。
 
-[#_最大処理時間表]
+[#_MaximumProcessingTimeTable]
 .最大処理時間表
 [width="100%",options="header"]
 |===
@@ -394,15 +394,15 @@ UV：Packed
 |===
 
 
-[#_Stack最大使用量]
+[#_MaximumStackUsage]
 ==== Stack最大使用量
 設計時点でのT3S3の実測値は2352byte。
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== ヒープメモリ使用量
-設計時点でのT3S3の実測値を<<#_ヒープメモリ使用量表>>に示す。
+設計時点でのT3S3の実測値を<<#_HeapMemoryUsageTable>>に示す。
 
-[#_ヒープメモリ使用量表]
+[#_HeapMemoryUsageTable]
 .ヒープメモリ使用量表
 [width="100%",options="header"]
 |===
@@ -499,7 +499,7 @@ typedef enum{
 
 * *値*
 +
-[#_EsfCodecJpegErrorの値の説明]
+[#_EsfCodecJpegErrorValues]
 .EsfCodecJpegErrorの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -620,7 +620,7 @@ typedef struct{
 
 * *値*
 +
-[#_EsfCodecJpegEncParamの値の説明]
+[#_EsfCodecJpegEncParamValues]
 .EsfCodecJpegEncParamの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -668,7 +668,7 @@ typedef struct{
 
 * *値*
 +
-[#_EsfCodecJpegInfoの値の説明]
+[#_EsfCodecJpegInfoValues]
 .EsfCodecJpegInfoの値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -714,9 +714,9 @@ JPEGエンコード用パラメータ
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfCodecJpegErrorの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfCodecJpegEncodeReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfCodecJpegEncodeの戻り値の説明]
+[#_EsfCodecJpegEncodeReturnValues]
 .EsfCodecJpegEncodeの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -726,7 +726,7 @@ JPEGエンコード用パラメータ
 
 |kJpegParamError
 |・enc_paramがNULLの場合 +
-・enc_paramの値が不正な場合（詳細は<<#_EsfCodecJpegEncParamの値の説明>>を参照） +
+・enc_paramの値が不正な場合（詳細は<<#_EsfCodecJpegEncParamValues>>を参照） +
 ・jpeg_sizeがNULLの場合
 
 |kJpegOssInternalError
@@ -778,9 +778,9 @@ JPEGエンコード用パラメータ
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfCodecJpegErrorの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfCodecJpegEncodeFileIoReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfCodecJpegEncodeFileIoの戻り値の説明]
+[#_EsfCodecJpegEncodeFileIoReturnValues]
 .EsfCodecJpegEncodeFileIoの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -790,7 +790,7 @@ JPEGエンコード用パラメータ
 
 |kJpegParamError
 |・infoがNULLの場合 +
-・infoの値が不正な場合（詳細は<<#_EsfCodecJpegInfoの値の説明>>を参照） +
+・infoの値が不正な場合（詳細は<<#_EsfCodecJpegInfoValues>>を参照） +
 ・jpeg_sizeがNULLの場合 +
 ・``input_file_handle``又は``output_file_handle``がFileIOハンドル以外（LargeHeap, WasmHeap, DMAメモリ）の場合 +
 ・``input_file_handle``又は``output_file_handle``がクローズ状態のFileIOハンドルの場合 +
@@ -842,9 +842,9 @@ JPEGエンコード用パラメータ
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfCodecJpegErrorの値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfCodecJpegEncodeHandleReturnValues>>のいずれかの値が返ります。
 +
-[#_EsfCodecJpegEncodeHandleの戻り値の説明]
+[#_EsfCodecJpegEncodeHandleReturnValues]
 .EsfCodecJpegEncodeHandleの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -854,7 +854,7 @@ JPEGエンコード用パラメータ
 
 |kJpegParamError
 |・infoがNULLの場合 +
-・infoの値が不正な場合（詳細は<<#_EsfCodecJpegInfoの値の説明>>を参照） +
+・infoの値が不正な場合（詳細は<<#_EsfCodecJpegInfoValues>>を参照） +
 ・jpeg_sizeがNULLの場合 +
 ・（Map機能非サポート時）``input_handle``又は``output_handle``がLargeHeap領域向け以外（WasmHeap, DMAメモリ）の場合
 
@@ -1064,7 +1064,7 @@ sequenceDiagram
 * 初回実装としては、libjpegのみサポート 。以降はサポートOSS等が増加する度に追加する。
 
 === Config
-[#_Config一覧]
+[#_Config_List]
 .Config一覧
 [width="100%",options="header"]
 |===
@@ -1234,26 +1234,30 @@ VUVU・・・
 |v0.0.1
 |初版リリース
 |v0.0.2
-|変更 +
-・画像フォーマットの説明を<<#_対応入力データ>>から<<#_用語>>に移動 +
-・定義名の修正 +
-　・ EsfSlJpegError -> EsfCodecJpegError +
-　・ EsfSlJpegInputFormat -> EsfCodecJpegInputFormat +
-　・ EsfSlCodecJpegEncode -> EsfCodecJpegEncode +
-追加 +
-・stride対応を追加 +
-・<<#_Config一覧>>を追加 +
+a|変更
+
+* 画像フォーマットの説明を<<#_Supported_Input_Formats>>から<<#_Terminology>>に移動
+* 定義名の修正
+** EsfSlJpegError -> EsfCodecJpegError
+** EsfSlJpegInputFormat -> EsfCodecJpegInputFormat
+** EsfSlCodecJpegEncode -> EsfCodecJpegEncode
+
+追加
+
+* stride対応を追加
+* <<#_Config_List>>を追加
 |v0.0.3
 |SSFをESFに修正 +
 <<#_EsfCodecJpegError>>に``kJpegOutputBufferFullError``を追加 +
-<<#_EsfCodecJpegEncode>>の戻り値に``kJpegOutputBufferFullError``を追加
+<<#_EsfCodecJpegEncode>>の戻り値に``kJpegOutputBufferFullError``を追加 +
 <<#_EsfCodecJpegEncode>>出力用領域についての説明を修正
 |v0.0.4
-|テスト用のConfigのため、説明を削除 +
-・CONFIG_EXTERNAL_CODEC_JPEG_BUILTIN_APP +
-・CONFIG_EXTERNAL_CODEC_JPEG_PROGNAME +
-・CONFIG_EXTERNAL_CODEC_JPEG_PRIORITY +
-・CONFIG_EXTERNAL_CODEC_JPEG_STACKSIZE
+a|テスト用のConfigのため、説明を削除
+
+* CONFIG_EXTERNAL_CODEC_JPEG_BUILTIN_APP
+* CONFIG_EXTERNAL_CODEC_JPEG_PROGNAME
+* CONFIG_EXTERNAL_CODEC_JPEG_PRIORITY
+* CONFIG_EXTERNAL_CODEC_JPEG_STACKSIZE
 |v0.0.5
 |FileIO対応を追加
 |v0.0.6

@@ -43,8 +43,7 @@ ESF (AITRIOS Edge Software Framework) +
 An internal module of ESF. +  
 It provides the following functionalities using general-purpose external libraries:
 
-** JPEG  
-** QR code reading  
+** JPEG
 ** Base64
 
 === Base64

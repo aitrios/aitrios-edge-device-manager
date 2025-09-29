@@ -869,7 +869,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetDeviceManifest]
+[#_EsfSystemManagerGetDeviceManifestReturnValue]
 .Description of Return Values for EsfSystemManagerGetDeviceManifest
 [width="100%",options="header"]
 |===
@@ -933,7 +933,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetDpsUrl]
+[#_EsfSystemManagerGetDpsUrlReturnValue]
 .Description of Return Values for EsfSystemManagerGetDpsUrl
 [width="100%",options="header"]
 |===
@@ -992,7 +992,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetDpsUrl]
+[#_EsfSystemManagerSetDpsUrlReturnValue]
 .Description of Return Values for EsfSystemManagerSetDpsUrl
 [width="100%",options="header"]
 |===
@@ -1048,7 +1048,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetCommonName]
+[#_EsfSystemManagerGetCommonNameReturnValue]
 .Description of Return Values for EsfSystemManagerGetCommonName
 [width="100%",options="header"]
 |===
@@ -1107,7 +1107,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetCommonName]
+[#_EsfSystemManagerSetCommonNameReturnValue]
 .Description of Return Values for EsfSystemManagerSetCommonName
 [width="100%",options="header"]
 |===
@@ -1163,7 +1163,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetDpsScopeId]
+[#_EsfSystemManagerGetDpsScopeIdReturnValue]
 .Description of Return Values for EsfSystemManagerGetDpsScopeId
 [width="100%",options="header"]
 |===
@@ -1222,7 +1222,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetDpsScopeId]
+[#_EsfSystemManagerSetDpsScopeIdReturnValue]
 .Description of Return Values for EsfSystemManagerSetDpsScopeId
 [width="100%",options="header"]
 |===
@@ -1278,7 +1278,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetProjectId]
+[#_EsfSystemManagerGetProjectIdReturnValue]
 .Description of Return Values for EsfSystemManagerGetProjectId
 [width="100%",options="header"]
 |===
@@ -1337,7 +1337,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetProjectId]
+[#_EsfSystemManagerSetProjectIdReturnValue]
 .Description of Return Values for EsfSystemManagerSetProjectId
 [width="100%",options="header"]
 |===
@@ -1393,7 +1393,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetRegisterToken]
+[#_EsfSystemManagerGetRegisterTokenReturnValue]
 .Description of Return Values for EsfSystemManagerGetRegisterToken
 [width="100%",options="header"]
 |===
@@ -1452,7 +1452,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetRegisterToken]
+[#_EsfSystemManagerSetRegisterTokenReturnValue]
 .Description of Return Values for EsfSystemManagerSetRegisterToken
 [width="100%",options="header"]
 |===
@@ -1508,7 +1508,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpHubUrl]
+[#_EsfSystemManagerGetEvpHubUrlReturnValue]
 .Description of Return Values for EsfSystemManagerGetEvpHubUrl
 [width="100%",options="header"]
 |===
@@ -1567,7 +1567,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpHubUrl]
+[#_EsfSystemManagerSetEvpHubUrlReturnValue]
 .Description of Return Values for EsfSystemManagerSetEvpHubUrl
 [width="100%",options="header"]
 |===
@@ -1623,7 +1623,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpHubPort]
+[#_EsfSystemManagerGetEvpHubPortReturnValue]
 .Description of Return Values for EsfSystemManagerGetEvpHubPort
 [width="100%",options="header"]
 |===
@@ -1682,7 +1682,7 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
 ** Error Information +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpHubPort]
+[#_EsfSystemManagerSetEvpHubPortReturnValue]
 .Description of Return Values for EsfSystemManagerSetEvpHubPort
 [width="100%",options="header"]
 |===
@@ -1740,7 +1740,7 @@ One of the values in <<#_TableReturnValue>> is returned depending on the executi
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpIotPlatform]
+[#_EsfSystemManagerGetEvpIotPlatformReturnValue]
 .Description of return values for EsfSystemManagerGetEvpIotPlatform
 [width="100%",options="header"]
 |===
@@ -1799,7 +1799,7 @@ One of the values in <<#_TableReturnValue>> is returned depending on the executi
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpIotPlatform]
+[#_EsfSystemManagerSetEvpIotPlatformReturnValue]
 .Description of return values for EsfSystemManagerSetEvpIotPlatform
 [width="100%",options="header"]
 |===
@@ -1849,7 +1849,7 @@ One of the values in <<#_TableReturnValue>> is returned depending on the executi
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetEvpTls]
+[#_EsfSystemManagerGetEvpTlsReturnValue]
 .Description of return values for EsfSystemManagerGetEvpTls
 [width="100%",options="header"]
 |===
@@ -1900,7 +1900,7 @@ One of the values in <<#_TableReturnValue>> is returned depending on the executi
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetEvpTls]
+[#_EsfSystemManagerSetEvpTlsReturnValue]
 .Description of return values for EsfSystemManagerSetEvpTls
 [width="100%",options="header"]
 |===
@@ -1953,7 +1953,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetRootCa]
+[#_EsfSystemManagerGetRootCaRetrunValue]
 .Description of return values for EsfSystemManagerGetRootCa
 [width="100%",options="header"]
 |===
@@ -2019,7 +2019,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetRootCaHash]
+[#_EsfSystemManagerGetRootCaHashReturnValue]
 .Description of return values for EsfSystemManagerGetRootCaHash
 [width="100%",options="header"]
 |===
@@ -2078,7 +2078,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetQrModeTimeoutValue]
+[#_EsfSystemManagerGetQrModeTimeoutValueReturnValue]
 .Description of return values for EsfSystemManagerGetQrModeTimeoutValue
 [width="100%",options="header"]
 |===
@@ -2124,7 +2124,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetQrModeTimeoutValue]
+[#_EsfSystemManagerSetQrModeTimeoutValueReturnValue]
 .Description of return values for EsfSystemManagerSetQrModeTimeoutValue
 [width="100%",options="header"]
 |===
@@ -2165,7 +2165,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetInitialSettingFlag]
+[#_EsfSystemManagerGetInitialSettingFlagReturnValue]
 .Description of return values for EsfSystemManagerGetInitialSettingFlag
 [width="100%",options="header"]
 |===
@@ -2216,7 +2216,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerSetInitialSettingFlag]
+[#_EsfSystemManagerSetInitialSettingFlagReturnValue]
 .Description of return values for EsfSystemManagerSetInitialSettingFlag
 [width="100%",options="header"]
 |===
@@ -2265,7 +2265,7 @@ One of the values from <<#_TableReturnValue>> is returned depending on the resul
 *** Performs internal blocking.  
 ** Error Information  
 +
-[#_DescriptionofReturnValuesforEsfSystemManagerGetHwInfo]
+[#_EsfSystemManagerGetHwInfoReturnValue]
 .Description of return values for EsfSystemManagerGetHwInfo
 [width="100%",options="header"]
 |===
