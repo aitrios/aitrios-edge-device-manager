@@ -89,6 +89,9 @@ static PlErrCode PlSystemManagerGetSerialNumber(char *serial_number) {
   char *device_id_name = NULL;
   char *saveptr = NULL;
   device_id_name = strtok_r(dp->d_name, "_", &saveptr);
+  // NOTE: The following branch is practically unreachable because
+  // strtok_r only returns NULL if the input string is empty,
+  // but in that case, the while loop above will not break and dp will be NULL.
   if (device_id_name == NULL) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
                      "%s-%d:Failed to parse device id from file name: %s.",

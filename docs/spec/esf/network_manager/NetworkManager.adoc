@@ -730,7 +730,7 @@ The stack uses 512 bytes.
 
 [#_NonFunction2]
 ==== Maximum Heap Usage
-The heap area uses 4 kilobytes.
+The heap area uses 4 KByte.
 
 [#_NonFunction3]
 ==== Maximum Static Memory Usage

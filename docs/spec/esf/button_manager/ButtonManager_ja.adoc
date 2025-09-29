@@ -147,10 +147,10 @@ ButtonManagerの取り得る状態を<<#_TableStates>>に示します。
 
 |===
 
-ButtonManagerでは各APIを呼び出すことで<<#_状態遷移図>>に示す状態遷移を行います。 +
+ButtonManagerでは各APIを呼び出すことで<<#_StateTransitionDiagram>>に示す状態遷移を行います。 +
 また、各APIでエラーが発生した場合には状態遷移は起こりません。 +
 
-[#_状態遷移図]
+[#_StateTransitionDiagram]
 .状態遷移図
 [source,mermaid]
 ....
@@ -247,25 +247,25 @@ stateDiagram-v2
 |機能名 |概要  |節番号
 |ボタン操作通知機能
 |PL,Utilityで検出したボタン操作をコールバックによって上位Appに通知する機能。
-|<<#_ボタン操作通知機能>>
+|<<#_Button_Operation_Notification_Function>>
 
 |通知用コールバックの登録機能
 |指定したボタンが操作された際に実行するコールバックを登録する機能。
-|<<#_通知用コールバックの登録機能>>
+|<<#_Notification_Callback_Registration_Function>>
 
 |通知用コールバックの解除機能
 |指定したボタンが操作された際に実行するコールバックの登録を解除する機能。
-|<<#_通知用コールバックの解除機能>>
+|<<#_Notification_Callback_Unregistration_Function>>
 
 |通知用コールバックの実行有効化/無効化機能
 |登録したコールバックの実行を有効化/無効化する機能。
-|<<#_通知用コールバックの実行有効化/無効化機能>>
+|<<#_Enable_Disable_Notification_Callback_Execution_Function>>
 |===
 
 <<<
 
 === コンポーネントの機能説明
-[#_ボタン操作通知機能]
+[#_Button_Operation_Notification_Function]
 ==== ボタン操作通知機能
 * 機能概要
     ** PL,Utilityで検出したボタン操作をコールバックによって上位Appに通知する機能。
@@ -273,19 +273,19 @@ stateDiagram-v2
     ** ButtonManagerがOPEN状態、サブステータスがENABLE状態であること。
 * 機能詳細
     ** PL,Utilityで検出したボタン操作（押下・解放・長押し）をコールバックによって上位Appに通知する機能。
-    ** 通知用コールバックはAPIによって登録/解除が可能で、コールバックの実行が有効化されている期間に行われたボタン操作が通知対象となる。通知用コールバックが登録されており、ボタン長押し中にコールバックの実行が有効化された場合は、コールバックの実行が有効化されたタイミングから長押しが開始されたとみなす。（<<#_ボタン操作通知範囲のタイミング図>>を参照）
+    ** 通知用コールバックはAPIによって登録/解除が可能で、コールバックの実行が有効化されている期間に行われたボタン操作が通知対象となる。通知用コールバックが登録されており、ボタン長押し中にコールバックの実行が有効化された場合は、コールバックの実行が有効化されたタイミングから長押しが開始されたとみなす。（<<#_Timing_Diagram_of_Button_Notification_Scope>>を参照）
 +
-[#_ボタン操作通知範囲のタイミング図]
+[#_Timing_Diagram_of_Button_Notification_Scope]
 .ボタン操作通知範囲のタイミング図
 image::./images/EsfButtonManagerTimingDiagram_1.png[scaledwidth="100%",align="center"]
 +
-また、ボタン長押し中にButtonManagerがOpenされた場合のボタン操作通知タイミング図を<<#_ボタン長押し中にButtonManagerがOpenされた場合のボタン操作通知範囲のタイミング図>>に示す。
+また、ボタン長押し中にButtonManagerがOpenされた場合のボタン操作通知タイミング図を<<#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press>>に示す。
 +
-[#_ボタン長押し中にButtonManagerがOpenされた場合のボタン操作通知範囲のタイミング図]
+[#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press]
 .ボタン長押し中にButtonManagerがOpenされた場合のボタン操作通知範囲のタイミング図
 image::./images/EsfButtonManagerTimingDiagram_2.png[scaledwidth="100%",align="center"]
 
-[#_通知用コールバックの登録機能]
+[#_Notification_Callback_Registration_Function]
 ==== 通知用コールバックの登録機能
 * 機能概要
     ** 指定したボタンが操作された際に実行するコールバックを登録する機能。
@@ -300,7 +300,7 @@ image::./images/EsfButtonManagerTimingDiagram_2.png[scaledwidth="100%",align="ce
     ** 通知用コールバックの登録数が最大値を超えてしまう場合や、異常な入力パラメータを指定した場合はエラーとなる。
 
 
-[#_通知用コールバックの解除機能]
+[#_Notification_Callback_Unregistration_Function]
 ==== 通知用コールバックの解除機能
 * 機能概要
     ** 指定したボタンが操作された際に実行するコールバックの登録を解除する機能。
@@ -311,7 +311,7 @@ image::./images/EsfButtonManagerTimingDiagram_2.png[scaledwidth="100%",align="ce
     ** APIで指定したボタンが操作（押下・解放・長押し）された際に実行するコールバックの登録を解除する。
     ** 通知用コールバックが登録されていない場合や、異常な入力パラメータを指定した場合はエラーとなる。
 
-[#_通知用コールバックの実行有効化/無効化機能]
+[#_Enable_Disable_Notification_Callback_Execution_Function]
 ==== 通知用コールバックの実行有効化/無効化機能
 * 機能概要
     ** 登録したコールバックの実行を有効化/無効化させる機能
@@ -336,27 +336,27 @@ image::./images/EsfButtonManagerTimingDiagram_2.png[scaledwidth="100%",align="ce
 |機能名 |概要  |節番号
 |Stack最大使用量
 |1KB
-|<<#_Stack最大使用量>>
+|<<#_Maximum_Stack_Usage>>
 |スレッド使用数
 |1つ
-|<<#_スレッド使用数>>
+|<<#_Number_of_Threads_Used>>
 |最大処理時間
 |1ms
-|<<#_最大処理時間>>
+|<<#_Maximum_Processing_Time>>
 |===
 
 <<<
 
 === コンポーネントの非機能要件説明
-[#_Stack最大使用量]
+[#_Maximum_Stack_Usage]
 ==== Stack最大使用量
 Stackは1KBまで使用する。
 
-[#_スレッド使用数]
+[#_Number_of_Threads_Used]
 ==== スレッド使用数
 ボタン検出のイベントを処理するためにスレッドを一つ生成する。
 
-[#_最大処理時間]
+[#_Maximum_Processing_Time]
 ==== 最大処理時間
 ボタン検出のイベントを受信してから通知用コールバックの実行を開始するまでの最大処理時間は1msとする。
 
@@ -539,9 +539,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerOpenの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerOpen_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerOpenの戻り値の説明]
+[#_EsfButtonManagerOpen_Return_Values]
 .EsfButtonManagerOpenの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -589,9 +589,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerCloseの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerClose_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerCloseの戻り値の説明]
+[#_EsfButtonManagerClose_Return_Values]
 .EsfButtonManagerCloseの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -644,12 +644,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-[#_EsfButtonManagerRegisterPressedCallbackの戻り値]
-.EsfButtonManagerRegisterPressedCallbackの戻り値
-[width="100%", options="header"]
-実行結果に応じて<<#_EsfButtonManagerRegisterPressedCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerRegisterPressedCallback_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerRegisterPressedCallbackの戻り値の説明]
+[#_EsfButtonManagerRegisterPressedCallback_Return_Values]
 .EsfButtonManagerRegisterPressedCallbackの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -711,11 +708,11 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-[#_EsfButtonManagerRegisterReleasedCallbackの戻り値]
-.EsfButtonManagerRegisterReleasedCallbackの戻り値
-[width="100%", cols="30%,70%",options="header"]
-実行結果に応じて<<#_EsfButtonManagerRegisterReleasedCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerRegisterReleasedCallback_Return_Values>>のいずれかの値が返ります。
 +
+[#_EsfButtonManagerRegisterReleasedCallback_Return_Values]
+.EsfButtonManagerRegisterReleasedCallbackの戻り値の説明
+[width="100%", cols="30%,70%",options="header"]
 |===
 |戻り値  |説明
 |kEsfButtonManagerStatusOk
@@ -746,9 +743,9 @@ ButtonManager制御用ハンドル。
 登録できる通知用コールバックの最大数は各ボタン毎に、CONFIG_ESF_BUTTON_MANAGER_NOTIFICATION_CALLBACK_MAX_NUM個まで登録が可能。 +
 既に他のコンテキストでButtonManagerのAPIが動作中の場合は、完了を待ってから実行される。通知用コールバックの実行と被った場合も完了を待ってから実行される。 +
 入力引数に不備があった場合は、コールバックを登録せずにエラーを返す。 +
-設定可能な値の詳細を<<#_min_secondとmax_secondの実行例>>に示す。
+設定可能な値の詳細を<<#_Examples_of_min_second_and_max_second>>に示す。
 +
-[#_min_secondとmax_secondの実行例]
+[#_Examples_of_min_second_and_max_second]
 .min_secondとmax_secondの実行例
 [width="100%", cols="30%,15%,15%,10%,35%",options="header"]
 |===
@@ -812,9 +809,9 @@ max_second == 0
 
 |===
 +
-<<#_複数のボタン解放通知用コールバック登録時のコールバック実行判定表>>はmin_second、max_secondの条件別のコールバック１～３が同時に登録されている時に、コールバックが実行されるか否かを、ボタン長押し時間毎に表している。〇はコールバック実行され、×はコールバック実行されない。
+<<#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered>>はmin_second、max_secondの条件別のコールバック1～3が同時に登録されている時に、コールバックが実行されるか否かを、ボタン長押し時間毎に表している。〇はコールバック実行され、×はコールバック実行されない。
 +
-[#_複数のボタン解放通知用コールバック登録時のコールバック実行判定表]
+[#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered]
 .複数のボタン解放通知用コールバック登録時のコールバック実行判定表
 [width="100%", options="autowidth"]
 |===
@@ -875,11 +872,11 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-[#_EsfButtonManagerRegisterLongPressedCallbackの戻り値]
+実行結果に応じて<<#_EsfButtonManagerRegisterLongPressedCallback_Return_Values>>のいずれかの値が返ります。
++
+[#_EsfButtonManagerRegisterLongPressedCallback_Return_Values]
 .EsfButtonManagerRegisterLongPressedCallbackの戻り値
 [width="100%", cols="30%,70%",options="header"]
-実行結果に応じて<<#_EsfButtonManagerRegisterLongPressedCallbackの戻り値の説明>>のいずれかの値が返ります。
-+
 |===
 |戻り値  |説明
 |kEsfButtonManagerStatusOk
@@ -930,9 +927,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerUnregisterPressedCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerUnregisterPressedCallback_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerUnregisterPressedCallbackの戻り値の説明]
+[#_EsfButtonManagerUnregisterPressedCallback_Return_Values]
 .EsfButtonManagerUnregisterPressedCallbackの戻り値の説明
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -982,9 +979,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerUnregisterReleasedCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerUnregisterReleasedCallback_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerUnregisterReleasedCallbackの戻り値]
+[#_EsfButtonManagerUnregisterReleasedCallback_Return_Values]
 .EsfButtonManagerUnregisterReleasedCallbackの戻り値
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1034,9 +1031,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerUnregisterLongPressedCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerUnregisterLongPressedCallback_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerUnregisterLongPressedCallbackの戻り値]
+[#_EsfButtonManagerUnregisterLongPressedCallback_Return_Values]
 .EsfButtonManagerUnregisterLongPressedCallbackの戻り値
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1084,9 +1081,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerEnableNotificationCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerEnableNotificationCallback_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerEnableNotificationCallbackの戻り値]
+[#_EsfButtonManagerEnableNotificationCallback_Return_Values]
 .EsfButtonManagerEnableNotificationCallbackの戻り値
 [width="100%", options="header"]
 |===
@@ -1128,9 +1125,9 @@ ButtonManager制御用ハンドル。
 
 * *戻り値* +
 +
-実行結果に応じて<<#_EsfButtonManagerDisableNotificationCallbackの戻り値の説明>>のいずれかの値が返ります。
+実行結果に応じて<<#_EsfButtonManagerDisableNotificationCallback_Return_Values>>のいずれかの値が返ります。
 +
-[#_EsfButtonManagerDisableNotificationCallbackの戻り値]
+[#_EsfButtonManagerDisableNotificationCallback_Return_Values]
 .EsfButtonManagerDisableNotificationCallbackの戻り値
 [width="100%", options="header"]
 |===
@@ -1161,7 +1158,7 @@ ButtonManager制御用ハンドル。
 
 各APIを使用する場合の呼び出し例を以下に示します。
 
-[#_汎用的なAPI呼び出しシーケンスの例]
+[#_General_API_Call_Sequence_Example]
 === 汎用的なAPI呼び出しシーケンスの例
 
 
@@ -1224,7 +1221,7 @@ sequenceDiagram
 [#_複数モジュールからのAPI呼び出し例]
 === 複数モジュールからのAPI呼び出し例
 複数モジュールからButtonManagerにアクセスする場合は、各モジュールでハンドルを取得し、API呼び出しを行う。API呼び出し例は
-<<#_ボタン操作通知範囲のタイミング図>>を参照。
+<<#_Timing_Diagram_of_Button_Notification_Scope>>を参照。
 
 
 
@@ -1233,10 +1230,10 @@ sequenceDiagram
 == 特記事項やコンポーネントごとの特有の説明事項
 === 制約等
 * ButtonManagerからPL,Utilityにボタン/時間経過検出用コールバックを登録する必要があるため、ButtonManagerがOpenされる前にPL,Utilityで検出用コールバックの登録が可能な状態になっていること。
-* ButtonManagerがCLOSE状態またはDISABLE状態でボタン押下～解放まで行われた場合のボタン操作の通知は不可能。
+* ButtonManagerがCLOSE状態またはDISABLE状態でボタン押下~解放まで行われた場合のボタン操作の通知は不可能。
 
 === 特記事項
-* ButtonManagerがCLOSE状態またはDISABLE状態でボタン押下が開始され、ENABLE状態になった後も解放されずに長押しが継続されている場合は、ENABLE状態になった時点から長押し時間の計測を開始する。（<<#_ボタン操作通知範囲のタイミング図>>を参照）
+* ButtonManagerがCLOSE状態またはDISABLE状態でボタン押下が開始され、ENABLE状態になった後も解放されずに長押しが継続されている場合は、ENABLE状態になった時点から長押し時間の計測を開始する。（<<#_Timing_Diagram_of_Button_Notification_Scope>>を参照）
 
 === PLおよび他モジュールに要求する機能の一覧
 .PLおよび他モジュールに要求する機能の一覧
@@ -1288,59 +1285,60 @@ sequenceDiagram
 |v0.0.1
 |初版リリース
 |v0.0.2
-|変更点 +
-・タイトル修正 +
-・構成図 通知用コールバックAPIについて追記 GPIOをButtonに変更 +
-・依存ブロック HAL文章修正 OSAL追加 +
-・状態遷移図 OPENのサブステータス追加 +
-・コンポーネントの機能一覧 通知用コールバックの実行有効化/無効化機能追加 +
-・コンポーネントの機能説明 +
-　・ボタン操作通知機能 説明変更/ボタン操作通知範囲のシーケンス図を削除して、 +
-　　ボタン操作通知範囲のタイミング図に変更 +
-　　<<#_ボタン長押し中にButtonManagerがOpenされた場合のボタン操作通知範囲のタイミング図>>を追加 +
-　・通知用コールバックの登録機能 前提条件追加/説明変更 +
-　・通知用コールバックの解除機能 前提条件追加 +
-　・通知用コールバックの実行有効化/無効化機能を追加 +
-・データ型一覧 +
-　・EsfButtonManagerButtonType削除 +
-　・EsfButtonManagerButtonPressedCallbackInfo削除 +
-　・EsfButtonManagerButtonReleasedCallbackInfo削除 +
-　・EsfButtonManagerButtonLongPressedCallbackInfo削除 +
-　・EsfButtonManagerNotificationCallbackInfo削除 +
-・API一覧/API定義共通 +
-　・EsfButtonManagerRegisterNotificationCallback削除 +
-　・EsfButtonManagerUnregisterNotificationCallback削除 +
-　・EsfButtonManagerRegisterPressedCallback追加 +
-　・EsfButtonManagerRegisterReleasedCallback追加 +
-　・EsfButtonManagerRegisterLongPressedCallback追加 +
-　・EsfButtonManagerUnregisterPressedCallback追加 +
-　・EsfButtonManagerUnregisterReleasedCallback追加 +
-　・EsfButtonManagerUnregisterLongPressedCallback追加 +
-　・EsfButtonManagerEnableNotificationCallback追加 +
-　・EsfButtonManagerDisableNotificationCallback追加 +
-・API定義 +
-　・EsfButtonManagerOpen排他制御について文章追加 +
-　・EsfButtonManagerClose排他制御について文章追加 +
-　・start_secondとend_secondの仕様表をmin_secondとmax_secondの実行例に +
-　　名称を変更してEsfButtonManagerRegisterReleasedCallbackの説明欄に移動 +
-　　<<#_複数のボタン解放通知用コールバック登録時のコールバック実行判定表>>をEsfButtonManagerRegisterReleasedCallbackの説明欄に移動 +
-・汎用的なAPI呼び出しシーケンスの例 +
-　・ボタン検出用コールバック登録のタイミングをタイマースタート時に変更 +
-　・ボタン検出用コールバック解除のタイミングをタイマーストップ時に変更 +
-　・EsfButtonManagerRegisterNotificationCallbackを各登録関数の名称に変更 +
-　・EsfButtonManagerEnableNotificationCallbackの実行を追加 +
-　・optを削除 +
-・複数モジュールからのAPI呼び出し例 <<#_ボタン操作通知範囲のタイミング図>>を参照するように変更
-・特記事項やコンポーネントごとの特有の説明事項 +
-　・制約等 状態遷移変更に伴い文章変更 +
-　・特記事項 状態遷移変更に伴い文章変更
+a|
+変更点
+
+* タイトル修正
+* 構成図 通知用コールバックAPIについて追記 GPIOをButtonに変更
+* 依存ブロック HAL文章修正 OSAL追加
+* 状態遷移図 OPENのサブステータス追加
+* コンポーネントの機能一覧 通知用コールバックの実行有効化/無効化機能追加
+* コンポーネントの機能説明
+** ボタン操作通知機能 説明変更/ボタン操作通知範囲のシーケンス図を削除して、ボタン操作通知範囲のタイミング図に変更
+** <<#_Timing_Diagram_When_ButtonManager_Is_Opened_During_Long_Press>>を追加
+** 通知用コールバックの登録機能 前提条件追加/説明変更
+** 通知用コールバックの解除機能 前提条件追加
+** 通知用コールバックの実行有効化/無効化機能を追加
+* データ型一覧
+** EsfButtonManagerButtonType削除
+** EsfButtonManagerButtonPressedCallbackInfo削除
+** EsfButtonManagerButtonReleasedCallbackInfo削除
+** EsfButtonManagerButtonLongPressedCallbackInfo削除
+** EsfButtonManagerNotificationCallbackInfo削除
+* API一覧/API定義共通
+** EsfButtonManagerRegisterNotificationCallback削除
+** EsfButtonManagerUnregisterNotificationCallback削除
+** EsfButtonManagerRegisterPressedCallback追加
+** EsfButtonManagerRegisterReleasedCallback追加
+** EsfButtonManagerRegisterLongPressedCallback追加
+** EsfButtonManagerUnregisterPressedCallback追加
+** EsfButtonManagerUnregisterReleasedCallback追加
+** EsfButtonManagerUnregisterLongPressedCallback追加
+** EsfButtonManagerEnableNotificationCallback追加
+** EsfButtonManagerDisableNotificationCallback追加
+* API定義
+** EsfButtonManagerOpen排他制御について文章追加
+** EsfButtonManagerClose排他制御について文章追加
+** start_secondとend_secondの仕様表をmin_secondとmax_secondの実行例に名称を変更してEsfButtonManagerRegisterReleasedCallbackの説明欄に移動<<#_Callback_Execution_Judgment_Table_When_Multiple_Release_Callbacks_Registered>>をEsfButtonManagerRegisterReleasedCallbackの説明欄に移動
+* 汎用的なAPI呼び出しシーケンスの例
+** ボタン検出用コールバック登録のタイミングをタイマースタート時に変更
+** ボタン検出用コールバック解除のタイミングをタイマーストップ時に変更
+** EsfButtonManagerRegisterNotificationCallbackを各登録関数の名称に変更
+** EsfButtonManagerEnableNotificationCallbackの実行を追加
+** optを削除
+* 複数モジュールからのAPI呼び出し例<<#_ボタン操作通知範囲のタイミング図>>を参照するように変更・特記事項やコンポーネントごとの特有の説明事項
+** 制約等 状態遷移変更に伴い文章変更
+** 特記事項 状態遷移変更に伴い文章変更
 |v0.0.3
-|変更点 +
-・HALをPLに変更 Hal_TimerはUtilityTimerに変更。 +
-・UtilityTimer仕様変更に追従して汎用的なAPI呼び出しシーケンスの例変更。
+a|
+変更点
+
+* HALをPLに変更 Hal_TimerはUtilityTimerに変更。
+* UtilityTimer仕様変更に追従して汎用的なAPI呼び出しシーケンスの例変更。
 |v0.0.4
-・<<#_汎用的なAPI呼び出しシーケンスの例>>の軽微な修正を実施 +
-　　UtilityをUtilityTimerに変更 +
-　　UtilityTimerに関する処理の呼び出し元/先をPLからUtilityTimerに変更 +
-　　[ボタン解放通知用コールバック実行]を[時間経過検出用コールバック解除]に修正
+a|
+* <<#_General_API_Call_Sequence_Example>>の軽微な修正を実施
+** UtilityをUtilityTimerに変更
+** UtilityTimerに関する処理の呼び出し元/先をPLからUtilityTimerに変更
+** [ボタン解放通知用コールバック実行]を[時間経過検出用コールバック解除]に修正
 |===

@@ -24,7 +24,7 @@ ifndef::env-github[:mermaid_br: pass:p[<br>]]
 // attributes for Parameter Storage Manager
 :none: -
 
-[#_目的と適用範囲]
+[#_PurposeandScope]
 == 目的と適用範囲
 
 本書はAITRIOSのデータ保存・取得および各サービスへのデータ反映の機能を有するParameter Storage Managerモジュールを定義します。
@@ -32,44 +32,44 @@ XXのバージョンXXに適用されます。
 
 <<<
 
-[#_用語]
+[#_Terminology]
 == 用語
 
-[#_用語_データ構造体]
+[#_Terminology_DataStructure]
 === データ構造体
 関連するデータをまとめた構造体です。 +
 データを格納するために使用します。 +
-仕様は<<#_データ構造体, データ構造体>>を参照してください。 +
+仕様は<<#_DataStructures, データ構造体>>を参照してください。 +
 
-[#_用語_マスク構造体]
+[#_Terminology_MaskStructure]
 === マスク構造体
 操作対象のデータを識別するための構造体です。 +
 仕様は<<#_マスク構造体, マスク構造体>>を参照してください。 +
 
-[#_用語_データメンバ]
+[#_Terminology_DataMember]
 === データメンバ
 マスク構造体で指定可能な、データ構造体のメンバのことです。 +
 仕様は<<#_マスク構造体, マスク構造体>>を参照してください。 +
 
-[#_用語_実装モジュール]
+[#_Terminology_ImplementationModule]
 === 実装モジュール
 Parameter Storage Managerのデータ保存領域アクセス機能を使用するESFのモジュールです。 +
 データ保存領域アクセス機能を使用するには、各モジュールが設定を作成する必要があります。 +
-詳細は<<#_データ保存領域アクセス機能の仕様, データ保存領域アクセス機能の仕様>>を参照してください。 +
+詳細は<<#_DataStorageAccessFunctionSpecification, データ保存領域アクセス機能の仕様>>を参照してください。 +
 
-[#_用語_データ保存領域]
+[#_Terminology_DataStorageArea]
 === データ保存領域
 基本的にはPL Storageが管理する不揮発のメモリを指しますが、ヒープメモリや定数等を含みます。 +
 
-[#_用語_保存データ]
+[#_Terminology_StoredData]
 === 保存データ
 データ保存領域に保存されているデータのことです。 +
 
 <<<
 
-[#_コンポーネントの説明]
+[#_ComponentDescription]
 == コンポーネントの説明
-[#_コンポーネントの概要]
+[#_ComponentOverview]
 === コンポーネントの概要
 
 本モジュールは、設定情報を保存する機能を提供します。 +
@@ -101,7 +101,7 @@ ds              -->|"データ"| repo
 
 <<<
 
-[#_状態遷移]
+[#_StateTransition]
 === 状態遷移
 
 Parameter Storage Managerの取り得る状態を<<#_TableStates>>に示します。 +
@@ -162,7 +162,7 @@ stateDiagram-v2
 
 <<<
 
-[#_コンポーネントの機能一覧]
+[#_ComponentFunctionList]
 === コンポーネントの機能一覧
 以下に機能の一覧を示します。 +
 
@@ -174,32 +174,32 @@ stateDiagram-v2
 
 |初期化機能
 |Parameter Storage Managerの初期化機能を提供します。
-|<<#_初期化機能>>
+|<<#_InitializationFunction>>
 
 |ハンドル機能
 |Parameter Storage Managerの制御ハンドルに関する機能を提供します。
-|<<#_ハンドル機能>>
+|<<#_HandleFunction>>
 
 |データ保存領域アクセス機能
 |データ保存領域にアクセスし、データを保存・取得・削除・工場出荷状態に戻す機能を提供します。 +
-|<<#_データ保存領域アクセス機能>>
+|<<#_DataStorageAreaAccessFunction>>
 
 |データ更新キャンセル機能
 |データ保存領域の更新をキャンセルする機能を提供します。 +
-|<<#_データ更新キャンセル機能>>
+|<<#_CancelDataUpdateFunction>>
 
 |ユーティリティ機能
 |Parameter Storage Managerの機能に関連するユーティリティAPIを提供します。 +
-|<<#_ユーティリティ機能>>
+|<<#_UtilityFunction>>
 
 |===
 
 <<<
 
-[#_コンポーネントの機能説明]
+[#_ComponentFunctionDescriptions]
 === コンポーネントの機能説明
 
-[#_初期化機能]
+[#_InitializationFunction]
 ==== 初期化機能
 
 * **機能概要** +
@@ -218,7 +218,7 @@ stateDiagram-v2
         その後、リソースを解放し、内部状態が未初期化の状態に戻ります。 +
     ** エラー時の挙動、復帰方法に関しては各APIの詳細説明を参照してください。
 
-[#_ハンドル機能]
+[#_HandleFunction]
 ==== ハンドル機能
 
 * **機能概要** +
@@ -234,7 +234,7 @@ stateDiagram-v2
         不要となったハンドルは本APIで解放してください。 +
     ** エラー時の挙動、復帰方法に関しては各APIの詳細説明を参照してください。 +
 
-[#_データ保存領域アクセス機能]
+[#_DataStorageAreaAccessFunction]
 ==== データ保存領域アクセス機能
 
 * **機能概要** +
@@ -264,7 +264,7 @@ stateDiagram-v2
         *** ``**EsfParameterStorageManagerLock**``を呼び出すことで、排他制御を開始します。 +
         *** ``**EsfParameterStorageManagerUnlock**``を呼び出すことで、排他制御を終了します。 +
 
-[#_データ更新キャンセル機能]
+[#_CancelDataUpdateFunction]
 ==== データ更新キャンセル機能
 
 * **機能概要** +
@@ -283,7 +283,7 @@ stateDiagram-v2
     ** 本機能が利用不可である場合、本機能のAPIは内部処理を行わず、``**kEsfParameterStorageManagerStatusOk**``を返します。 +
         本機能が利用可能であるかは``**EsfParameterStorageManagerGetCapabilities**``を呼び出し、``**EsfParameterStorageManagerCapabilities::cancellable**``を参照することで判定できます。
 
-[#_ユーティリティ機能]
+[#_UtilityFunction]
 ==== ユーティリティ機能
 
 * **機能概要** +
@@ -306,7 +306,7 @@ stateDiagram-v2
 
 <<<
 
-[#_コンポーネントの非機能要件一覧]
+[#_ComponentNonFunctionalRequirementsList]
 === コンポーネントの非機能要件一覧
 
 <<#_TableNonFunction>>に非機能要件の一覧を示します。
@@ -319,57 +319,57 @@ stateDiagram-v2
 
 |連続処理実行時間
 |最大でかかる処理時間です。
-|<<#_連続処理実行時間>>
+|<<#_ContinuousProcessingTime>>
 
 |スタックメモリ使用量
 |最大で使用するスタックメモリ量です。
-|<<#_スタックメモリ使用量>>
+|<<#_StackMemoryUsage>>
 
 |ヒープメモリ使用量
 |最大で使用するヒープメモリ量です。
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |静的メモリ使用量
 |使用する静的メモリ量です。
-|<<#_静的メモリ使用量>>
+|<<#_StaticMemoryUsage>>
 
 |スレッド使用数
 |使用するスレッド数です。
-|<<#_スレッド使用数>>
+|<<#_NumberofThreadsUsed>>
 
 |===
 
 <<<
 
-[#_コンポーネントの非機能要件説明]
+[#_ComponentNonFunctionalRequirementDescriptions]
 === コンポーネントの非機能要件説明
-[#_連続処理実行時間]
+[#_ContinuousProcessingTime]
 ==== 連続処理実行時間
 本コンポーネントの処理時間は最大10msです。 +
 他モジュールに依存するデータアクセスやサービス設定の所要時間は、上記処理時間から除きます。 +
 排他制御の待機時間は最大1000msです。コンフィグ値により設定変更可能です。 +
 
-[#_スタックメモリ使用量]
+[#_StackMemoryUsage]
 ==== スタックメモリ使用量
 最大で1024Byteです。
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== ヒープメモリ使用量
 最大で8KBです。
 
-[#_静的メモリ使用量]
+[#_StaticMemoryUsage]
 ==== 静的メモリ使用量
 128Byteです。
 
-[#_スレッド使用数]
+[#_NumberofThreadsUsed]
 ==== スレッド使用数
 スレッドを使用しません。
 
 <<<
 
-[#_API仕様]
+[#_APISpecification]
 == API仕様
-[#_定義一覧]
+[#_DefinitionList]
 === 定義一覧
 
 ==== Kconfig
@@ -484,7 +484,7 @@ stateDiagram-v2
 <<<
 
 
-[#_データ型一覧]
+[#_DataTypeList]
 ==== データ型一覧
 <<#_TableDataType>>にデータ型の一覧を示します。
 
@@ -572,7 +572,7 @@ stateDiagram-v2
 
 |===
 
-[#_API一覧]
+[#_APIList]
 ==== API一覧
 以下にAPIの一覧を示します。
 本モジュールのAPIはESF内部にのみ公開します。
@@ -681,11 +681,11 @@ stateDiagram-v2
     |<<#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF>>
 
     |ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF
-    |データ構造体のメンバの<<#_文字列, 文字列型>>のサイズ[Byte]を取得します。
+    |データ構造体のメンバの<<#_String, 文字列型>>のサイズ[Byte]を取得します。
     |<<#_ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF>>
 
     |ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF
-    |データ構造体のメンバの<<#_生データ, 生データ型>>のサイズ[Byte]を取得します。
+    |データ構造体のメンバの<<#_Rawdata, 生データ型>>のサイズ[Byte]を取得します。
     |<<#_ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF>>
 
     |ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED
@@ -709,11 +709,11 @@ stateDiagram-v2
     |<<#_ESF_PARAMETER_STORAGE_MANAGER_OFFSET_POINTER_IS_EMPTY>>
 
     |ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY
-    |データ構造体のメンバの<<#_文字列, 文字列型>>にデータが格納されているかを判定します。
+    |データ構造体のメンバの<<#_String, 文字列型>>にデータが格納されているかを判定します。
     |<<#_ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY>>
 
     |ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY
-    |データ構造体のメンバの<<#_生データ, 生データ型>>にデータが格納されているかを判定します。
+    |データ構造体のメンバの<<#_Rawdata, 生データ型>>にデータが格納されているかを判定します。
     |<<#_ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY>>
 
 |===
@@ -721,7 +721,7 @@ stateDiagram-v2
 
 <<<
 
-[#_データ型定義]
+[#_DataTypeDefinitions]
 === データ型定義
 
 [#_EsfParameterStorageManagerStatus]
@@ -787,7 +787,7 @@ typedef enum EsfParameterStorageManagerStatus {
 
 |kEsfParameterStorageManagerStatusTimedOut
 |排他処理がタイムアウトしました。 +
-タイムアウト時間については<<#_連続処理実行時間>>を参照してください。
+タイムアウト時間については<<#_ContinuousProcessingTime>>を参照してください。
 
 |===
 
@@ -1497,10 +1497,10 @@ typedef enum EsfParameterStorageManagerItemType {
 |<<#_EsfParameterStorageManagerOffsetBinary, オフセット指定バイナリデータのポインタ型>>です。
 
 |kEsfParameterStorageManagerItemTypeString
-|<<#_文字列, 文字列型>>です。
+|<<#_String, 文字列型>>です。
 
 |kEsfParameterStorageManagerItemTypeRaw
-|<<#_生データ, 生データ型>>です。
+|<<#_Rawdata, 生データ型>>です。
 
 |kEsfParameterStorageManagerItemTypeMax
 |データ型の最大数を表します。
@@ -1581,10 +1581,10 @@ typedef struct EsfParameterStorageManagerMemberInfo {
 * <<#_EsfParameterStorageManagerOffsetBinaryArray, オフセット指定バイナリデータの配列型>> +
 ``**ESF_PARAMETER_STORAGE_MANAGER_OFFSET_ARRAY_SIZEOF**``を使用して設定してください。
 
-* <<#_文字列, 文字列型>> +
+* <<#_String, 文字列型>> +
 ``**ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF**``を使用して設定してください。
 
-* <<#_生データ, 生データ型>> +
+* <<#_Rawdata, 生データ型>> +
 ``**ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF**``を使用して設定してください。
 
 * その他 +
@@ -1956,7 +1956,7 @@ a|1の場合、``**EsfParameterStorageManagerSave**``, ```**EsfParameterStorageM
 0の場合、制限はありません。
 
 |enable_offset
-a|1の場合、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>が利用可能です。0の場合は利用できません。
+a|1の場合、<<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>が利用可能です。0の場合は利用できません。
 
 |===
 
@@ -2320,8 +2320,8 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerSave(
 * *説明* +
     ** 実装モジュールが使用する関数です。 +
     ** マスク構造体で指定された全てのデータの保存に成功した場合に``**kEsfParameterStorageManagerStatusOk**``を返します。 +
-    ** 引数``data``で与えられたメンバのうち、サイズ0が指定された<<#_バイナリデータ, バイナリデータ>>、<<#_文字列, 文字列>>のメンバのデータは削除されます。 +
-        詳細は<<#_データ構造体>>の各データ型の項目を参照してください。
+    ** 引数``data``で与えられたメンバのうち、サイズ0が指定された<<#_Binarydata, バイナリデータ>>、<<#_String, 文字列>>のメンバのデータは削除されます。 +
+        詳細は<<#_DataStructures>>の各データ型の項目を参照してください。
     ** ``**info**``で与えられたデータ構造体の情報を先頭から順番に処理します。 +
         エラーが発生した場合、保存とは逆の順番で保存前の状態に復元します。 +
     ** カスタム動作の場合、``**private_data**``をコールバック関数の引数に渡します。 +
@@ -2371,8 +2371,8 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerSave(
         * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
         * mask == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK**``
         * data == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA**``
-        * ``**EsfParameterStorageManagerItemCapabilities::enable_offset == 0**``かつ<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>でoffsetに0以外を指定
-        * その他、<<#_データ構造体_データ型一覧, データ構造体 データ型一覧>>を参照してください。
+        * ``**EsfParameterStorageManagerItemCapabilities::enable_offset == 0**``かつ<<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>でoffsetに0以外を指定
+        * その他、<<#_TableSupportedDataTypes, データ構造体 データ型一覧>>を参照してください。
     |{none}
     |有効なハンドルもしくはマスク構造体を指定してください。
 
@@ -2611,8 +2611,8 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerLoad(
         * handle == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_HANDLE**``
         * mask == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_MASK**``
         * data == ``**ESF_PARAMETER_STORAGE_MANAGER_INVALID_DATA**``
-        * ``**EsfParameterStorageManagerItemCapabilities::enable_offset == 0**``かつ<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>でoffsetに0以外を指定
-        * その他、<<#_データ構造体_データ型一覧, データ構造体 データ型一覧>>を参照してください。
+        * ``**EsfParameterStorageManagerItemCapabilities::enable_offset == 0**``かつ<<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>でoffsetに0以外を指定
+        * その他、<<#_TableSupportedDataTypes, データ構造体 データ型一覧>>を参照してください。
     |変更しません。
     |有効なハンドルもしくはマスク構造体を指定してください。
 
@@ -3092,7 +3092,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerLock(void);
     ** 再帰的にロックを取得可能です。 +
         本APIを呼び出した回数分だけ、必ず<<#_EsfParameterStorageManagerUnlock, EsfParameterStorageManagerUnlock>>を呼び出してください。 +
     ** 一定時間以内に排他制御を開始できない場合、エラーを返します。 +
-        タイムアウト時間については<<#_連続処理実行時間>>を参照してください。 +
+        タイムアウト時間については<<#_ContinuousProcessingTime>>を参照してください。 +
 
     ** **エラー情報** +
 +
@@ -4279,7 +4279,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
 [#_ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF]
 ==== ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF
 * *機能* +
-    データ構造体のメンバの<<#_文字列, 文字列型>>のサイズ[Byte]を取得します。
+    データ構造体のメンバの<<#_String, 文字列型>>のサイズ[Byte]を取得します。
 
 * *書式* +
 +
@@ -4294,7 +4294,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
     データ構造体の型名です。
 
     **``[IN] member``**::
-    <<#_文字列, 文字列型>>のメンバ名です。
+    <<#_String, 文字列型>>のメンバ名です。
 
 * *戻り値* +
     構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
@@ -4303,13 +4303,13 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
     ** 実装モジュールが使用するマクロ関数です。 +
 
     ** **挙動** +
-        <<#_文字列, 文字列型>>のサイズを``**sizeof**``演算子で取得します。 +
+        <<#_String, 文字列型>>のサイズを``**sizeof**``演算子で取得します。 +
         ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
 
 [#_ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF]
 ==== ESF_PARAMETER_STORAGE_MANAGER_RAW_SIZEOF
 * *機能* +
-    データ構造体のメンバの<<#_生データ, 生データ型>>のサイズ[Byte]を取得します。
+    データ構造体のメンバの<<#_Rawdata, 生データ型>>のサイズ[Byte]を取得します。
 
 * *書式* +
 +
@@ -4322,10 +4322,10 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
 
 * *引数の説明* +
     **``[IN] type``**::
-    <<#_生データ, 生データ型>>として扱うメンバの型名です。
+    <<#_Rawdata, 生データ型>>として扱うメンバの型名です。
 
     **``[IN] tail_member``**::
-    <<#_生データ, 生データ型>>の末尾のメンバ名です。
+    <<#_Rawdata, 生データ型>>の末尾のメンバ名です。
 
 * *戻り値* +
     構造体のメンバのサイズ [Byte]が``**size_t**``型で返ります。
@@ -4336,7 +4336,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
         使用例は<<#_データ保存領域アクセス機能の使用例, データ保存領域アクセス機能の使用例>>を参照してください。 +
 
     ** **挙動** +
-        <<#_生データ, 生データ型>>のサイズを``**offsetof**``と``**sizeof**``演算子で取得します。 +
+        <<#_Rawdata, 生データ型>>のサイズを``**offsetof**``と``**sizeof**``演算子で取得します。 +
         ``**sizeof**``とは異なり、``**type**``には変数名ではなく型名を指定してください。 +
 
 [#_ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED]
@@ -4496,7 +4496,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
 [#_ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY]
 ==== ESF_PARAMETER_STORAGE_MANAGER_STRING_IS_EMPTY
 * *機能* +
-    データ構造体のメンバの<<#_文字列, 文字列型>>にデータが格納されているかを判定します。
+    データ構造体のメンバの<<#_String, 文字列型>>にデータが格納されているかを判定します。
 
 * *書式* +
 +
@@ -4508,7 +4508,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
 
 * *引数の説明* +
     **``[IN] const char{asterisk} obj``**::
-    <<#_文字列, 文字列型>>のメンバへのポインタです。
+    <<#_String, 文字列型>>のメンバへのポインタです。
 
 * *戻り値* +
     データが格納されていない場合、``**true**``を返します。 +
@@ -4518,14 +4518,14 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
     ** 実装モジュールが使用するマクロ関数です。 +
 
     ** **挙動** +
-        データ構造体のメンバの<<#_文字列, 文字列型>>にデータが格納されているかを判定します。 +
+        データ構造体のメンバの<<#_String, 文字列型>>にデータが格納されているかを判定します。 +
         データが格納されていない場合、``**true**``を返します。 +
         データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
 
 [#_ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY]
 ==== ESF_PARAMETER_STORAGE_MANAGER_RAW_IS_EMPTY
 * *機能* +
-    データ構造体のメンバの<<#_生データ, 生データ型>>にデータが格納されているかを判定します。
+    データ構造体のメンバの<<#_Rawdata, 生データ型>>にデータが格納されているかを判定します。
 
 * *書式* +
 +
@@ -4537,7 +4537,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
 
 * *引数の説明* +
     **``[IN] const EsfParameterStorageManagerRaw{asterisk} obj``**::
-    <<#_生データ, 生データ型>>のメンバへのポインタです。
+    <<#_Rawdata, 生データ型>>のメンバへのポインタです。
 
 * *戻り値* +
     データが格納されていない場合、``**true**``を返します。 +
@@ -4547,7 +4547,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerGetItemCapabilities(
     ** 実装モジュールが使用するマクロ関数です。 +
 
     ** **挙動** +
-        データ構造体のメンバの<<#_生データ, 生データ型>>にデータが格納されているかを判定します。 +
+        データ構造体のメンバの<<#_Rawdata, 生データ型>>にデータが格納されているかを判定します。 +
         データが格納されていない場合、``**true**``を返します。 +
         データが格納されている場合や引数の指定が正しくない場合、``**false**``を返します。
 
@@ -4666,10 +4666,10 @@ ds -->>- main: EsfParameterStorageManagerStatus
 
 <<<
 
-[#_データ保存領域アクセス機能の仕様]
+[#_DataStorageAccessFunctionSpecification]
 == データ保存領域アクセス機能の仕様
 
-[#_データ構造体]
+[#_DataStructures]
 === データ構造体
 データ構造体は、関連するデータをまとめた構造体です。 +
 1つのAPIでアクセスする単位で定義してください。 +
@@ -4678,7 +4678,7 @@ ds -->>- main: EsfParameterStorageManagerStatus
 ==== 定義規則
 * 命名 +
     ** メンバ名はコーディングルールに従ってください。 +
-        ただし<<#_バイナリデータ, バイナリデータ>>、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>が持つメンバ名は変更しないでください。
+        ただし<<#_Binarydata, バイナリデータ>>、<<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>が持つメンバ名は変更しないでください。
 
 * サイズ +
     ** 1メンバのサイズは``**EXTERNAL_PARAMETER_STORAGE_MANAGER_BUFFER_LENGTH**``の値までにしてください。 +
@@ -4690,24 +4690,24 @@ ds -->>- main: EsfParameterStorageManagerStatus
         そのため、想定されるデータサイズ以上のメンバサイズとなるように定義してください。
 
 * メンバ型 +
-    ** <<#_生データ, 生データ>>の型指定に制限はありません。<<#_生データ, 生データ>>の型として構造体を指定することができます。 +
-    **  <<#_バイナリデータ, バイナリデータ>>、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>、<<#_文字列, 文字列>>のメンバは、データメンバとして扱うことができます。 +
-    ** <<#_生データ, 生データ>>のメンバはデータメンバとして扱うことができます。 +
-        ただし、<<#_生データ, 生データ>>が構造体である場合、そのメンバはデータメンバとして扱うことができません。 +
+    ** <<#_Rawdata, 生データ>>の型指定に制限はありません。<<#_Rawdata, 生データ>>の型として構造体を指定することができます。 +
+    **  <<#_Binarydata, バイナリデータ>>、<<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>、<<#_String, 文字列>>のメンバは、データメンバとして扱うことができます。 +
+    ** <<#_Rawdata, 生データ>>のメンバはデータメンバとして扱うことができます。 +
+        ただし、<<#_Rawdata, 生データ>>が構造体である場合、そのメンバはデータメンバとして扱うことができません。 +
     ** 独自に定義した構造体を入れ子にしても構いません。 +
-        ただし、<<#_生データ, 生データ>>として扱わない場合は、その構造体全体をデータメンバとして扱うことはできません。その構造体のメンバをデータメンバとして扱うことはできます。 +
-    **  <<#_バイナリデータ, バイナリデータ>>、<<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>、<<#_文字列, 文字列>>の配列サイズは実装モジュールが決めて、構造体を定義してください。 +
+        ただし、<<#_Rawdata, 生データ>>として扱わない場合は、その構造体全体をデータメンバとして扱うことはできません。その構造体のメンバをデータメンバとして扱うことはできます。 +
+    **  <<#_Binarydata, バイナリデータ>>、<<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>、<<#_String, 文字列>>の配列サイズは実装モジュールが決めて、構造体を定義してください。 +
     メンバの型や定義順など配列サイズ以外は変更しないでください。 +
     配列サイズは``**#define**``で定義してください。 +
-    **  <<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>を使用できないデバイスやデータIDが存在します。 +
-        詳細は<<#_デバイス毎の仕様, デバイス毎の仕様・制限事項>>を参照してください。
+    **  <<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>を使用できないデバイスやデータIDが存在します。 +
+        詳細は<<#_NotesandComponentSpecificDescriptions, デバイス毎の仕様・制限事項>>を参照してください。
     ** データメンバを配列として定義しても構いません。 +
 
-[#_データ構造体_データ型一覧]
+[#_TableSupportedDataTypes]
 ==== データ型一覧
 以下の表にデータ構造体のメンバに使用可能なデータ型の一覧を示します。
 
-[#_Tableデータ構造体一覧]
+[#_TableSupportedDataTypes]
 .データ型一覧
 [width="100%", cols="30%,55%,15%",options="header"]
 |===
@@ -4715,24 +4715,24 @@ ds -->>- main: EsfParameterStorageManagerStatus
 
 |バイナリデータ
     |バイト列とバイト列の有効なデータサイズを持つ構造体です。 +
-    |<<#_バイナリデータ>>
+    |<<#_Binarydata>>
 
 |オフセット指定バイナリデータ
     |バイト列とバイト列の有効なデータサイズを持つ構造体です。 +
     オフセット指定が可能です。 +
-    |<<#_オフセット指定バイナリデータ>>
+    |<<#_OffsetSpecifiedBinaryData>>
 
 |文字列
     |``**'{backslash}0'**``終端が保証されている文字列です。 +
-    |<<#_文字列>>
+    |<<#_String>>
 
 |生データ
     |データ型不定のバイナリデータです。 +
-    |<<#_生データ>>
+    |<<#_Rawdata>>
 
 |===
 
-[#_バイナリデータ]
+[#_Binarydata]
 ==== バイナリデータ
 バイト列とバイト列の有効なデータサイズを持つ構造体です。
 
@@ -4835,7 +4835,7 @@ typedef struct EsfParameterStorageManagerBinary {
 
 |===
 
-[#_オフセット指定バイナリデータ]
+[#_OffsetSpecifiedBinaryData]
 ==== オフセット指定バイナリデータ
 バイト列とバイト列の有効なデータサイズを持つ構造体です。 +
 データ保存またはデータ取得のオフセット指定が可能です。 +
@@ -4976,7 +4976,7 @@ typedef struct EsfParameterStorageManagerOffsetBinary {
 
 |===
 
-[#_文字列]
+[#_String]
 ==== 文字列
 ``**'{backslash}0'**``終端が保証されている文字列です。 +
 文字列メンバのサイズは実装モジュールが各自定義します。 +
@@ -5002,7 +5002,7 @@ char [];
         Parameter Storage Managerは文字列の``**'{backslash}0'**``終端を保証します。 +
         データが削除されている場合、先頭へ``**'{backslash}0'**``を設定します。 +
 
-[#_生データ]
+[#_Rawdata]
 ==== 生データ
 データ型不定のバイナリデータです。 +
 ``**uint32_t size**``をメンバの先頭に配置し、その下にメンバを自由に追加した構造体を、実装モジュールが定義してください。 +
@@ -5146,13 +5146,13 @@ typedef struct EsfParameterStorageManagerExample {
 
 * **説明** +
     ``**binary**``, ``**offset**``, ``**binary_pointer**``, ``**offset_pointer**``, ``**string**``, ``**raw**``, ``**nested.binary_nested**``, ``**nested.string_nested**``がデータメンバです。 +
-    ** ``**raw**``は<<#_生データ, 生データ>>として扱うため、``**EsfParameterStorageManagerExampleRaw**``のメンバをデータメンバとして扱うことができません。 +
-        <<#_生データ, 生データ>>として扱わない場合は、メンバの``**data1**``、``**data2**``をデータとして扱うことができます。 +
-    ** ``**nested**``は<<#_生データ, 生データ>>として扱わないため、``**EsfParameterStorageManagerExampleNested**``のメンバをデータメンバとして扱うことができます。 +
-    ** <<#_生データ, 生データ>>として扱うか扱わないかは、マスク構造体およびParameter Storage Managerに対する設定（``**EsfParameterStorageManagerMemberInfo**``）で表現します。 +
-        詳細は<<#_マスク構造体_定義例, マスク構造体 定義例>>を参照してください。 +
+    ** ``**raw**``は<<#_Rawdata, 生データ>>として扱うため、``**EsfParameterStorageManagerExampleRaw**``のメンバをデータメンバとして扱うことができません。 +
+        <<#_Rawdata, 生データ>>として扱わない場合は、メンバの``**data1**``、``**data2**``をデータとして扱うことができます。 +
+    ** ``**nested**``は<<#_Rawdata, 生データ>>として扱わないため、``**EsfParameterStorageManagerExampleNested**``のメンバをデータメンバとして扱うことができます。 +
+    ** <<#_Rawdata, 生データ>>として扱うか扱わないかは、マスク構造体およびParameter Storage Managerに対する設定（``**EsfParameterStorageManagerMemberInfo**``）で表現します。 +
+        詳細は<<#_MaskStructure_ExampleDefinition, マスク構造体 定義例>>を参照してください。 +
 
-[#_マスク構造体_定義例]
+[#_MaskStructure_ExampleDefinition]
 ==== マスク構造体 定義例
 * **書式** +
 +
@@ -5180,7 +5180,7 @@ typedef struct EsfParameterStorageManagerExampleMask {
 
 * **説明** +
     メンバ名はデータメンバと同様です。 +
-    ** ``**nested**``は<<#_生データ, 生データ>>として扱わないため、入れ子のマスク構造体を作成します。 +
+    ** ``**nested**``は<<#_Rawdata, 生データ>>として扱わないため、入れ子のマスク構造体を作成します。 +
 
 ==== 非カスタム動作
 マスク判定関数、``**EsfParameterStorageManagerMemberInfo**``、``**EsfParameterStorageManagerStructInfo**``を定義することで、データ保存領域アクセス機能のAPIを使用できます。 +
@@ -5460,16 +5460,16 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerSaveExample(
 
 ====
 
-[#_特記事項やコンポーネントごとの特有の説明事項]
+[#_NotesandComponentSpecificDescriptions]
 == 特記事項やコンポーネントごとの特有の説明事項
 
-[#_制限事項]
+[#_Limitations]
 === 制限事項
 
 * Parameter Storage ManagerはWASMから利用することはできません。
 * Parameter Storage Managerのハンドル数の上限は8つです。
 
-[#_非標準拡張]
+[#_NonStandardExtensions]
 === 非標準拡張
 本モジュールでは以下の非標準拡張を使用します。 +
 
@@ -6892,7 +6892,7 @@ Parameter Storage Manager で扱うデータは、T5, T5_EVT, T3R-S3ではlittle
 
 |===
 
-* <<#_オフセット指定バイナリデータ, オフセット指定バイナリデータ>>は上記表のオフセット利用可能が〇であるデータのみ使用してください。 +
+* <<#_OffsetSpecifiedBinaryData, オフセット指定バイナリデータ>>は上記表のオフセット利用可能が〇であるデータのみ使用してください。 +
 使用可能であるかは``**EsfParameterStorageManagerGetItemCapabilities**``の``**enable_offset**``でも確認可能です。
 ** オフセット利用可能が×の場合、以下の制限があります。 +
 *** データ取得の場合、データサイズより小さいバッファを与えるとエラーになります。
@@ -6901,18 +6901,18 @@ Parameter Storage Manager で扱うデータは、T5, T5_EVT, T3R-S3ではlittle
 
 <<<
 
-[#_使用しているOSSの一覧]
+[#_ListofUsedOSS]
 == 使用しているOSSの一覧
 
 使用しているOSSはありません。
 
 <<<
 
-[#_参考文献]
+[#_References]
 == 参考文献
 
 * PL Storage 機能仕様書 +
-    link:../../hal/hal_impl_storage_ja.adoc[docs/spec/hal/hal_impl_storage_ja.adoc]
+    link:../../porting_layer/parameter_storage_manager/pl_storage.adoc[docs/spec/porting_layer/parameter_storage_manager/pl_storage.adoc]
 
 <<<
 

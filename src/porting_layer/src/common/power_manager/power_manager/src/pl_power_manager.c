@@ -35,7 +35,7 @@ static pthread_mutex_t s_sw_wdt_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool s_is_initialized = false;
 static pthread_t s_sw_wdt_thread;
 static bool s_is_sw_wdt_enable[CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM];
-static struct timespec s_sw_wdt_last_keepalive_time[CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM];
+static struct timespec s_sw_wdt_last_keepalive_time[CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM];  //NOLINT
 static bool s_is_exit = false;
 
 // Local functions ------------------------------------------------------------
@@ -296,11 +296,11 @@ static void *PlPowerSwWdt(void *arg) {
     for (int id = 0; id < CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_ID_NUM; id++) {
       if (s_is_sw_wdt_enable[id]) {
         long elapsed = now.tv_sec - s_sw_wdt_last_keepalive_time[id].tv_sec;  //NOLINT
-        elapsed += (now.tv_nsec - s_sw_wdt_last_keepalive_time[id].tv_nsec) / 1000000000;
+        elapsed += (now.tv_nsec - s_sw_wdt_last_keepalive_time[id].tv_nsec) / 1000000000;  //NOLINT
 
         if (CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC < elapsed) {
           LOG_ERR(0x1C, "SW WDT timeout id:%d", id);
-          assert(false); // Restart system with coredump.
+          assert(false);  // Restart system with coredump.
         }
       }
     }

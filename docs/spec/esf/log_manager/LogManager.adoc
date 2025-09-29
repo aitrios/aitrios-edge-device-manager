@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.14
+:revnumber: 0.0.15
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
@@ -31,7 +31,6 @@ Applies to version XX of XX.
 <<<
 
 == Terminology
-
 This section lists the terms used in this document.
 
 === Dlog
@@ -46,8 +45,8 @@ A module located under ESF that abstracts hardware differences.
 === EVP
 A platform responsible for authentication and communication between the device and the cloud (including on-premise servers), known as the Edge Virtualization Platform.
 
-<<
 
+<<
 
 == Component Description
 === Component Overview
@@ -225,10 +224,10 @@ The possible states of LogManager are listed in <<#_TableStates>>.
 
 |===
 
-LogManager transitions between states as shown in <<#_状態遷移図>> by calling each API. +
+LogManager transitions between states as shown in <<#_StateTransitionDiagram>> by calling each API. +
 Also, except for ``**EsfLogManagerDeinit**``, state transitions do not occur if an error is encountered in an API. +
 
-[#_状態遷移図]
+[#_StateTransitionDiagram]
 .State Transition Diagram
 [{mermaid_block}]
 ....
@@ -242,13 +241,9 @@ stateDiagram-v2
     Start --> Start : EsfLogManagerRegisterChangeDlogCallback<br>EsfLogManagerUnregisterChangeDlogCallback<br>Other APIs
 ....
 
-Whether each API is accepted in a given state and the transition destination after execution are shown in <<#_TableStateTransition>>. +
-The state names in the table indicate the destination state after the API call is successfully completed, meaning the API is allowed in that state. +
-“×” indicates that the API is not accepted; calling the API in that state will return `kEsfLogManagerStatusFailed` and no state transition occurs. +
-For error details, refer to <<#_EsfLogManagerStatus>>.
+Whether each API is accepted in a given state and the transition destination after execution are shown in <<#_TableStateTransition>>. The state names in the table indicate the destination state after the API call is successfully completed, meaning the API is allowed in that state. “×” indicates that the API is not accepted; calling the API in that state will return `kEsfLogManagerStatusFailed` and no state transition occurs. For error details, refer to <<#_EsfLogManagerStatus>>.
 
-CAUTION: APIs that involve state transitions (``**EsfLogManagerInit**``, ``**EsfLogManagerStart**``, ``**EsfLogManagerDeinit**``) are not thread-safe. +
-Call them sequentially from the same thread.
+CAUTION: APIs that involve state transitions (``**EsfLogManagerInit**``, ``**EsfLogManagerStart**``, ``**EsfLogManagerDeinit**``) are not thread-safe. Call them sequentially from the same thread.
 
 [#_TableStateTransition]
 .State Transition Table
@@ -303,57 +298,57 @@ A list of functions is shown in <<#_TableFunction>>.
 
 |Initialization
 |Initializes the LogManager.
-|<<#_初期化>>
+|<<#_Initialize>>
 
 |Start
 |Starts the LogManager.
-|<<#_開始>>
+|<<#_Start>>
 
 |Shutdown
 |Shuts down the LogManager.
-|<<#_終了>>
+|<<#_Shutdown>>
 
 |Log Configuration
 |Configures Dlog/Elog settings.
-|<<#_ログ設定>>
+|<<#_LogConfiguration>>
 
 |Retrieve Log Configuration
 |Retrieves Dlog/Elog settings.
-|<<#_ログ設定取得>>
+|<<#_RetrieveLogConfiguration>>
 
 |Dlog Storage
 |Stores Dlog data in memory (RAM) and Flash. +
 *As of 2024/08/01, Flash storage is T.B.D.*
-|<<#_Dlog保存>>
+|<<#_DlogStorage>>
 
 |Elog Output
 |Sends Elog data via the EVP telemetry feature.
-|<<#_Elog出力>>
+|<<#_ElogOutput>>
 
 |Log Configuration Change Notification
 |Notifies via callback when log configuration changes.
-|<<#_ログ設定変化通知>>
+|<<#_LogConfigurationChangeNotification>>
 
 |Cancel Log Configuration Change Notification
 |Cancels the callback that notifies on log configuration changes.
-|<<#_ログ設定変化通知解除>>
+|<<#_CancelLogConfigurationChangeNotification>>
 
 |Bulk Log Transmission
 |Sends large amounts of log data to EVP via Blob transmission.
-|<<#_多量ログ送信>>
+|<<#_BulkLogTransmission>>
 
 |Flash Data Retrieval (T.B.D)
 |Retrieves Dlog data stored in Flash. You can choose between plain or encrypted data. +
 *As of 2024/08/01, Flash data retrieval is T.B.D.* +
-|<<#_Flashデータ取得>>
+|<<#_FlashDataRetrieval>>
 
 |Retrieve LogManager Configuration Info
 |Retrieves LogManager configuration info such as Dlog, RAM, and buffer sizes.
-|<<#_LogManager構成情報取得>>
+|<<#_RetrieveLogManagerConfigurationInfo>>
 
 |Retrieve Exception Information (T.B.D)
 |Retrieves exception information such as PC registers and stack at the time of exception.
-|<<#_例外発生情報取得>>
+|<<#_RetrieveExceptionInformation>>
 
 |===
 
@@ -361,7 +356,7 @@ A list of functions is shown in <<#_TableFunction>>.
 
 === Component Function Descriptions
 
-[#_初期化]
+[#_Initialize]
 ==== Initialization
 
 * Function Overview
@@ -374,7 +369,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Transitions the LogManager state from Invalid to Init.
     ** Only log configuration change notification and its cancellation are allowed; other functions will result in an error.
 
-[#_開始]
+[#_Start]
 ==== Start
 
 * Function Overview
@@ -389,7 +384,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Allocates buffers for Dlog/Elog storage and creates threads for Dlog, Elog, and Blob processing.
     ** Calls APIs provided by the ParameterStorageManager to retrieve Dlog/Elog settings from Flash.
 
-[#_終了]
+[#_Shutdown]
 ==== Shutdown
 
 * Function Overview
@@ -403,7 +398,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** If Flash storage is enabled in the config, Dlog data currently stored in RAM is saved to the log storage area in Flash.
     ** As of 2024/08/01, Flash storage is T.B.D.
 
-[#_ログ設定]
+[#_LogConfiguration]
 ==== Log Configuration
 
 * Function Overview
@@ -440,11 +435,14 @@ A list of functions is shown in <<#_TableFunction>>.
     *If the above conditions are not met, output processing will be skipped without error.*
     *** To disable filtering, set the module ID to 0. In this case, only Dlog level filtering will be applied.
     ** Storage Name
-        *** As of 2024/09/17, Storage Name configuration is T.B.D.
+        *** Distributes log data upload destinations by specified string. +
+        Local upload :: For strings starting with "http://", performs local upload to the specified URL. +
+        Cloud upload :: For strings starting with anything other than "http://", performs cloud upload. +
+        ※Local upload specification returns kEsfLogManagerStatusParamError unless EsfLogManagerSettingBlockType is specified as something other than kEsfLogManagerBlockTypeVicapp.
     ** Storage Path
-        *** As of 2024/09/17, Storage Path configuration is T.B.D.
+        *** Uploads log data to the specified path.
 
-[#_ログ設定取得]
+[#_RetrieveLogConfiguration]
 ==== Retrieve Log Configuration
 
 * Function Overview
@@ -457,7 +455,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Retrieves the operational settings for Dlog/Elog output currently configured in LogManager.
     ** For retrievable values, refer to <<#_EsfLogManagerParameterValue>>.
 
-[#_Dlog保存]
+[#_DlogStorage]
 ==== Dlog Storage
 
 * Function Overview
@@ -476,7 +474,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Limitations
     *** This function is intended for use by UtilityLog only. Do not use it from other modules.
 
-[#_Elog出力]
+[#_ElogOutput]
 ==== Elog Output
 
 * Function Overview
@@ -500,7 +498,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Limitations
     *** This function is intended for use by UtilityLog only. Do not use it from other modules.
 
-[#_ログ設定変化通知]
+[#_LogConfigurationChangeNotification]
 ==== Log Configuration Change Notification
 
 * Function Overview
@@ -516,7 +514,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Limitations
     *** This function is intended for use by UtilityLog only. Do not use it from other modules.
 
-[#_ログ設定変化通知解除]
+[#_CancelLogConfigurationChangeNotification]
 ==== Cancel Log Configuration Change Notification
 
 * Function Overview
@@ -530,7 +528,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Limitations
     *** This function is intended for use by UtilityLog only. Do not use it from other modules.
 
-[#_多量ログ送信]
+[#_BulkLogTransmission]
 ==== Bulk Log Transmission
 
 * Function Overview
@@ -548,7 +546,7 @@ A list of functions is shown in <<#_TableFunction>>.
     *** This function is intended for use by UtilityLog only. Do not use it from other modules.
     
 
-[#_Flashデータ取得]
+[#_FlashDataRetrieval]
 ==== Flash Data Retrieval (T.B.D)
 
 * Function Overview
@@ -561,7 +559,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** Returns Dlog data stored in Flash in the format specified by the argument (plaintext or encrypted). +
     ** The maximum size of retrievable data is determined by the data size specified in the LogManager configuration info.
 
-[#_LogManager構成情報取得]
+[#_RetrieveLogManagerConfigurationInfo]
 ==== Retrieve LogManager Configuration Info
 
 * Function Overview
@@ -581,7 +579,7 @@ A list of functions is shown in <<#_TableFunction>>.
     ** An error occurs only if the buffer to store configuration info is NULL.
     ** For unsupported (T.B.D) items, both the buffer count and data size will be returned as 0.
 
-[#_例外発生情報取得]
+[#_RetrieveExceptionInformation]
 ==== Retrieve Exception Information (T.B.D)
 
 * Function Overview
@@ -608,19 +606,19 @@ As of 2024/08/01, this section is T.B.D.
 
 |Maximum Stack Usage
 |XXX bytes
-|<<#_Stack最大使用量>>
+|<<#_Maximum_Stack_Usage>>
 
 |Number of Threads Used
 |Three
-|<<#_スレッド使用数>>
+|<<#_Number_of_Threads_Used>>
 
 |Maximum Processing Time
 |XXXX ms
-|<<#_最大処理時間>>
+|<<#_Maximum_Processing_Time>>
 
 |Heap Memory Usage
 |XXXX bytes
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |===
 
@@ -630,22 +628,22 @@ As of 2024/08/01, this section is T.B.D.
 
 As of 2024/08/01, this section is T.B.D.
 
-[#_Stack最大使用量]
+[#_Maximum_Stack_Usage]
 ==== Maximum Stack Usage
 
 The target value at the time of design is XXX bytes.
 
-[#_スレッド使用数]
+[#_Number_of_Threads_Used]
 ==== Number of Threads Used
 
 Three threads are created for Dlog, Elog, and Blob processing.
 
-[#_最大処理時間]
+[#_Maximum_Processing_Time]
 ==== Maximum Processing Time
 
 The target value at the time of design is XX ms.
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== Heap Memory Usage
 
 The target value at the time of design is XXX bytes.
@@ -817,7 +815,7 @@ typedef enum{
 
 * *Values* 
 +
-[#_EsfLogManagerStateの値の説明]
+[#_EsfLogManagerStateValues]
 .Description of EsfLogManagerState Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -851,7 +849,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerStatusの値の説明]
+[#_EsfLogManagerStatusValues]
 .Description of EsfLogManagerStatus Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -885,7 +883,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerDestの値の説明]
+[#_EsfLogManagerDestValues]
 .Description of EsfLogManagerDest Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -922,7 +920,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerDlogLevelの値の説明]
+[#_EsfLogManagerDlogLevelValues]
 .Description of EsfLogManagerDlogLevel Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -965,7 +963,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerElogLevelの値の説明]
+[#_EsfLogManagerElogLevelValues]
 .Description of EsfLogManagerElogLevel Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1005,7 +1003,7 @@ typedef struct EsfLogManagerElogMessage{
 
 * *Values*
 +
-[#_EsfLogManagerElogMessageの値の説明]
+[#_EsfLogManagerElogMessageValues]
 .Description of EsfLogManagerElogMessage Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1042,7 +1040,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerSettingBlockTypeの値の説明]
+[#_EsfLogManagerSettingBlockTypeValues]
 .Description of EsfLogManagerSettingBlockType Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1085,7 +1083,7 @@ typedef struct EsfLogManagerParameterMask{
 
 * *Values*
 +
-[#_EsfLogManagerParameterMaskの値の説明]
+[#_EsfLogManagerParameterMaskValues]
 .Description of EsfLogManagerParameterMask Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1125,7 +1123,7 @@ typedef struct EsfLogManagerParameterValue{
 
 * *Values*
 +
-[#_EsfLogManagerParameterValueの値の説明]
+[#_EsfLogManagerParameterValueValues]
 .Description of EsfLogManagerParameterValue Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1169,7 +1167,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerMemoryTypeの値の説明]
+[#_EsfLogManagerMemoryTypeValues]
 .Description of EsfLogManagerMemoryType Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1202,7 +1200,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfLogManagerEncryptの値の説明]
+[#_EsfLogManagerEncryptValues]
 .Description of EsfLogManagerEncrypt Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1232,7 +1230,7 @@ typedef struct EsfLogManagerDlogChangeInfo{
 
 * *Values*
 +
-[#_EsfLogManagerDlogChangeInfoの値の説明]
+[#_EsfLogManagerDlogChangeInfoValues]
 .Description of EsfLogManagerDlogChangeInfo Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1296,7 +1294,7 @@ typedef struct EsfLogManagerLogBufferInfo{
 
 * *Values*
 +
-[#_EsfLogManagerLogBufferInfoの値の説明]
+[#_EsfLogManagerLogBufferInfoValues]
 .Description of EsfLogManagerLogBufferInfo Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1328,7 +1326,7 @@ typedef struct EsfLogManagerLogInfo{
 
 * *Values*
 +
-[#_EsfLogManagerLogInfoの値の説明]
+[#_EsfLogManagerLogInfoValues]
 .Description of EsfLogManagerLogInfo Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1347,7 +1345,7 @@ typedef struct EsfLogManagerLogInfo{
 
 The table below shows the data ranges and default values handled by `EsfLogManagerLogInfo`.
 
-[#_EsfLogManagerLogInfoの取り扱い範囲]
+[#_EsfLogManagerLogInfoScope]
 .Handling Range of EsfLogManagerLogInfo
 [width="100%", cols="35%,35%,20%,10%",options="header"]
 |===
@@ -1390,10 +1388,10 @@ None
 
 * *Return Value* +
 +
-Returns one of the values from <<#_EsfLogManagerStatus>> depending on the result of execution.
+Returns one of the values from <<#_EsfLogManagerInit_Return_Values>> depending on the result of execution.
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerInit_Return_Values]
+.Description of EsfLogManagerInit Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1426,10 +1424,10 @@ None
 
 * *Return Value* +
 +
-Returns one of the values from <<#_EsfLogManagerStatus>> depending on the result of execution.
+Returns one of the values from <<#_EsfLogManagerStart_Return_Values>> depending on the result of execution.
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerStart_Return_Values]
+.Description of EsfLogManagerStart Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1464,10 +1462,10 @@ None
 
 * *Return Value* +
 +
-Returns one of the values from <<#_EsfLogManagerStatus>> depending on the result of execution.
+Returns one of the values from <<#_EsfLogManagerDeinit_Return_Values>> depending on the result of execution.
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerDeinit_Return_Values]
+.Description of EsfLogManagerDeinit Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1512,10 +1510,10 @@ Structure that defines mask values to enable or disable each log setting item.
 
 * *Return Value* +
 +
-Always returns one of the values from <<#_EsfLogManagerStatus>> listed below:
+Always returns one of the values from <<#_EsfLogManagerSetParameter_Return_Values>> listed below:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerSetParameter_Return_Values]
+.Description of EsfLogManagerSetParameter Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1529,7 +1527,7 @@ Occurs when saving to Flash fails or the LogManager state matches a "×" state i
 |===
 
 * *Description* +
-Specifies the following behaviors when handling Dlog/Elog output requests. For details on the settings, refer to <<#_ログ設定>>.
+Specifies the following behaviors when handling Dlog/Elog output requests. For details on the settings, refer to <<#_LogConfiguration>>.
 ** Dlog output destination
 ** Dlog log level
 ** Elog log level
@@ -1558,10 +1556,10 @@ Structure to store the current Dlog/Elog settings configured in LogManager.
 
 * *Return Value* +
 +
-Always returns one of the following values from <<#_EsfLogManagerStatus>>:
+Always returns one of the following values from <<#_EsfLogManagerGetParameter_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerGetParameter_Return_Values]
+.Description of EsfLogManagerGetParameter Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1599,10 +1597,10 @@ Structure to store the Dlog/Elog settings applied during output requests.
 
 * *Return Value* +
 +
-Always returns one of the following values from <<#_EsfLogManagerStatus>>:
+Always returns one of the following values from <<#_EsfLogManagerGetModuleParameter_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerGetModuleParameter_Return_Values]
+.Description of EsfLogManagerGetModuleParameter Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1640,10 +1638,10 @@ Size of the string to be stored. +
 
 * *Return Value* +
 +
-Always returns one of the following values from <<#_EsfLogManagerStatus>>:
+Always returns one of the following values from <<#_EsfLogManagerStoreDlog_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerStoreDlog_Return_Values]
+.Description of EsfLogManagerStoreDlog Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1679,10 +1677,10 @@ Passing NULL results in an error.
 
 * *Return Value* +
 +
-Returns one of the following values from <<#_EsfLogManagerStatus>>:
+Returns one of the following values from <<#_EsfLogManagerSendElog_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerSendElog_Return_Values]
+.Description of EsfLogManagerSendElog Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1719,10 +1717,10 @@ Passing NULL results in an error.
 
 * *Return Value* +
 +
-Returns one of the following values from <<#_EsfLogManagerStatus>>:
+Returns one of the following values from <<#_EsfLogManagerGetLogInfo_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerGetLogInfo_Return_Values]
+.Description of EsfLogManagerGetLogInfo Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1760,10 +1758,10 @@ Function to be called when a change in log settings is detected.
 
 * *Return Value* +
 +
-Returns one of the following values from <<#_EsfLogManagerStatus>>:
+Returns one of the following values from <<#_EsfLogManagerRegisterChangeDlogCallback_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerRegisterChangeDlogCallback_Return_Values]
+.Description of EsfLogManagerRegisterChangeDlogCallback Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1796,10 +1794,10 @@ Specifies the module ID for which the callback registration is to be removed.
 
 * *Return Value* +
 +
-Returns one of the following values from <<#_EsfLogManagerStatus>>:
+Returns one of the following values from <<#_EsfLogManagerUnregisterChangeDlogCallback_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerUnregisterChangeDlogCallback_Return_Values]
+.Description of EsfLogManagerUnregisterChangeDlogCallback Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1840,10 +1838,10 @@ User data to be passed to the callback upon completion.
 
 * *Return Value* +
 +
-Returns one of the following values from <<#_EsfLogManagerStatus>>:
+Returns one of the following values from <<#_EsfLogManagerSendBulkDlog_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerSendBulkDlog_Return_Values]
+.Description of EsfLogManagerSendBulkDlog Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -1891,10 +1889,10 @@ Returns 0 on error or if there is no exception data.
 
 * *Return Value* +
 +
-Returns one of the following values from <<#_EsfLogManagerStatus>>:
+Returns one of the following values from <<#_EsfLogManagerGetExceptionData_Return_Values>>:
 
-[#_EsfLogManagerStatusの戻り値の説明]
-.Description of EsfLogManagerStatus Return Values
+[#_EsfLogManagerGetExceptionData_Return_Values]
+.Description of EsfLogManagerGetExceptionData Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Return Value |Description
@@ -2032,7 +2030,11 @@ sequenceDiagram
       note over LogManager : Request Blob thread to send data
     end
     opt Blob thread process
-      LogManager ->> evp : SYS_put_blob_mstp()
+      alt Local upload
+        LogManager ->> evp : SYS_put_blob()
+      else Cloud upload
+        LogManager ->> evp : SYS_put_blob_mstp()
+      end
     evp --> LogManager : SYS_result : SYS_RESULT_OK
     end
     LogManager --> UtilityLog : Notify result via callback
@@ -2085,9 +2087,13 @@ sequenceDiagram
 |4096
 |Thread stack size for Dlog (1–)
 
-|CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE
+|EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUM
 |5
-|Maximum number of internal memory areas allocated when no callback is specified in EsfLogManagerSendBulkDlog.
+|Maximum number of data areas allocated internally during local upload.
+
+|EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUM
+|5
+|Maximum number of data areas allocated internally during cloud upload.
 
 |CONFIG_EXTERNAL_LOG_MANAGER_DLOG_FLASH_ENABLE
 |disable
@@ -2152,41 +2158,61 @@ None
 |v0.0.1
 |Initial release
 |v0.0.2
-|・Added description related to Dlog +
- ・Updated content based on UtilitiesLog/LogManager branching
+a|
+
+* Added description related to Dlog
+* Updated content based on UtilitiesLog/LogManager branching
 |v0.0.3
-|・Modified per review comments +
- ・Updated content based on UtilitiesLog/LogManager structure changes
+a|
+
+* Modified per review comments 
+* Updated content based on UtilitiesLog/LogManager structure changes
 |v0.0.4
-|・Modified per review comments +
- ・Changed from UtilitiesLog to UtilityLog +
- ・Added block type specification to arguments of EsfLogManagerSetParameter()/EsfLogManagerGetParameter() +
- ・Removed callback notification API
+a|
+
+* Modified per review comments
+* Changed from UtilitiesLog to UtilityLog
+* Added block type specification to arguments of EsfLogManagerSetParameter()/EsfLogManagerGetParameter()
+* Removed callback notification API
 |v0.0.5
-|・Added description for Elog storage and transmission features
+|Added description for Elog storage and transmission features
 |v0.0.6
-|・Updated LogManager state transitions +
- ・Added the following functions: +
-  　- Start LogManager +
-  　- Log setting change notification +
-  　- Log setting change callback unregistration +
-  　- Bulk log transmission +
+a|
+
+* Updated LogManager state transitions
+* Added the following functions:
+** Start LogManager
+** Log setting change notification
+** Log setting change callback unregistration
+** Bulk log transmission
 |v0.0.7
-|・Updated CONFIG list used in this module
+|Updated CONFIG list used in this module
 |v0.0.8
-|・Corrected arguments for EsfLogManagerChangeDlogCallback
+|Corrected arguments for EsfLogManagerChangeDlogCallback
 |v0.0.9
-|・Added config EXTERNAL_LOG_MANAGER_ENABLE_SYSLOG
+|Added config EXTERNAL_LOG_MANAGER_ENABLE_SYSLOG
 |v0.0.10
-|・Corrected typographical errors +
- ・Added block type to EsfLogManagerSettingBlockType
+a|
+
+* Corrected typographical errors
+* Added block type to EsfLogManagerSettingBlockType
 |v0.0.11
-|・Updated description of EsfLogManagerSendBulkDlog +
- ・Added config EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE
+a|
+
+* Updated description of EsfLogManagerSendBulkDlog 
+* Added config EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE
 |v0.0.12
-|・Added constraints for strings used in storage_name/storage_path
+|Added constraints for strings used in storage_name/storage_path
 |v0.0.13
-|・Modified constraints for strings used in storage_name/storage_path
+|Modified constraints for strings used in storage_name/storage_path
 |v0.0.14
-|・Added constraints to ``**EsfLogManagerInit**``, ``**EsfLogManagerStart**``, and ``**EsfLogManagerDeinit**``
+|Added constraints to ``**EsfLogManagerInit**``, ``**EsfLogManagerStart**``, and ``**EsfLogManagerDeinit**``
+|v0.0.15
+a|
+
+* Added description of storage_name
+* Added description of storage_path
+* Removed description of CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE
+* Added description of EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUM
+* Added description of EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUM
 |===

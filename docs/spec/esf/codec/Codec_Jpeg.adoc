@@ -244,22 +244,22 @@ A list of functions is provided in <<#_TableFunction>>.
 |Function Name |Description |Section
 |JPEG Encoding Function (Memory Access)
 |Generates a JPEG image
-|<<#_JPEGエンコード機能（メモリアクセス）>>
+|<<#_JPEG_Encoding_Function_memory_access>>
 
 |JPEG Encoding Function (FileIO Access)
 |Reads input data via FileIO, performs JPEG encoding, and writes the result to the specified destination using FileIO.
-|<<#_JPEGエンコード機能（FileIOアクセス）>>
+|<<#_JPEG_Encoding_Function_FileIO_access>>
 
 |JPEG Encoding Function (Using MemoryManager Managed Area)
 |Reads input data from the area managed by MemoryManager, performs JPEG encoding, and writes the result to the specified managed area.
-|<<#_JPEGエンコード機能（MemoryManager管理領域使用）>>
+|<<#_JPEG_Encoding_Function_MemoryManager_access>>
 
 |===
 
 <<<
 
 === Component Function Description
-[#_JPEGエンコード機能（メモリアクセス）]
+[#_JPEG_Encoding_Function_memory_access]
 ==== JPEG Encoding Function (Memory Access)
 * Function Overview
     ** Performs JPEG encoding and outputs a JPEG image
@@ -267,9 +267,9 @@ A list of functions is provided in <<#_TableFunction>>.
     ** None
 * Function Details
     ** Performs JPEG encoding on the input data and outputs the JPEG image to the specified buffer.
-    ** Supported input formats are listed in <<#_対応入力データ>>
+    ** Supported input formats are listed in <<#_Supported_Input_Formats>>
 +
-[#_対応入力データ]
+[#_Supported_Input_Formats]
 .Supported Input Formats
 [width="100%",options="header"]
 |===
@@ -312,7 +312,7 @@ UV: Packed
 |===
 
 
-[#_JPEGエンコード機能（FileIOアクセス）]
+[#_JPEG_Encoding_Function_FileIO_access]
 ==== JPEG Encoding Function (FileIO Access)
 * Function Overview
     ** Reads input data using FileIO, performs JPEG encoding, and writes the result to the specified output destination using FileIO.
@@ -321,9 +321,9 @@ UV: Packed
 * Function Details
     ** Reads input data via FileIO, performs JPEG encoding, and writes the result to the specified output destination using FileIO.
     ** Pass the FileIO handle of the MemoryManager. The handle must be in an open state. Passing any non-FileIO handle (e.g., LargeHeap, WasmHeap, DMA memory) will result in an error.
-    ** Supported input formats are listed in <<#_対応入力データ>>
+    ** Supported input formats are listed in <<#_Supported_Input_Formats>>
 
-[#_JPEGエンコード機能（MemoryManager管理領域使用）]
+[#_JPEG_Encoding_Function_MemoryManager_access]
 ==== JPEG Encoding Function (Using MemoryManager Managed Area)
 * Function Overview
     ** Reads input data from an area managed by MemoryManager, performs JPEG encoding, and writes the result to the specified managed area.
@@ -337,7 +337,7 @@ UV: Packed
         Uses MemoryManager's FileIO access feature to read input data from the LargeHeap area, performs JPEG encoding, and writes the result to the specified LargeHeap area.
     ** Pass the handle of the MemoryManager.
     ** (When Map is not supported) Passing any handle other than LargeHeap (e.g., WasmHeap, DMA memory) will result in an error.
-    ** Supported input formats are listed in <<#_対応入力データ>>
+    ** Supported input formats are listed in <<#_Supported_Input_Formats>>
 
 <<<
 
@@ -354,16 +354,16 @@ A list of non-functional requirements is provided in <<#_TableNonFunction>>.
 |Maximum Processing Time
 |128x96 : 15.065ms +
 640x480 : 324.059ms
-|<<#_最大処理時間>>
+|<<#_MaximumProcessingTime>>
 
 |Maximum Stack Usage
 |2352 bytes
-|<<#_Stack最大使用量>>
+|<<#_MaximumStackUsage>>
 
 |Heap Memory Usage
 |128x96 : 24328 bytes +
 640x480 : 40774 bytes
-|<<#_ヒープメモリ使用量>>
+|<<#_HeapMemoryUsage>>
 
 |===
 
@@ -371,11 +371,11 @@ A list of non-functional requirements is provided in <<#_TableNonFunction>>.
 
 === Description of Non-Functional Requirements
 
-[#_最大処理時間]
+[#_MaximumProcessingTime]
 ==== Maximum Processing Time
-The measured values for T3S3 at the time of design are shown in <<#_最大処理時間表>>.
+The measured values for T3S3 at the time of design are shown in <<#_MaximumProcessingTimeTable>>.
 
-[#_最大処理時間表]
+[#_MaximumProcessingTimeTable]
 .Maximum Processing Time Table
 [width="100%",options="header"]
 |===
@@ -393,15 +393,15 @@ The measured values for T3S3 at the time of design are shown in <<#_最大処理
 
 |===
 
-[#_Stack最大使用量]
+[#_MaximumStackUsage]
 ==== Maximum Stack Usage
 The measured value for T3S3 at the time of design is 2352 bytes.
 
-[#_ヒープメモリ使用量]
+[#_HeapMemoryUsage]
 ==== Heap Memory Usage
-The measured values for T3S3 at the time of design are shown in <<#_ヒープメモリ使用量表>>.
+The measured values for T3S3 at the time of design are shown in <<#_HeapMemoryUsageTable>>.
 
-[#_ヒープメモリ使用量表]
+[#_HeapMemoryUsageTable]
 .Heap Memory Usage Table
 [width="100%",options="header"]
 |===
@@ -501,7 +501,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfCodecJpegErrorの値の説明]
+[#_EsfCodecJpegErrorValues]
 .Description of EsfCodecJpegError Members
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -547,7 +547,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfCodecJpegInputFormatの値の説明]
+[#_EsfCodecJpegInputFormatValues]
 .Description of EsfCodecJpegInputFormat Members
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -587,7 +587,7 @@ typedef struct{
 
 * *Values*
 +
-[#_EsfCodecJpegOutputBufの値の説明]
+[#_EsfCodecJpegOutputBufValues]
 .Description of EsfCodecJpegOutputBuf Members
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -623,7 +623,7 @@ typedef struct{
 
 * *Values*
 +
-[#_EsfCodecJpegEncParamの値の説明]
+[#_EsfCodecJpegEncParamValues]
 .Description of EsfCodecJpegEncParam Members
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -672,7 +672,7 @@ typedef struct{
 
 * *Values*
 +
-[#_EsfCodecJpegInfoの値の説明]
+[#_EsfCodecJpegInfoValues]
 .Description of EsfCodecJpegInfo Members
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -718,9 +718,9 @@ Size of the output encoded JPEG image
 
 * *Return Value* +
 +
-Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depending on the execution result.
+Returns one of the values defined in <<#_EsfCodecJpegEncodeReturnValues>> depending on the execution result.
 +
-[#_EsfCodecJpegEncodeの戻り値の説明]
+[#_EsfCodecJpegEncodeReturnValues]
 .Description of EsfCodecJpegEncode Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -731,7 +731,7 @@ Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depe
 
 |kJpegParamError
 |・`enc_param` is NULL +  
-・Invalid value in `enc_param` (see <<#_EsfCodecJpegEncParamの値の説明>> for details) +  
+・Invalid value in `enc_param` (see <<#_EsfCodecJpegEncParamValues>> for details) +  
 ・`jpeg_size` is NULL
 
 |kJpegOssInternalError
@@ -780,9 +780,9 @@ Size of the output encoded JPEG image
 
 * *Return Value* +
 +
-Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depending on the execution result.
+Returns one of the values defined in <<#_EsfCodecJpegEncodeFileIoReturnValues>> depending on the execution result.
 +
-[#_EsfCodecJpegEncodeFileIoの戻り値の説明]
+[#_EsfCodecJpegEncodeFileIoReturnValues]
 .Description of EsfCodecJpegEncodeFileIo Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -793,7 +793,7 @@ Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depe
 
 |kJpegParamError
 |・`info` is NULL +  
-・Invalid value in `info` (see <<#_EsfCodecJpegInfoの値の説明>> for details) +  
+・Invalid value in `info` (see <<#_EsfCodecJpegInfoValues>> for details) +  
 ・`jpeg_size` is NULL +  
 ・`input_file_handle` or `output_file_handle` is not a FileIO handle (e.g., LargeHeap, WasmHeap, DMA memory) +  
 ・`input_file_handle` or `output_file_handle` is a closed FileIO handle
@@ -843,9 +843,9 @@ Size of the output encoded JPEG image
 
 * *Return Value* +
 +
-Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depending on the execution result.
+Returns one of the values defined in <<#_EsfCodecJpegEncodeHandleReturnValues>> depending on the execution result.
 +
-[#_EsfCodecJpegEncodeHandleの戻り値の説明]
+[#_EsfCodecJpegEncodeHandleReturnValues]
 .Description of EsfCodecJpegEncodeHandle Return Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -856,7 +856,7 @@ Returns one of the values defined in <<#_EsfCodecJpegErrorの値の説明>> depe
 
 |kJpegParamError
 |・`info` is NULL +  
-・Invalid value in `info` (see <<#_EsfCodecJpegInfoの値の説明>> for details) +  
+・Invalid value in `info` (see <<#_EsfCodecJpegInfoValues>> for details) +  
 ・`jpeg_size` is NULL +  
 ・(When Map is not supported) `input_handle` or `output_handle` is not for LargeHeap (e.g., WasmHeap, DMA memory)
 
@@ -1064,7 +1064,7 @@ sequenceDiagram
 * Initially, only libjpeg is supported. Additional OSS support will be added as needed.
 
 === Config
-[#_Config一覧]
+[#_Config_List]
 .Config List
 [width="100%",options="header"]
 |===
@@ -1230,44 +1230,40 @@ VUVU・・・
 [width="100%", cols="20%,80%",options="header"]
 |===
 |Version |Changes
-
 |v0.0.1
 |Initial release
-
 |v0.0.2
-|Updates +
-・Moved format descriptions from <<#_対応入力データ>> to <<#_用語>> +
-・Corrected type definitions +
-　・ EsfSlJpegError → EsfCodecJpegError +
-　・ EsfSlJpegInputFormat → EsfCodecJpegInputFormat +
-　・ EsfSlCodecJpegEncode → EsfCodecJpegEncode +
-Additions +
-・Added support for stride +
-・Added <<#_Config一覧>>
+a|
+Updates
 
+* Moved format descriptions from <<#_Supported_Input_Formats>> to <<#_Terminology>>
+* Corrected type definitions
+** EsfSlJpegError → EsfCodecJpegError
+** EsfSlJpegInputFormat → EsfCodecJpegInputFormat
+** EsfSlCodecJpegEncode → EsfCodecJpegEncode
+Additions
+
+* Added support for stride
+* Added <<#_Config_List>>
 |v0.0.3
 |Replaced SSF with ESF +
 Added ``kJpegOutputBufferFullError`` to <<#_EsfCodecJpegError>> +
 Added ``kJpegOutputBufferFullError`` to return values of <<#_EsfCodecJpegEncode>> +
 Updated explanation for JPEG output buffer in <<#_EsfCodecJpegEncode>>
-
 |v0.0.4
-|Removed test-related Config descriptions +
-・CONFIG_EXTERNAL_CODEC_JPEG_BUILTIN_APP +
-・CONFIG_EXTERNAL_CODEC_JPEG_PROGNAME +
-・CONFIG_EXTERNAL_CODEC_JPEG_PRIORITY +
-・CONFIG_EXTERNAL_CODEC_JPEG_STACKSIZE
+a|
+Removed test-related Config descriptions
 
+* CONFIG_EXTERNAL_CODEC_JPEG_BUILTIN_APP
+* CONFIG_EXTERNAL_CODEC_JPEG_PROGNAME
+* CONFIG_EXTERNAL_CODEC_JPEG_PRIORITY
+* CONFIG_EXTERNAL_CODEC_JPEG_STACKSIZE
 |v0.0.5
 |Added support for FileIO
-
 |v0.0.6
 |Restored non-blocking behavior due to UtilityLog spec change
-
 |v0.0.7
 |Added JPEG encoding function (using LargeHeap area)
-
 |v0.0.8
 |Revised Map support behavior for ``EsfCodecJpegEncodeHandle``
-
 |===

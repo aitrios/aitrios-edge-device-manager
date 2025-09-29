@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 4
 :chapter-label:
-:revnumber: 0.0.6
+:revnumber: 0.0.7
 :toc:
 :toc-title: Table of Contents
 :toclevels: 4
@@ -176,7 +176,7 @@ stateDiagram-v2
 |===
 2.2+| 3+|Status
 |IDLE |READY|RUNNING
-.9+|API
+.10+|API
 
 |``**`EsfClockManagerInit`**``
 |READY
@@ -222,6 +222,11 @@ stateDiagram-v2
 |X
 |-
 |-
+
+|``**`EsfClockManagerMigration`**``
+|×
+|―
+|―
 
 |===
 
@@ -269,6 +274,10 @@ If the Clock Manager's "public function to stop operation" is called, the functi
 |Monitor the NTP Client Daemon and notify the callback function when NTP time synchronization is completed.
 However if NTP time synchronization fails, it is not notified by the callback function.  I.e., the notification by the callback function is happened if only when NTP time synchronization is successful.
 |<<#_Function6>>
+
+| Data Migration Function  
+| To maintain compatibility with legacy versions, migrate legacy configuration data to the new format.
+|<<#_Function7>>
 |===
 
 <<<
@@ -424,6 +433,29 @@ When `EsfClockManagerSetParamsForcibly`or`EsfClockManagerSetParams` has not been
         *** The number of samples taken by the NTP Client Daemon is a positive integer.
     ** Behavior in case of errors and recovery methods +
         *** If the NTP Client Daemon Monitoring Thread detects an error in the NTP Client Daemon, it will output an error log.
+
+[#_Function7]
+==== Data Migration Function
+* Overview +
+    To maintain compatibility with legacy versions, migrate legacy configuration data to the new format. +
+    Processing is only performed if there is configuration data that needs to be migrated.
+* Prerequisites +
+    ** Clock Manager is initialized.
+    ** Parameter Storage Manager module is started.
+* Details
+    ** Detailed Behavior +
+        本機能は、旧形式のNTPサーバーのhostnameを新形式に変換して保存し直す。 +
+        具体的な移行処理としては、以下のような処理を行う： +
+        This function converts and saves the legacy type of NTP server hostname to the new format. +
+        The specific migration process includes the following steps: +
+        1. Read the legacy data. +
+        2. Read the existing new format data from the Parameter Storage Manager. +
+        3. Save the converted data to the Parameter Storage Manager. +
+           If migration is not required (i.e., if the existing new format data is present in the Parameter Storage Manager), no processing is performed.
+        4. Perform initial settings for other new format data.
+    ** Behavior in case of errors and recovery methods +
+        If the migration process fails, an error log will be output. +  
+        The recovery method is to attempt the migration process again.
 
 [#_FigureClockManagerSequence]
 .Control sequence diagram
@@ -715,6 +747,10 @@ Refer to <<#_TableAPI>> for the supported APIs.
 |`EsfClockManagerUnregisterCbOnNtpSyncComplete`
 |Unregister the callback function that notifies when NTP time synchronization is complete.
 |<<#_EsfClockManagerUnregisterCbOnNtpSyncComplete>>
+
+|`EsfClockManagerMigration`
+|Execute the migration process of the Clock Manager's configuration data.
+|<<#_EsfClockManagerMigration>>
 
 |===
 
@@ -1623,6 +1659,46 @@ One of the values shown in <<#_EsfClockManagerUnregisterCbOnNtpSyncCompleteRetur
 The registered callback function is unregistered. If this function is called when no callback function is registered, it returns`kClockManagerSuccess`.
 Regardless of whether the process completes successfully or encounters an error, there will be no state transition.
 
+[#_EsfClockManagerMigration]
+==== EsfClockManagerMigration
+* *Feature* +
++
+Execute the migration process of the Clock Manager's configuration data. +
+It is not thread-safe and operates in the context of the caller. +
+To maintain compatibility with legacy versions, this process migrates configuration data from old formats to new formats. +
+
+* *Format* +
++
+``** EsfClockManagerReturnValue EsfClockManagerMigration(void)**``
+
+* *Argument* +
++
+None
+
+* *Return Value* +
++
+One of the values shown in <<#_EsfClockManagerMigrationReturnValue>> will be returned based on the execution result.
+
+[#_EsfClockManagerMigrationReturnValue]
+.Return value of EsfClockManagerMigration
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+
+|`kClockManagerSuccess`
+|Successful completion
+
+|`kClockManagerInternalError`
+|Internal error
+|===
+
+* *Description* +
+This function executes the migration process for configuration data. Specifically, it converts NTP server hostnames and other configuration parameters used in legacy versions to the current format. +
+If an error occurs during the migration process, it returns `kClockManagerInternalError`. +
+This function does not perform state transitions. +
+When migration is not necessary (such as when new format settings already exist), it returns `kClockManagerSuccess` and terminates successfully.
+
+
 <<<
 
 == Example of API Usage Call
@@ -2182,4 +2258,12 @@ The default NTP server: "pool.ntp.org" to "time.aitrios.sony-semicon.com" +
 ・The notification on NTP time synchronization is called if only when NTP time synchronization is successful. +
 ･  Addition: +
 　･ Added an explanation that NTP Client Daemon continues NTP time synchronization.
+|v0.0.7
+|Changes +
+・Added `EsfClockManagerMigration` API +
+　・Added functional specifications for data migration feature +
+　・Added `EsfClockManagerMigration` to API list +
+　・Added data migration feature to function list +
+　・Added detailed description of API definition +
+　・Updated state transition table
 |===

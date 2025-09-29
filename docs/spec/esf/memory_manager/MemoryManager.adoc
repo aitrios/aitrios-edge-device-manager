@@ -608,59 +608,55 @@ The list of available functions is shown in <<#_TableFunction>>.
 
 |Memory Initialization
 |Initializes the LargeHeap, WasmHeap, and DMA regions managed by PL Memory.
-|<<#_メモリ初期化機能>>
+|<<#_MemoryInitialization>>
 
 |Memory Finalization
 |Finalizes (cleans up) the LargeHeap, WasmHeap, and DMA regions managed by PL Memory.
-|<<#_メモリ終了機能>>
+|<<#_MemoryFinalization>>
 
 |Memory Allocation
 |Allocates memory of the specified size from the specified memory region and generates a memory operation handle for the allocated memory.
-|<<#_メモリ確保機能>>
+|<<#_MemoryAllocation>>
 
 |Memory Deallocation
 |Frees memory associated with the acquired memory operation handle and destroys the handle.
-|<<#_メモリ解放機能>>
+|<<#_MemoryDeallocation>>
 
 |Memory Mapping
 |Maps the allocated memory using the acquired memory operation handle.
-|<<#_メモリマップ機能>>
+|<<#_MemoryMapping>>
 
 |Memory Unmapping
 |Unmaps the memory previously mapped with the acquired memory operation handle.
-|<<#_メモリアンマップ機能>>
-
-|Memory Unmapping
-|Unmaps the memory previously mapped with the acquired memory operation handle.
-|<<#_メモリアンマップ機能>>
+|<<#_MemoryUnmapping>>
 
 |Memory File Open
 |Obtains a file descriptor (`fd`) to access the allocated memory as a file using the memory operation handle.
-|<<#_メモリファイルオープン機能>>
+|<<#_MemoryFileOpen>>
 
 |Memory File Close
 |Closes and returns the file descriptor (`fd`) acquired during memory file open.
-|<<#_メモリファイルクローズ機能>>
+|<<#_MemoryFileClose>>
 
 |Memory File Seek
 |Moves the file pointer to a specified offset using the file descriptor (`fd`) of the allocated memory.
-|<<#_メモリファイルシーク機能>>
+|<<#_MemoryFileSeek>>
 
 |Memory File Write
 |Writes data to the position pointed to by the file pointer using the file descriptor (`fd`) of the allocated memory.
-|<<#_メモリファイルライト機能>>
+|<<#_MemoryFileWrite>>
 
 |Memory File Read
 |Reads data from the position pointed to by the file pointer using the file descriptor (`fd`) of the allocated memory.
-|<<#_メモリファイルリード機能>>
+|<<#_MemoryFileRead>>
 
 |Map Support Check
 |Checks whether mapping is supported for the target memory region using the memory operation handle.
-|<<#_マップ機能サポートチェック>>
+|<<#_MapSupportCheck>>
 
 |Handle Information Retrieval
 |Retrieves region and size information associated with the acquired memory operation handle.
-|<<#_ハンドル情報取得機能>>
+|<<#_HandleInformationRetrieval>>
 
 |===
 
@@ -672,21 +668,21 @@ The list of available functions is shown in <<#_TableFunction>>.
 
 |Wasm Memory Allocation
 |Allocates memory of the specified size from the designated region.
-|<<#_Wasmメモリ確保機能>>
+|<<#_WasmMemoryAllocation>>
 
 |Wasm Memory Resize
 |Changes the size of previously allocated Wasm memory.
-|<<#_Wasmメモリサイズ変更機能>>
+|<<#_WasmMemoryResize>>
 
 |Wasm Memory Deallocation
 |Frees the previously allocated Wasm memory.
-|<<#_Wasmメモリ解放機能>>
+|<<#_WasmMemoryDeallocation>>
 
 |===
 
 === Component Function Descriptions
 
-[#_メモリ初期化機能]
+[#_MemoryInitialization]
 ==== Memory Initialization Function
 * *Function Overview*
     ** Initializes the LargeHeap, WasmHeap, and DMA regions managed by PL memory.
@@ -732,7 +728,7 @@ sequenceDiagram
 ....
 *If an error code (indicating already initialized) is returned during each initialization, it is ignored and initialization continues.*
 
-[#_メモリ終了機能]
+[#_MemoryFinalization]
 ==== Memory Finalization Function
 * Function Overview
     ** Finalizes the LargeHeap, WasmHeap, and DMA regions managed by PL memory.
@@ -775,7 +771,7 @@ sequenceDiagram
 *If an error code (indicating already finalized) is returned during each finalization, it will be ignored and the finalization process will continue.*
 
 
-[#_メモリ確保機能]
+[#_MemoryAllocation]
 ==== Memory Allocation Function
 * Function Overview
     ** Allocates memory of the specified size.
@@ -848,7 +844,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリ解放機能]
+[#_MemoryDeallocation]
 ==== Memory Free Function
 * Function Overview
     ** Frees the memory associated with the specified memory operation handle.
@@ -918,7 +914,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリマップ機能]
+[#_MemoryMapping]
 ==== Memory Map Function
 * Function Overview
     ** Maps a specified memory area.
@@ -1026,7 +1022,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリアンマップ機能]
+[#_MemoryUnmapping]
 ==== Memory Unmap Function
 * Function Overview
     ** Unmaps the specified memory.
@@ -1129,7 +1125,7 @@ sequenceDiagram
 
 ....
 
-[#_メモリファイルオープン機能]
+[#_MemoryFileOpen]
 ==== Memory File Open Function
 * Function Overview
     ** Opens a file for the specified memory.
@@ -1169,7 +1165,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリファイルクローズ機能]
+[#_MemoryFileClose]
 ==== Memory File Close Function
 * Function Overview
     ** Closes the file for the specified memory.
@@ -1206,7 +1202,7 @@ sequenceDiagram
   end
 ....
 
-[#_メモリファイルシーク機能]
+[#_MemoryFileSeek]
 ==== Memory File Seek Function
 * Function Overview
     ** Performs file seek on the specified memory.
@@ -1244,7 +1240,7 @@ sequenceDiagram
 ....
 
 
-[#_メモリファイルライト機能]
+[#_MemoryFileWrite]
 ==== Memory File Write Function
 * Function Overview
     ** Performs file write on the specified memory.
@@ -1287,7 +1283,7 @@ sequenceDiagram
   end
 ....
 
-[#_メモリファイルリード機能]
+[#_MemoryFileRead]
 ==== Memory File Read Function
 * Function Overview
     ** Performs file read on the specified memory.
@@ -1330,7 +1326,7 @@ sequenceDiagram
   end
 ....
 
-[#_マップ機能サポートチェック]
+[#_MapSupportCheck]
 ==== Map Support Check Function
 * Function Overview
     ** Checks whether the specified memory supports the Map feature.
@@ -1405,7 +1401,7 @@ sequenceDiagram
   end
 ....
 
-[#_ハンドル情報取得機能]
+[#_HandleInformationRetrieval]
 ==== Handle Info Retrieval Function
 * Function Overview
     ** Retrieves the target memory region and size information associated with a specified handle.
@@ -1430,7 +1426,7 @@ sequenceDiagram
  - Omitted
 
 
-[#_Wasmメモリ確保機能]
+[#_WasmMemoryAllocation]
 ==== Wasm Memory Allocation Function
 * Function Overview
     ** Allocates memory of the specified size from the specified region.
@@ -1446,10 +1442,10 @@ sequenceDiagram
 
 This function is exclusive and can be called from multiple threads.
 
-[#_Wasmメモリサイズ変更機能]
+[#_WasmMemoryResize]
 ==== Wasm Memory Resize Function
 * Function Overview
-    ** Resizes the memory allocated via <<#_WasmMemoryAllocationFunction>>.
+    ** Resizes the memory allocated via <<#_WasmMemoryAllocation>>.
     ** Returns a pointer to the resized memory block.
 * Prerequisites
     ** -
@@ -1459,10 +1455,10 @@ This function is exclusive and can be called from multiple threads.
 
 This function is exclusive and can be called from multiple threads.
 
-[#_Wasmメモリ解放機能]
+[#_WasmMemoryDeallocation]
 ==== Wasm Memory Free Function
 * Function Overview
-    ** Frees memory previously allocated via <<#_WasmMemoryAllocationFunction>>.
+    ** Frees memory previously allocated via <<#_WasmMemoryAllocation>>.
 * Prerequisites
     ** -
 * Functional Details
@@ -1710,7 +1706,7 @@ typedef enum{
 
 * *Values*
 +
-[#_EsfMemoryManagerResultの値の説明]
+[#_EsfMemoryManagerResultDescription]
 .Description of EsfMemoryManagerResult Values
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -1849,7 +1845,7 @@ typedef enum {
 [#_EsfMemoryManagerHandle]
 ==== EsfMemoryManagerHandle
 Defines the memory operation handle for LargeHeap, DMA, and WasmHeap regions. +
-*Note: The memory management information associated with the memory operation handle is internal and not publicly accessible (see <<#_AboutEsfMemoryManagerHandle>>).*
+*Note: The memory management information associated with the memory operation handle is internal and not publicly accessible (see <<#_About_EsfMemoryManagerHandle>>).*
 
 There are two types of memory operation handles: +
 
@@ -1923,7 +1919,7 @@ typedef uint32_t EsfMemoryManagerHandle;
 [#_EsfMemoryManagerHandleInfo]
 ==== EsfMemoryManagerHandleInfo
 Defines the handle information structure that stores the target memory region and size obtained from the memory management information associated with a memory operation handle. +
-*Note: The memory management information associated with the memory operation handle is not publicly accessible (see <<#_EsfMemoryManagerHandle>>).*
+*Note: The memory management information associated with the memory operation handle is not publicly accessible (see <<#_About_EsfMemoryManagerHandle>>).*
 
 The following constraints apply when retrieving handle information: +
 
@@ -2002,7 +1998,7 @@ Specify as follows based on AppMemory usage: +
 
 * *Return Value* +
 +
-One of the values from <<#_EsfMemoryManagerResultDescription>> is returned based on the result. +
+One of the values from <<#_EsfMemoryManagerInitializeReturnValues>> is returned based on the result. +
 
 [#_EsfMemoryManagerInitializeReturnValues]
 .Return Values for EsfMemoryManagerInitialize
@@ -2046,7 +2042,7 @@ None
 
 * *Return Value* +
 +
-One of the values from <<#_EsfMemoryManagerResultDescription>> is returned based on the result. +
+One of the values from <<#_EsfMemoryManagerFinalizeReturnValues>> is returned based on the result. +
 
 [#_EsfMemoryManagerFinalizeReturnValues]
 .Return Values for EsfMemoryManagerFinalize
@@ -2107,7 +2103,7 @@ Pointer to the memory operation handle +
 - If memory allocation fails: sets `NULL`.
 
 * *Return Value* +
-Returns one of the values defined in <<#_EsfMemoryManagerResultの値の説明>> depending on the result. +
+Returns one of the values defined in <<#_EsfMemoryManagerAllocateReturnValues>> depending on the result. +
 
 [#_EsfMemoryManagerAllocateReturnValues]
 .Return Values for EsfMemoryManagerAllocate
@@ -2179,7 +2175,7 @@ WASM module context pointer +
 - For handles in the WasmHeap area: specify the WASM module context of the target WASM App +
 
 * *Return Value* +
-Returns one of the values defined in <<#_EsfMemoryManagerResultの値の説明>> based on the result.
+Returns one of the values defined in <<#_EsfMemoryManagerFreeReturnValues>> based on the result.
 
 [#_EsfMemoryManagerFreeReturnValues]
 .Return Values for EsfMemoryManagerFree
@@ -2245,7 +2241,7 @@ Note: For LargeHeap or DMA areas, specifying `MAP_ALL_AREA(1)` maps the entire a
 - On failure: sets `NULL`
 
 * *Return Value* +
-Returns one of the values defined in <<#_EsfMemoryManagerResultの値の説明>> based on the result.
+Returns one of the values defined in <<#_EsfMemoryManagerMapReturnValues>> based on the result.
 +
 [#_EsfMemoryManagerMapReturnValues]
 .Return Values for EsfMemoryManagerMap
@@ -2304,7 +2300,7 @@ You can specify either a handle obtained via `EsfMemoryManagerAllocate` or a use
 - For WasmHeap region: specify the mapped address obtained via `EsfMemoryManagerMap`. The pointer will be set to `NULL` after unmapping.
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+Returns one of the values described in <<#_EsfMemoryManagerUnmapReturnValues>>, based on the execution result.
 
 [#_EsfMemoryManagerUnmapReturnValues]
 .Return Values for EsfMemoryManagerUnmap
@@ -2350,7 +2346,7 @@ Memory operation handle.
 Specify the memory handle obtained from `EsfMemoryManagerAllocate()`.
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+Returns one of the values described in <<#_EsfMemoryManagerFopenReturnValues>>, based on the execution result.
 
 [#_EsfMemoryManagerFopenReturnValues]
 .Return Values for EsfMemoryManagerFopen
@@ -2407,9 +2403,9 @@ Specify the handle obtained through `EsfMemoryManagerAllocate()`.
 When using an offset-based open, specify the handle including the offset.
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+Returns one of the values described in <<#_EsfMemoryManagerFcloseReturnValues>>, based on the execution result.
 
-[#_EsfMemoryManagerFcloseの戻り値の説明]
+[#_EsfMemoryManagerFcloseReturnValues]
 .Return Values for EsfMemoryManagerFclose
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2476,9 +2472,9 @@ On success: Sets the new position from the beginning of the file after seeking. 
 On failure: Sets the current file position.
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, based on the execution result.
+Returns one of the values described in <<#_EsfMemoryManagerFseekReturnValues>>, based on the execution result.
 
-[#_EsfMemoryManagerFseekの戻り値の説明]
+[#_EsfMemoryManagerFseekReturnValues]
 .Return Values for EsfMemoryManagerFseek
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2544,9 +2540,9 @@ On success: The number of bytes successfully written. +
 On failure: Set to "0".
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+Returns one of the values described in <<#_EsfMemoryManagerFwriteReturnValues>>, depending on the result of the operation.
 
-[#_EsfMemoryManagerFwriteの戻り値の説明]
+[#_EsfMemoryManagerFwriteReturnValues]
 .Return Values for EsfMemoryManagerFwrite
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2614,9 +2610,9 @@ On success: The number of bytes successfully written. +
 On failure: Set to "0".
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+Returns one of the values described in <<#_EsfMemoryManagerFpwriteReturnValues>>, depending on the result of the operation.
 
-[#_EsfMemoryManagerFpwriteの戻り値の説明]
+[#_EsfMemoryManagerFpwriteReturnValues]
 .Return Values for EsfMemoryManagerFpwrite
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2681,9 +2677,9 @@ On success: The number of bytes successfully read. +
 On failure: Set to "0".
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+Returns one of the values described in <<#_EsfMemoryManagerFreadReturnValues>>, depending on the result of the operation.
 
-[#_EsfMemoryManagerFreadの戻り値の説明]
+[#_EsfMemoryManagerFreadReturnValues]
 .Return Values for EsfMemoryManagerFread
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2751,9 +2747,9 @@ On success: The number of bytes successfully read. +
 On failure: Set to "0".
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+Returns one of the values described in <<#_EsfMemoryManagerFpreadReturnValues>>, depending on the result of the operation.
 
-[#_EsfMemoryManagerFpreadの戻り値の説明]
+[#_EsfMemoryManagerFpreadReturnValues]
 .Return Values for EsfMemoryManagerFpread
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2814,9 +2810,9 @@ Returns the Map feature support status. +
 ** If Map is not supported: `kEsfMemoryManagerMapIsNotSupport`
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+Returns one of the values described in <<#_EsfMemoryManagerIsMapSupportReturnValues>>, depending on the result of the operation.
 
-[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+[#_EsfMemoryManagerIsMapSupportReturnValues]
 .Return Values for EsfMemoryManagerIsMapSupport
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -2872,9 +2868,9 @@ Outputs the memory region and size information associated with the handle.
 See <<#_EsfMemoryManagerHandleInfo>>.
 
 * *Return Value* +
-Returns one of the values described in <<#_EsfMemoryManagerResultの値の説明>>, depending on the result of the operation.
+Returns one of the values described in <<#_EsfMemoryManagerIsMapSupportReturnValues>>, depending on the result of the operation.
 
-[#_EsfMemoryManagerIsMapSupportの戻り値の説明]
+[#_EsfMemoryManagerIsMapSupportReturnValues]
 .Return Values for EsfMemoryManagerGetHandleInfo
 [width="100%", cols="30%,70%",options="header"]
 |===
@@ -3403,7 +3399,7 @@ None
 [#_About_EsfMemoryManagerHandle]
 === About EsfMemoryManagerHandle
 The memory management information associated with `EsfMemoryManagerHandle` is not disclosed to the user. This section provides an overview of how the memory manager internally manages this information. +
-*Note: This is for illustration purposes only.* +
+*Note: This is sample.* +
 
 [underline]#Memory Management Information Associated with EsfMemoryManagerHandle#
 

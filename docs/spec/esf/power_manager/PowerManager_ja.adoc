@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.11
+:revnumber: 0.1.12
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -497,7 +497,11 @@ stateDiagram-v2
 
 |デバイス死活監視機能
 |デバイスの死活監視機能を提供します。
-|<<#_Function8>>
+|<<#_Function8_1>>
+
+|プロセス死活監視機能
+|Edge device coreプロセスの死活監視機能を提供します。
+|<<#_Function8_2>>
 
 |間欠駆動機能
 |デバイスの間欠駆動機能を提供します。(未対応)
@@ -511,6 +515,9 @@ stateDiagram-v2
 |リセット要因取得機能を提供します。
 |<<#_Function10>>
 
+|データマイグレーション機能
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+|<<#_Function11>>
 |===
 
 
@@ -667,7 +674,7 @@ HoursMeterのカウントアップ、カウントアップした値を不揮発�
 
     ** エラー時の挙動、復帰方法に関しては<<#hoursmeterapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
 
-[#_Function8]
+[#_Function8_1]
 ==== デバイス死活監視機能 
 * 機能概要 +
 デバイスの死活監視機能を提供します。
@@ -680,6 +687,18 @@ HoursMeterのカウントアップ、カウントアップした値を不揮発�
        WDT発火時にデバイスの再起動を行います。
 
     ** エラー時の挙動、復帰方法に関しては<<#wdtapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function8_2]
+==== プロセス死活監視機能 
+* 機能概要 +
+Edge device coreプロセスの死活監視機能を提供します。
+
+* 前提条件 +
+    Power Managerが開始されていること。
+* 機能詳細
+    ** EsfPwrMgrSwWdtStartで指定されたIDのEdge device coreモジュールの死活監視を行います。
+    ** EsfPwrMgrSwWdtKeepaliveが CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC (単位:秒 デフォルト:60) 以上呼ばれなくなったとき、Edge device coreプロセス全体を停止させます。
+    ** エラー時の挙動、復帰方法に関しては<<#swwdtapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
 
 [#_Function6]
 ==== 間欠駆動機能(未対応) 
@@ -709,6 +728,19 @@ T.B.D.
 * 機能詳細
     ** リセット要因を取得します。
     ** エラー時の挙動、復帰方法に関しては<<#resetcauseapi, 各API詳細説明>>にて記載しているため、そちらを参照ください。
+
+[#_Function11]
+==== データマイグレーション機能
+* 機能概要
+    ** 過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行する機能です。
+* 前提条件
+    ** ParameterStorageManagerが初期化されていること。
+    ** Power Managerが開始されていること。
+* 機能詳細
+    ** 以下のデータタイプの移行を実行します：
+        *** hours_meter: デバイス稼働時間の移行
+    ** 移行処理完了後、旧形式のデータファイルを削除します。
+    ** 移行対象データが空の場合は、正常終了として扱います。
 
 <<<
 
@@ -889,6 +921,21 @@ T.B.D.
 |デバイスの死活監視のためのKeepAliveを送信します。
 |<<EsfPwrMgrWdtKeepAlive>>
 
+// プロセス死活監視機能
+3+|<<#swwdtapi, プロセス死活監視機能>>
+
+|EsfPwrMgrSwWdtStart
+|プロセス死活監視を開始します。
+|<<EsfPwrMgrSwWdtStart>>
+
+|EsfPwrMgrSwWdtStop
+|プロセス死活監視を停止します。
+|<<EsfPwrMgrSwWdtStop>>
+
+|EsfPwrMgrSwWdtKeepalive
+|プロセス死活監視のためのKeepAliveを送信します。
+|<<EsfPwrMgrSwWdtKeepalive>>
+
 // エクセプション情報機能
 3+|<<#wdtapi, エクセプション情報機能>>
 
@@ -911,6 +958,12 @@ T.B.D.
 |リセット要因を取得します。
 |<<EsfPwrMgrGetResetCause>>
 
+// データマイグレーション機能
+3+|<<#migrationapi, データマイグレーション機能>>
+
+|EsfPwrMgrExecMigration
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+|<<EsfPwrMgrExecMigration>>
 |===
 
 <<<
@@ -1953,6 +2006,185 @@ TIP: ``**EsfPwrMgrWdtTerminate**``または``**EsfPwrMgrWdtStopForReboot**``実�
 |リトライ、リトライで復旧しない場合はシステム再起動
 |===
 
+[#swwdtapi]
+{blank}
+
+[#EsfPwrMgrSwWdtStart]
+==== EsfPwrMgrSwWdtStart
+* *機能* 
++
+プロセス死活監視を開始します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrSwWdtStart(uint32_t id)**``
+
+* *引数の説明* +
++
+**``[IN] uint32_t id``**::
+監視を開始したいモジュールID。このIDに対するEsfPwrMgrSwWdtKeepaliveが CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC 以上行われなくなった場合、Edge device coreプロセス全体を停止させます。
+
+**``[OUT] なし``**::
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+プロセス死活監視を開始します。 +
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+.EsfPwrMgrSwWdtStartエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL 操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
+[#EsfPwrMgrSwWdtStop]
+==== EsfPwrMgrSwWdtStop
+* *機能* 
++
+プロセス死活監視を開始します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrSwWdtStop(uint32_t id)**``
+
+* *引数の説明* +
++
+**``[IN] uint32_t id``**::
+監視を停止したいモジュールID。
+
+**``[OUT] なし``**::
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+指定したモジュールIDに対する死活監視を停止します。 +
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+.EsfPwrMgrSwWdtStopエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorStatus
+|状態異常
+|停止状態でAPIを実行
+|開始後にリトライ
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL 操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
+[#EsfPwrMgrSwWdtKeepalive]
+==== EsfPwrMgrSwWdtKeepalive
+* *機能* 
++
+プロセス死活監視のためのKeepAliveを送信します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrSwWdtKeepalive(uint32_t id)**``
+
+* *引数の説明* +
++
+**``[IN] uint32_t id``**::
+KeepAliveをしたいモジュールID。このIDに対するEsfPwrMgrSwWdtKeepaliveが CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC 以上行われなくなった場合、Edge device coreプロセス全体を停止させます。
+
+**``[OUT] なし``**::
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+プロセスの死活監視のためのKeepAliveを送信します。 +
+本API実行後、SW WDTのタイムアウト時間がリセットされます。
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+** 本APIでは状態アクセスのため内部で排他制御を行います。
+
+* *エラー情報*
+
+.EsfPwrMgrSwWdtKeepaliveエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL 操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
 [#exceptioninfoapi]
 {blank}
 
@@ -2226,6 +2458,62 @@ Power Manager 内部で管理されているエクセプション情報のメモ
 
 |===
 
+[#migrationapi]
+{blank}
+
+[#EsfPwrMgrExecMigration]
+==== EsfPwrMgrExecMigration
+* *機能* 
++
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+
+* *書式* +
++
+``** enum EsfPwrMgrError EsfPwrMgrExecMigration(void)**``
+
+* *引数の説明* +
++
+**``[IN] なし``**:: 
+
+**``[OUT] なし``**:: 
+
+* *戻り値* +
++
+実行結果に応じて、<<#_Table_EsfPwrMgrError, EsfPwrMgrError>>のいずれかの値が返ります。
+
+* *説明* +
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。 +
+** 本APIを同時に呼び出すことが可能です。
+** 本APIを複数のスレッドから呼び出すことが可能です。
+** 本APIを複数のタスクから呼び出すことが可能です。
+
+* *エラー情報*
+
+.EsfPwrMgrExecMigrationエラー情報
+[width="100%", options="header"]
+|===
+|戻り値|説明|エラー条件|復旧方法
+|kEsfPwrMgrOk
+|成功
+|成功
+|なし
+
+|kEsfPwrMgrErrorTimeout
+|タイムアウトエラー
+|排他制御タイムアウト発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorExternal
+|外部エラー
+|PL 操作でエラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfPwrMgrErrorInternal
+|内部処理エラー 
+|その他エラー発生
+|リトライ、リトライで復旧しない場合はシステム再起動
+|===
+
 <<<
 
 == API使用時の呼び出し例
@@ -2399,6 +2687,32 @@ sequenceDiagram
   Deactivate esf_powermanager
 ....
 
+=== プロセス死活監視機能API呼び出しシーケンスの例
+[#_プロセス死活監視機能API呼び出しシーケンスの例]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as PowerManager
+    participant OS
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  esf_powermanager -->> -App : success
+
+  App ->> +esf_powermanager : EsfPwrMgrSwWdtStart(0)
+  esf_powermanager -->> -App : success
+  Activate esf_powermanager
+
+  App ->> +esf_powermanager : EsfPwrMgrSwWdtKeepalive(0)
+  esf_powermanager -->> -App : success
+
+  Note over esf_powermanager: Keepaliveされず60秒経過
+  esf_powermanager ->> esf_powermanager : assert
+  esf_powermanager ->> +OS : プロセス停止
+  Deactivate esf_powermanager
+....
 <<<
 
 === エクセプション情報機能API呼び出しシーケンスの例
@@ -2764,5 +3078,13 @@ HAL電圧取得APIがヘッダファイルから削除されたため具体的�
 
 * 5. API使用時の呼び出し例
 ** エクセプション情報機能 API 呼び出しシーケンスの例を追加
+
+|0.1.12
+| プロセス死活監視機能 の追加 +
+マイグレーション機能 の追加 +
+
+* 全体
+* 5. API使用時の呼び出し例
+** プロセス死活監視機能API呼び出しシーケンスの例 を追加
 
 |===
