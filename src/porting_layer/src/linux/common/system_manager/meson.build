@@ -2,10 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-pl_includes_internal += include_directories('.')
-pl_includes_internal += include_directories('./include')
-
 pl_sources += files([
-	'pl_main_internal.c',
-	'pl_main.c'
+  'pl_system_manager_os_impl.c'
 ])

@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.11
+:revnumber: 0.1.12
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
@@ -496,8 +496,12 @@ A list of functions is shown in <<#_TableFunction>>.
 |<<#_Function7>>
 
 |Device Liveness Monitoring Function
-|Provides device liveness monitoring functionality.
-|<<#_Function8>>
+|Provides a device liveness monitoring function.
+|<<#_Function8_1>>
+
+|Process Liveness Monitoring Function
+|Provides a liveness monitoring function for the Edge Device Core process.
+|<<#_Function8_2>>
 
 |Intermittent Drive Function
 |Provides intermittent drive functionality for the device. (Not supported)
@@ -511,6 +515,9 @@ A list of functions is shown in <<#_TableFunction>>.
 |Provides functionality for retrieving the reset cause.
 |<<#_Function10>>
 
+|Data Migration Function
+|Migrates configuration data from the old format to the new format to maintain compatibility with previous versions.
+|<<#_Function11>>
 |===
 
 <<<
@@ -673,7 +680,7 @@ Provides functionality for incrementing the Hours Meter, saving the value to non
 
     ** For error behavior and recovery, refer to <<#hoursmeterapi, API Details>>.
 
-[#_Function8]
+[#_Function8_1]
 ==== Device Liveness Monitoring Function
 * Function Overview +
 Provides functionality for monitoring device liveness.
@@ -687,6 +694,18 @@ Provides functionality for monitoring device liveness.
        Upon WDT trigger, the device is rebooted.
 
     ** For error behavior and recovery, refer to <<#wdtapi, API Details>>.
+
+[#_Function8_2]
+==== Process Liveness Monitoring Function 
+* *Function Overview* +
+Provides a liveness monitoring function for the Edge Device Core process.
+
+* *Prerequisites* +
+    The Power Manager must be started.
+* *Function Details*
+    ** Performs liveness monitoring of the Edge Device Core module identified by the ID specified in ``EsfPwrMgrSwWdtStart``.
+    ** If ``EsfPwrMgrSwWdtKeepalive`` is not called for ``CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC`` seconds or more (unit: seconds, default: 60), stops the entire Edge Device Core process.
+    ** For error behavior and recovery, refer to <<#swwdtapi, API Details>>.
 
 [#_Function6]
 ==== Intermittent Drive Function (Not Supported)
@@ -717,6 +736,19 @@ Provides functionality to retrieve the reset cause.
 * Function Details
     ** Retrieves the reset cause.
     ** For error behavior and recovery, refer to <<#resetcauseapi, API Details>>.
+
+[#_Function11]
+==== Data Migration Function
+* *Function Overview
+    ** Provides a function to migrate configuration data from the old format to the new format to maintain compatibility with previous versions.
+* *Prerequisites
+    ** The Parameter Storage Manager must be initialized.
+    ** The Power Manager must be started.
+* *Function Details
+    ** Executes migration for the following data types:
+        *** hours_meter: Migration of device operating hours
+    ** Deletes old-format data files after the migration is completed.
+    ** If the target data is empty, it is treated as a normal completion.
 
 <<<
 
@@ -786,7 +818,6 @@ Threads are not used.
 <<<
 
 == API Specifications
-
 === List of Data Types
 A list of data types is shown in <<#_TableDataType>>.
 
@@ -905,6 +936,21 @@ Can be executed from the STOP state.
 |Sends KeepAlive for device liveness monitoring.
 |<<EsfPwrMgrWdtKeepAlive>>
 
+// Process Liveness Monitoring Function
+3+|<<#swwdtapi, Process Liveness Monitoring Function>>
+
+|EsfPwrMgrSwWdtStart
+|Starts process liveness monitoring.
+|<<EsfPwrMgrSwWdtStart>>
+
+|EsfPwrMgrSwWdtStop
+|Stops process liveness monitoring.
+|<<EsfPwrMgrSwWdtStop>>
+
+|EsfPwrMgrSwWdtKeepalive
+|Sends a KeepAlive for process liveness monitoring.
+|<<EsfPwrMgrSwWdtKeepalive>>
+
 // Exception Information Function
 3+|<<#wdtapi, Exception Information Function>>
 
@@ -927,12 +973,17 @@ Can be executed from the STOP state.
 |Retrieves the reset cause.
 |<<EsfPwrMgrGetResetCause>>
 
+// Data Migration Function
+3+|<<#migrationapi, Data Migration Function>>
+
+|EsfPwrMgrExecMigration
+|Migrates configuration data from the old format to the new format to maintain compatibility with previous versions.
+|<<EsfPwrMgrExecMigration>>
 |===
 
 <<<
 
 === Data Type Definitions
-
 [#_DataType_EsfPwrMgrError]
 ==== EsfPwrMgrError
 Enumeration that defines the result of API execution.
@@ -1090,11 +1141,9 @@ struct EsfPwrMgrExceptionInfo;
 Member variables are private. +
 Therefore, variables of type `struct EsfPwrMgrExceptionInfo` or use with `sizeof` cannot be used by the caller. +
 It can only be used as a pointer to a variable of type `struct EsfPwrMgrExceptionInfo`. +
-
 Examples (not allowed): +
   ``**struct EsfPwrMgrExceptionInfo info;``** +
   ``**sizeof(struct EsfPwrMgrExceptionInfo);``** +
-
 Examples (allowed): +
   ``**struct EsfPwrMgrExceptionInfo *info;``** +
 
@@ -1126,26 +1175,13 @@ typedef enum EsfPwrMgrResetCause {
 |===
 |Member Name |Description
 
-|kEsfPwrMgrResetCauseUnknown
-|Unsupported reset cause.
-
-|kEsfPwrMgrResetCauseSysChipPowerOnReset
-|Chip power-on system reset.
-
-|kEsfPwrMgrResetCauseSysBrownOut
-|Brown-out system reset.
-
-|kEsfPwrMgrResetCauseCoreSoft
-|Software core reset.
-
-|kEsfPwrMgrResetCauseCoreDeepSleep
-|Deep-sleep core reset.
-
-|kEsfPwrMgrResetCauseWDT
-|Watchdog reset.
-
-|kEsfPwrMgrResetCauseMax
-|Maximum number of elements.
+|kEsfPwrMgrResetCauseUnknown|Unsupported reset cause.
+|kEsfPwrMgrResetCauseSysChipPowerOnReset|Chip power-on system reset.
+|kEsfPwrMgrResetCauseSysBrownOut|Brown-out system reset.
+|kEsfPwrMgrResetCauseCoreSoft|Software core reset.
+|kEsfPwrMgrResetCauseCoreDeepSleep|Deep-sleep core reset.
+|kEsfPwrMgrResetCauseWDT|Watchdog reset.
+|kEsfPwrMgrResetCauseMax|Maximum number of elements.
 
 |===
 
@@ -1182,7 +1218,6 @@ typedef enum EsfPwrMgrRebootType {
 <<<
 
 === API Definitions
-
 [#initapi]
 {blank}
 
@@ -1242,7 +1277,7 @@ Based on the result, continues processing with USB_SW control or halts processin
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorInternal
@@ -1266,7 +1301,6 @@ Based on the result, continues processing with USB_SW control or halts processin
 |Wait for reboot via WDT
 
 |===
-
 +
 If an error occurs during USB current limiting determination within this API, the following actions are taken:
 
@@ -1311,7 +1345,7 @@ Stops liveness monitoring, releases the PL WDT handle, and finalizes the PL WDT.
 
 |kEsfPwrMgrOk
 |Success
-|Stop succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1321,7 +1355,7 @@ Stops liveness monitoring, releases the PL WDT handle, and finalizes the PL WDT.
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorInternal
@@ -1384,7 +1418,7 @@ Up to 60 seconds after execution of this API, `WdtCallBack` will be triggered.
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1394,7 +1428,7 @@ Up to 60 seconds after execution of this API, `WdtCallBack` will be triggered.
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorInternal
@@ -1455,7 +1489,7 @@ If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrError
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1470,7 +1504,7 @@ If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrError
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorExternal
@@ -1483,6 +1517,7 @@ If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrError
 |Other internal error occurred
 |Retry; if it does not recover, reboot the system
 |===
+
 
 [#EsfPwrMgrExecuteRebootEx]
 ==== EsfPwrMgrExecuteRebootEx
@@ -1560,7 +1595,7 @@ If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrError
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1575,7 +1610,7 @@ If called while a reboot or shutdown is in progress, returns ``**kEsfPwrMgrError
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorExternal
@@ -1613,7 +1648,6 @@ None.
 Performs system shutdown using PL (SystemControl). +
 This API can be executed even when the Power Manager is in the STOP state. +
 If this API succeeds, the device is shut down and no return occurs. +
-
 ** This API must not be called concurrently.
 ** This API must not be called from multiple threads.
 ** This API must not be called from multiple tasks.
@@ -1665,7 +1699,7 @@ Retrieves the operating voltage information via HAL (T.B.D.) and returns it. +
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1680,7 +1714,7 @@ Retrieves the operating voltage information via HAL (T.B.D.) and returns it. +
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorExternal
@@ -1739,7 +1773,7 @@ Retrieves power supply type information from PL (power_manager) and returns <<#_
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1754,7 +1788,7 @@ Retrieves power supply type information from PL (power_manager) and returns <<#_
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorExternal
@@ -1810,12 +1844,12 @@ Retrieves the current value of the HoursMeter. +
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred in mutual exclusion control
+|Timeout occurred in exclusion control
 |Retry; if it does not recover, reboot the system
 
 |kEsfPwrMgrErrorInternal
@@ -1902,10 +1936,9 @@ After this API is executed, the WdtCallBack will be invoked in up to 60 seconds.
 [width="100%", options="header"]
 |===
 |Return Value |Description |Error Condition |Recovery Method
-
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -1915,7 +1948,7 @@ After this API is executed, the WdtCallBack will be invoked in up to 60 seconds.
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred during mutual exclusion control
+|Timeout occurred during exclusion control
 |Retry; if not recovered, reboot the system
 
 |kEsfPwrMgrErrorExternal
@@ -1927,19 +1960,19 @@ After this API is executed, the WdtCallBack will be invoked in up to 60 seconds.
 |Internal processing error
 |Other internal error occurred
 |Retry; if not recovered, reboot the system
-
 |===
 
 [#EsfPwrMgrWdtKeepAlive]
 ==== EsfPwrMgrWdtKeepAlive
-* *Function* +
-Sends KeepAlive for device liveness monitoring.
+* *Function* 
++
+Sends a KeepAlive for device liveness monitoring.
 
 * *Format* +
 +
 ``** enum EsfPwrMgrError EsfPwrMgrWdtKeepAlive(void)**``
 
-* *Arguments* +
+* *Argument Description* +
 +
 **``[IN] None``**::
 
@@ -1947,20 +1980,19 @@ Sends KeepAlive for device liveness monitoring.
 
 * *Return Value* +
 +
-Returns one of the values from <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> depending on the execution result.
+Returns one of the values in <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> according to the execution result.
 
 * *Description* +
-Sends KeepAlive for device liveness monitoring. +
-After this API is executed, the WDT timeout period is reset. +
-
+Sends a KeepAlive for device liveness monitoring. +
+After this API is executed, the WDT timeout is reset. +
 ** This API can be called concurrently.
 ** This API can be called from multiple threads.
 ** This API can be called from multiple tasks.
-** This API performs internal mutual exclusion control to access state.
+** This API performs internal mutual exclusion for state access.
 
-TIP: If ``**EsfPwrMgrWdtTerminate**`` or ``**EsfPwrMgrWdtStopForReboot**`` was previously executed, the WDT timeout will be as follows: +
-If the configured timeout is 60 seconds or less: configured timeout in seconds +
-If the configured timeout exceeds 60 seconds: 60 seconds
+TIP: If ``**EsfPwrMgrWdtTerminate**`` or ``**EsfPwrMgrWdtStopForReboot**`` has been executed, the WDT timeout will be as follows.  +
+If the timeout configured in the config is 60 seconds or less: the configured timeout [seconds]  +
+If the timeout configured in the config is 60 seconds or more: 60 seconds
 
 * *Error Information*
 
@@ -1969,27 +2001,204 @@ If the configured timeout exceeds 60 seconds: 60 seconds
 [width="100%", options="header"]
 |===
 |Return Value |Description |Error Condition |Recovery Method
-
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorTimeout
 |Timeout error
-|Timeout occurred during mutual exclusion control
-|Retry; if not recovered, reboot the system
+|Exclusive-control timeout occurred
+|Retry; if recovery fails after retry, reboot the system
 
 |kEsfPwrMgrErrorExternal
 |External error
-|PL operation caused an error
-|Retry; if not recovered, reboot the system
+|Error occurred during PL operation
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error 
+|Other errors occurred
+|Retry; if recovery fails after retry, reboot the system
+|===
+
+[#swwdtapi]
+{blank}
+
+[#EsfPwrMgrSwWdtStart]
+==== EsfPwrMgrSwWdtStart
+* *Function* 
++
+Starts process liveness monitoring.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrSwWdtStart(uint32_t id)**``
+
+* *Argument Description* +
++
+**``[IN] uint32_t id``**::
+Module ID for which monitoring is to be started. If ``EsfPwrMgrSwWdtKeepalive`` for this ID is not called for ``CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC`` seconds or more, the entire Edge Device Core process will be stopped.
+
+**``[OUT] None``**::
+
+* *Return Value* +
++
+Returns one of the values in <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> according to the execution result.
+
+* *Description* +
+Starts process liveness monitoring. +
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion for state access.
+
+* *Error Information*
+
+.EsfPwrMgrSwWdtStart Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+|kEsfPwrMgrOk
+|Success
+|Success
+|None
+
+|kEsfPwrMgrErrorStatus
+|Abnormal state
+|API executed while in stopped state
+|Retry after starting
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Exclusive-control timeout occurred
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if recovery fails after retry, reboot the system
 
 |kEsfPwrMgrErrorInternal
 |Internal processing error
-|Other internal error occurred
-|Retry; if not recovered, reboot the system
+|Other errors occurred
+|Retry; if recovery fails after retry, reboot the system
+|===
 
+[#EsfPwrMgrSwWdtStop]
+==== EsfPwrMgrSwWdtStop
+* *Function* 
++
+Stops process liveness monitoring.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrSwWdtStop(uint32_t id)**``
+
+* *Argument Description* +
++
+**``[IN] uint32_t id``**::
+Module ID for which monitoring is to be stopped.
+
+**``[OUT] None``**::
+
+* *Return Value* +
++
+Returns one of the values in <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> according to the execution result.
+
+* *Description* +
+Stops liveness monitoring for the specified module ID. +
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion for state access.
+
+* *Error Information*
+
+.EsfPwrMgrSwWdtStop Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+|kEsfPwrMgrOk
+|Success
+|Success
+|None
+
+|kEsfPwrMgrErrorStatus
+|Abnormal state
+|API executed while in stopped state
+|Retry after starting
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Exclusive-control timeout occurred
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error
+|Other errors occurred
+|Retry; if recovery fails after retry, reboot the system
+|===
+
+[#EsfPwrMgrSwWdtKeepalive]
+==== EsfPwrMgrSwWdtKeepalive
+* *Function* 
++
+Sends a KeepAlive for process liveness monitoring.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrSwWdtKeepalive(uint32_t id)**``
+
+* *Argument Description* +
++
+**``[IN] uint32_t id``**::
+Module ID for which to send the KeepAlive. If ``EsfPwrMgrSwWdtKeepalive`` for this ID is not called for ``CONFIG_EXTERNAL_POWER_MANAGER_SW_WDT_TIMEOUT_SEC`` seconds or more, the entire Edge Device Core process will be stopped.
+
+**``[OUT] None``**::
+
+* *Return Value* +
++
+Returns one of the values in <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> according to the execution result.
+
+* *Description* +
+Sends a KeepAlive for process liveness monitoring. +
+After this API is executed, the SW WDT timeout is reset. +
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+** This API performs internal mutual exclusion for state access.
+
+* *Error Information*
+
+.EsfPwrMgrSwWdtKeepalive Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+|kEsfPwrMgrOk
+|Success
+|Success
+|None
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Exclusive-control timeout occurred
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error 
+|Other errors occurred
+|Retry; if recovery fails after retry, reboot the system
 |===
 
 [#exceptioninfoapi]
@@ -2039,7 +2248,7 @@ The memory will be released when either <<#EsfPwrMgrStop, EsfPwrMgrStop>> or <<#
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -2115,7 +2324,7 @@ If `dst_size` is between 1 and <<#_DataType_ESF_POWER_MANAGER_EXCEPTION_INFO_SIZ
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -2186,7 +2395,7 @@ Frees the memory used internally by Power Manager to store exception information
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorStatus
@@ -2251,7 +2460,7 @@ Returns the cause of the last reset. +
 
 |kEsfPwrMgrOk
 |Success
-|Execution succeeded
+|Success
 |None
 
 |kEsfPwrMgrErrorInvalidArgument
@@ -2269,6 +2478,62 @@ Returns the cause of the last reset. +
 |Other internal error occurred
 |Retry; if not recovered, reboot the system
 
+|===
+
+[#migrationapi]
+{blank}
+
+[#EsfPwrMgrExecMigration]
+==== EsfPwrMgrExecMigration
+* *Function* 
++
+Migrates configuration data from the old format to the new format to maintain compatibility with previous versions.
+
+* *Format* +
++
+``** enum EsfPwrMgrError EsfPwrMgrExecMigration(void)**``
+
+* *Argument Description* +
++
+**``[IN] None``**:: 
+
+**``[OUT] None``**:: 
+
+* *Return Value* +
++
+Returns one of the values in <<#_Table_EsfPwrMgrError, EsfPwrMgrError>> according to the execution result.
+
+* *Description* +
+Migrates configuration data from the old format to the new format to maintain compatibility with previous versions. +
+** This API can be called concurrently.
+** This API can be called from multiple threads.
+** This API can be called from multiple tasks.
+
+* *Error Information*
+
+.EsfPwrMgrExecMigration Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+|kEsfPwrMgrOk
+|Success
+|Success
+|None
+
+|kEsfPwrMgrErrorTimeout
+|Timeout error
+|Exclusive-control timeout occurred
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorExternal
+|External error
+|Error occurred during PL operation
+|Retry; if recovery fails after retry, reboot the system
+
+|kEsfPwrMgrErrorInternal
+|Internal processing error 
+|Other errors occurred
+|Retry; if recovery fails after retry, reboot the system
 |===
 
 <<<
@@ -2413,6 +2678,34 @@ sequenceDiagram
   Deactivate esf_powermanager
 ....
 
+<<<
+
+=== Process Liveness Monitoring API Call Sequence Example
+[#_ProcessLivenessMonitoringAPICallSequenceExample]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant App as App/ESFMain
+    participant esf_powermanager as Power Manager
+    participant OS
+
+  App ->> +esf_powermanager : EsfPwrMgrStart
+  esf_powermanager -->> -App : success
+
+  App ->> +esf_powermanager : EsfPwrMgrSwWdtStart(0)
+  esf_powermanager -->> -App : success
+  Activate esf_powermanager
+
+  App ->> +esf_powermanager : EsfPwrMgrSwWdtKeepalive(0)
+  esf_powermanager -->> -App : success
+
+  Note over esf_powermanager: 60 seconds elapsed without KeepAlive
+  esf_powermanager ->> esf_powermanager : assert
+  esf_powermanager ->> +OS : Stop process
+  Deactivate esf_powermanager
+....
 <<<
 
 === Example Exception Information API Call Sequence
@@ -2775,5 +3068,14 @@ Added Reset Cause Retrieval Feature +
 
 * Section 5: API Usage Examples
 ** Added Exception Information API call sequence
+
+|v0.1.12
+a|
+* Added Process Liveness Monitoring Function
+* Added Data Migration Function
+
+* Overall
+* Section 5: API Usage Examples
+** Added Process Liveness Monitoring API Call Sequence Example
 
 |===

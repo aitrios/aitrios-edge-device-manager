@@ -6,29 +6,25 @@
 
 #include "pl_main_internal.h"
 
-#include <stdio.h>
 #include <dirent.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/stat.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/mount.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-#ifndef CONFIG_EXTERNAL_TARGET_RPI
-#include "fsutils/flash_eraseall.h"
-#include "fsutils/mkfatfs.h"
+#include "pl_main_impl.h"
+
+#ifdef CONFIG_EXTERNAL_TARGET_T4R
+#include <stdlib.h>
 #endif
 
 // Macros ---------------------------------------------------------------------
 #define PL_MAIN_FAT_FILESYSTEM_TYPE "vfat"
-#define PL_MAIN_FAT32_FAT_TYPE 32
-#define PL_MAIN_LITTLEFS_FILESYSTEM_TYPE "littlefs"
-#define PL_MAIN_LITTLEFS_FORMAT_DATA "autoformat"
-#define PL_MAIN_LITTLEFS_FORMAT_TMP_PATH "_tmp_format"
 
 // typedef --------------------------------------------------------------------
 typedef PlErrCode (*PlMainFileSystemFunc)(const PlMainDeviceInformation*);
@@ -288,21 +284,7 @@ static PlErrCode PlMainDeviceInformationValidate(
 static PlErrCode PlMainFileSystemFormatFat32(
     const PlMainDeviceInformation* info) {
   LOG_I("FAT32 format begin. device:%s", info->source);
-#if defined(CONFIG_FSUTILS_MKFATFS)
-  struct fat_format_s fmt = FAT_FORMAT_INITIALIZER;
-  fmt.ff_fattype = PL_MAIN_FAT32_FAT_TYPE;
-  int ret = mkfatfs(info->source, &fmt);
-  if (ret < 0) {
-    LOG_E(0x00, "mkfatfs error. errno:%d device:%s", errno, info->source);
-    return kPlErrWrite;
-  }
-  LOG_I("FAT32 format end. device:%s", info->source);
-  return kPlErrCodeOk;
-#else   // CONFIG_FSUTILS_MKFATFS
-  LOG_E(0x00, "Unexpected operation. device:%s type:%d", info->source,
-        (int)info->device_type);
-  return kPlErrInternal;
-#endif  // CONFIG_FSUTILS_MKFATFS
+  return PlMainFileSystemFormatFat32Impl(info);
 }
 // -----------------------------------------------------------------------------
 static PlErrCode PlMainFileSystemMountFat32(
@@ -334,33 +316,7 @@ static PlErrCode PlMainFileSystemUnmountFat32(
 // -----------------------------------------------------------------------------
 static PlErrCode PlMainFileSystemFormatLittleFs(
     const PlMainDeviceInformation* info) {
-#ifdef CONFIG_EXTERNAL_TARGET_RPI
-  return kPlErrNoSupported;
-#else
-  LOG_I("LittleFS format begin. device:%s", info->source);
-  int ret = flash_eraseall(info->source);
-  if (ret < 0) {
-    LOG_E(0x03, "flash erase error. device:%s ret:%d errno:%d", info->source,
-          ret, errno);
-    return kPlErrWrite;
-  }
-  ret = mount(info->source, PL_MAIN_LITTLEFS_FORMAT_TMP_PATH,
-              PL_MAIN_LITTLEFS_FILESYSTEM_TYPE, 0,
-              PL_MAIN_LITTLEFS_FORMAT_DATA);
-  if (ret < 0) {
-    LOG_E(0x03, "autoformat error. device:%s ret:%d errno:%d", info->source,
-          ret, errno);
-    return kPlErrWrite;
-  }
-  ret = umount(PL_MAIN_LITTLEFS_FORMAT_TMP_PATH);
-  if (ret < 0) {
-    LOG_E(0x03, "autoformat umount failure:%s ret:%d errno:%d",
-          PL_MAIN_LITTLEFS_FORMAT_TMP_PATH, ret, errno);
-    return kPlErrWrite;
-  }
-  LOG_I("LittleFS format end. device:%s", info->source);
-  return kPlErrCodeOk;
-#endif
+  return PlMainFileSystemFormatLittleFsImpl(info);
 }
 // -----------------------------------------------------------------------------
 static PlErrCode PlMainFileSystemMountLittleFs(
@@ -395,19 +351,7 @@ static PlErrCode PlMainFileSystemUnmountLittleFs(
 // -----------------------------------------------------------------------------
 static PlErrCode PlMainFileSystemFormatOther(
     const PlMainDeviceInformation* info) {
-#ifdef CONFIG_EXTERNAL_TARGET_RPI
-  return kPlErrNoSupported;
-#else
-  LOG_I("Other format begin. device:%s", info->source);
-  int ret = flash_eraseall(info->source);
-  if (ret < 0) {
-    LOG_E(0x03, "flash erase error. device:%s ret:%d errno:%d", info->source,
-          ret, errno);
-    return kPlErrWrite;
-  }
-  LOG_I("Other format end. device:%s", info->source);
-  return kPlErrCodeOk;
-#endif
+  return PlMainFileSystemFormatOtherImpl(info);
 }
 // -----------------------------------------------------------------------------
 static PlErrCode PlMainFileSystemMountOther(
@@ -430,13 +374,13 @@ static PlErrCode PlMainFileSystemUnmountOther(
 // -----------------------------------------------------------------------------
 #ifdef CONFIG_EXTERNAL_TARGET_T4R
 // Works the same as "rm -r path"
-static void RemoveDir(const char *path) {
-  DIR *dir = opendir(path);
+static void RemoveDir(const char* path) {
+  DIR* dir = opendir(path);
   if (!dir) {
     return;
   }
 
-  struct dirent *entry;
+  struct dirent* entry;
   while ((entry = readdir(dir)) != NULL) {
     if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
       continue;
@@ -445,15 +389,12 @@ static void RemoveDir(const char *path) {
     char filepath[1024];
     snprintf(filepath, sizeof(filepath), "%s/%s", path, entry->d_name);
 
-    struct stat statbuf;
-    if (!lstat(filepath, &statbuf)) {
-      if (S_ISDIR(statbuf.st_mode)) {
+    int ret = remove(filepath);
+    if (ret != 0) {
+      if (errno == EISDIR || errno == EPERM) {
         RemoveDir(filepath);
-      } else {
-        int ret = remove(filepath);
-        if (ret != 0) {
-          LOG_I("Failed to remove %s: %d %d", filepath, ret, errno);
-        }
+      } else if (errno != ENOENT) {
+        LOG_I("Failed to remove %s: %d %d", filepath, ret, errno);
       }
     }
   }
@@ -476,43 +417,43 @@ void PlMainInternalEraseMigrationSrcData(void) {
   RemoveDir("/misc/smartcamera/emmc/70_00/01/list");
   RemoveDir("/misc/smartcamera/emmc/70_00/02/list");
   RemoveDir("/misc/smartcamera/emmc/70_00/03/list");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0100.0.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0100.0.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0100.1.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0100.1.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0100_bank.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0200.0.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0200.0.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0200.1.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0200.1.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0200_bank.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0300.0.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0300.0.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0300.1.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0300.1.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0300_bank.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0400.0.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0400.0.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0400.1.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0400.1.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0400_bank.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0500.0.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0500.0.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0500.1.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0500.1.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0500_bank.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0600.0.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0600.0.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0600.1.bin");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0600.1.info");
-  remove("/misc/smartcamera/emmc/70_00/04/file/0600_bank.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0100.0.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0100.0.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0100.1.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0100.1.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0100_bank.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0200.0.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0200.0.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0200.1.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0200.1.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0200_bank.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0300.0.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0300.0.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0300.1.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0300.1.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0300_bank.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0400.0.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0400.0.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0400.1.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0400.1.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0400_bank.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0500.0.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0500.0.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0500.1.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0500.1.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0500_bank.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0600.0.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0600.0.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0600.1.bin");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0600.1.info");
+  (void)remove("/misc/smartcamera/emmc/70_00/04/file/0600_bank.info");
   RemoveDir("/misc/smartcamera/emmc/80_00/00/list");
   RemoveDir("/misc/smartcamera/emmc/80_00/01/list");
   RemoveDir("/misc/smartcamera/emmc/80_00/02/list");
   RemoveDir("/misc/smartcamera/emmc/90_00/00/list");
   RemoveDir("/misc/smartcamera/emmc/b0_00/00/list");
-  remove("/misc/smartcamera/evp_info/docker_setup_info.txt");
-  remove("/misc/smartcamera/evp_info/evp_setup_status.txt");
+  (void)remove("/misc/smartcamera/evp_info/docker_setup_info.txt");
+  (void)remove("/misc/smartcamera/evp_info/evp_setup_status.txt");
   RemoveDir("/misc/smartcamera/evp_info/ceat");
   RemoveDir("/misc/smartcamera/mnt/docker");
   RemoveDir("/misc/smartcamera/mnt/hoss");
@@ -524,11 +465,11 @@ void PlMainInternalEraseMigrationSrcData(void) {
   RemoveDir("/misc/var/lib/docker");
   RemoveDir("/misc/var/lib/chrony");
   RemoveDir("/misc/var/rauc");
-  remove("/misc/etc/docker/daemon.json");
-  remove("/misc/etc/hostapd/hostapd.conf");
-  remove("/misc/etc/syslog-ng/syslog-ng.conf");
-  remove("/misc/etc/systemd/journald.conf");
-  remove("/misc/etc/systemd/network/wired.network");
+  (void)remove("/misc/etc/docker/daemon.json");
+  (void)remove("/misc/etc/hostapd/hostapd.conf");
+  (void)remove("/misc/etc/syslog-ng/syslog-ng.conf");
+  (void)remove("/misc/etc/systemd/journald.conf");
+  (void)remove("/misc/etc/systemd/network/wired.network");
   RemoveDir("/misc/smartcamera/dnn_out");
 #endif
   return;
@@ -536,22 +477,21 @@ void PlMainInternalEraseMigrationSrcData(void) {
 // ----------------------------------------------------------------------------
 #ifdef CONFIG_EXTERNAL_TARGET_T4R
 static int MigrateKey(void) {
-  int ret = 0;
-  const char *src_path = "/factory/so/mqttclientkey.pem";
-  FILE *fp_src = fopen(src_path, "r");
+  const char* src_path = "/factory/so/mqttclientkey.pem";
+  FILE* fp_src = fopen(src_path, "r");
   if (fp_src == NULL) {
     LOG_E(0x07, "%s failed to open:%s", __func__, src_path);
     return -1;
   }
-  const char *dst_path = "/etc/evp/mqttclient_key.pem";
-  FILE *fp_dst = fopen(dst_path, "w");
+  const char* dst_path = "/etc/evp/mqttclient_key.pem";
+  FILE* fp_dst = fopen(dst_path, "w");
   if (fp_dst == NULL) {
     LOG_E(0x08, "%s failed to open:%s", __func__, dst_path);
     fclose(fp_src);
     return -1;
   }
   const int buf_size = 4096;
-  char *tmp = malloc(buf_size);
+  char* tmp = malloc(buf_size);
   if (tmp == NULL) {
     LOG_E(0x0D, "%s failed to malloc", __func__);
     fclose(fp_src);
@@ -570,24 +510,40 @@ static int MigrateKey(void) {
 #endif
 // ----------------------------------------------------------------------------
 #ifdef CONFIG_EXTERNAL_TARGET_T4R
+static FILE* GetFile(const char *path) {
+  FILE *fp = NULL;
+  fp = fopen(path, "r");
+  if (fp == NULL) {
+    LOG_E(0x0A, "%s failed to open:%s", __func__, path);
+  }
+  return fp;
+}
+static FILE* GetCAFile(void) {
+  FILE *fp = NULL;
+  fp = GetFile("/factory/so/AITRIOS_LA_concatenated_CA_R1.txt");
+  if (fp == NULL) {
+    fp = GetFile("/factory/so/AITRIOS_LA_concatenated_NPRD_CA_R1.txt");
+  }
+  return fp;
+}
 static int MigrateCert(void) {
-  int ret = 0;
-  const char *src_path1 = "/factory/so/mqttclient.nopass.pem";
-  FILE *fp_src1 = fopen(src_path1, "r");
+  const char* src_path1 = "/factory/so/mqttclient.nopass.pem";
+  FILE* fp_src1 = fopen(src_path1, "r");
   if (fp_src1 == NULL) {
     LOG_E(0x09, "%s failed to open:%s", __func__, src_path1);
     return -1;
   }
-  const char *src_path2 = "/factory/so/AITRIOS_LA_concatenated_CA_R1.txt";
-  FILE *fp_src2 = fopen(src_path2, "r");
+  FILE *fp_src2 = GetCAFile();
   if (fp_src2 == NULL) {
-    LOG_E(0x0A, "%s failed to open:%s", __func__, src_path2);
     fclose(fp_src1);
     return -1;
   }
-  const char *dst_path = "/etc/evp/mqttclient_cert.pem";
-  remove(dst_path); // for multiple migration.
-  FILE *fp_dst = fopen(dst_path, "a");
+  const char* dst_path = "/etc/evp/mqttclient_cert.pem";
+  int rm_ret = remove(dst_path);  // for multiple migration.
+  if (rm_ret != 0 && errno != ENOENT) {
+    LOG_W(0x0C, "Failed to remove %s: %d %d", dst_path, rm_ret, errno);
+  }
+  FILE* fp_dst = fopen(dst_path, "a");
   if (fp_dst == NULL) {
     LOG_E(0x0B, "%s failed to open:%s", __func__, dst_path);
     fclose(fp_src1);
@@ -596,7 +552,7 @@ static int MigrateCert(void) {
   }
 
   const int buf_size = 4096;
-  char *tmp = malloc(buf_size);
+  char* tmp = malloc(buf_size);
   if (tmp == NULL) {
     LOG_E(0x0C, "%s failed to malloc", __func__);
     fclose(fp_src1);

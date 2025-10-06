@@ -423,34 +423,6 @@ EsfLogManagerStatus EsfLogManagerSendBulkDlog(
     uint32_t module_id, size_t size, uint8_t *bulk_log,
     EsfLogManagerBulkDlogCallback callback, void *user_data);
 
-// """This function gets the exception occurrence information such as
-// the PC register and stack at the time the exception occurred.
-
-// The stringified Exception data is stored in the buf argument.
-// If an error occurs, no data will be stored in the buf argument.
-// This API can be called multiple times.
-
-// Args:
-//    size (uint32_t): Please specify the buffer size for the exception
-//      data obtained from the LogManager configuration information.
-//      If the data size is less than the above, the data will not be
-//      stored in the following buffer.
-//    *buf (uint8_t): Exception data storage buffer. If NULL or the data
-//       size is less than the above, an error is returned.
-//    *out_size (uint32_t): Returns the size of the exception data actually
-//       stored.If the error or exception data size is 0, it returns 0.
-//       If an error occurs, no data is stored in the buffer.
-
-// Returns:
-//    kEsfLogManagerStatusOk: success
-//    kEsfLogManagerStatusParamError: If the arguments buf and out_size are NULL
-//    kEsfLogManagerStatusFailed: abnormal termination
-//                                Failed to access Exception data, buf is
-//                                smaller than Exception data
-
-EsfLogManagerStatus EsfLogManagerGetExceptionData(uint32_t size, uint8_t *buf,
-                                                  uint32_t *out_size);
-
 #ifdef __cplusplus
 }
 #endif

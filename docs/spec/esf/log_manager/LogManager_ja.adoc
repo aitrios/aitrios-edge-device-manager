@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.15
+:revnumber: 0.0.16
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -759,10 +759,6 @@ Dlog、Elog、Blob処理用に3つ生成します。
 |EsfLogManagerSendBulkDlog
 |多量ログをまとめてEVPにBlob送信する場合に使用します。
 |<<#_EsfLogManagerSendBulkDlog>>
-
-|EsfLogManagerGetExceptionData
-|例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
-|<<#_EsfLogManagerGetExceptionData>>
 
 |===
 
@@ -1822,52 +1818,6 @@ EVPへのデータ送信が完了すると、コールバック関数に送信�
 ※このAPIはUtilityLog向けのため、他のモジュールは使用しないで下さい。
 
 
-[#_EsfLogManagerGetExceptionData]
-==== EsfLogManagerGetExceptionData
-* *機能* 
-+
-例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
-
-* *書式* +
-+
-``** EsfLogManagerStatus EsfLogManagerGetExceptionData(uint32_t size, uint8_t *buf, uint32_t *out_size) **``  
-
-* *引数の説明* +
-+
-**``[IN] uint32_t size``**:: 
-LogManager構成情報より得られるExceptionデータのバッファサイズを指定ください。
-上記データサイズ未満の場合、下記バッファにデータは格納されません。
-
-**``[OUT] uint8_t *buf``**:: 
-Exception用データ格納バッファ。NULLの場合、上記データサイズ未満の場合、エラーを返します +
-エラーの場合、バッファにデータは格納されません。
-
-**``[OUT] uint32_t *out_size``**:: 
-実際に格納したExceptionデータのサイズを返します。 +
-エラーまたはExceptionデータサイズが0の場合、0を返します。
-
-* *戻り値* +
-+
-実行結果に応じて<<#_EsfLogManagerGetExceptionData_Return_Values>>のいずれかの値が返ります。
-[#_EsfLogManagerGetExceptionData_Return_Values]
-.EsfLogManagerGetExceptionDataの戻り値の説明
-[width="100%", cols="30%,70%",options="header"]
-|===
-|戻り値  |説明
-|kEsfLogManagerStatusOk
-|正常終了
-|kEsfLogManagerStatusParamError
-|引数のbuf、out_sizeがNULLの場合
-|kEsfLogManagerStatusFailed
-|異常終了 +
-Exceptionデータへのアクセスに失敗、bufがExceptionデータより小さい値の場合
-|===
-
-* *説明* +
-引数bufに文字列化したExceptionデータを格納します。 +
-エラーの場合、引数bufにデータは格納されません。 +
-本APIは、多重呼び出し可能です。 
-
 == API使用時の呼び出し例
 
 Dlogシーケンスを以下に示します。
@@ -2178,4 +2128,6 @@ a|
 * CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATEの記載を削除
 * EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUMの記載を追加
 * EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUMの記載を追加
+|v0.0.16
+|EsfLogManagerGetExceptionDataを削除
 |===

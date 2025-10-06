@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 4
 :chapter-label:
-:revnumber: 0.0.4
+:revnumber: 0.0.5
 :toc: left
 :toc-title: 目次
 :toclevels: 4
@@ -674,6 +674,10 @@ stateDiagram-v2
 |各種構造体の初期化
 |PL Network固有の構造体を初期化します。
 |<<#_Function10>>
+
+|データマイグレーション機能
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+|<<#_Function11>>
 |===
 
 <<<
@@ -834,6 +838,42 @@ PlNetworkInitializeが実行済みであること。
 詳細は<<#_PlNetworkStructInitialize, PlNetworkStructInitialize>>を参照してください。
 エラー時の挙動、復帰方法::
 詳細は<<#_PlNetworkStructInitialize, PlNetworkStructInitialize>>を参照してください。
+検討事項::
+なし
+
+[#_Function11]
+==== データマイグレーション機能
+機能概要::
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+前提条件::
+PlNetworkInitializeが実行済みであること。
+機能詳細::
+データ移行の要否を判断します。 +
+詳細は<<#_PlNetworkIsNeedMigration, PlNetworkIsNeedMigration>>を参照してください。 +
++
+データ移行の初期化処理を行います。 +
+詳細は<<#_PlNetworkInitMigration, PlNetworkInitMigration>>を参照してください。 +
++
+旧型式の設定データを取得します。 +
+詳細は<<#_PlNetworkGetMigrationData, PlNetworkGetMigrationData>>を参照してください。 +
++
+データ移行の終了処理を行います。 +
+詳細は<<#_PlNetworkFinMigration, PlNetworkFinMigration>>を参照してください。 +
++
+旧型式の設定データを削除します。 +
+詳細は<<#_PlNetworkEraseMigrationSrcData, PlNetworkEraseMigrationSrcData>>を参照してください。
+詳細挙動::
+詳細は<<#_PlNetworkIsNeedMigration, PlNetworkIsNeedMigration>>を参照してください。 +
+詳細は<<#_PlNetworkInitMigration, PlNetworkInitMigration>>を参照してください。 +
+詳細は<<#_PlNetworkGetMigrationData, PlNetworkGetMigrationData>>を参照してください。 +
+詳細は<<#_PlNetworkFinMigration, PlNetworkFinMigration>>を参照してください。 +
+詳細は<<#_PlNetworkEraseMigrationSrcData, PlNetworkEraseMigrationSrcData>>を参照してください。
+エラー時の挙動、復帰方法::
+詳細は<<#_PlNetworkIsNeedMigration, PlNetworkIsNeedMigration>>を参照してください。 +
+詳細は<<#_PlNetworkInitMigration, PlNetworkInitMigration>>を参照してください。 +
+詳細は<<#_PlNetworkGetMigrationData, PlNetworkGetMigrationData>>を参照してください。 +
+詳細は<<#_PlNetworkFinMigration, PlNetworkFinMigration>>を参照してください。 +
+詳細は<<#_PlNetworkEraseMigrationSrcData, PlNetworkEraseMigrationSrcData>>を参照してください。
 検討事項::
 なし
 
@@ -1043,11 +1083,23 @@ y: 使用可能。 n: 使用不可。
 |PlNetworkEventHandler
 |Networkのイベントハンドラを表す関数ポインタです。
 |<<#_PlNetworkEventHandler>>
+
+|struct PlNetworkMigrationNeedParam
+|データ移行の要否を判断するための情報を表す構造体です。
+|<<#_PlNetworkMigrationNeedParam>>
+
+|PlNetworkMigrationHandle
+|旧型式の設定データの取得に使用するハンドルです。
+|<<#_PlNetworkMigrationHandle>>
+
+|enum PlNetworkMigrationDataId
+|旧型式の設定データの種類を表す列挙型です。
+|<<#_PlNetworkMigrationDataId>>
 |===
 
 [#L_API_LIST]
 ==== API一覧
-<<#_TableAPI>>にAPのI一覧を示します。
+<<#_TableAPI>>にAPIの一覧を示します。
 
 [#_TableAPI]
 .API一覧
@@ -1101,6 +1153,26 @@ y: 使用可能。 n: 使用不可。
 |PlNetworkStructInitialize
 |指定された構造体を初期化します。
 |<<#_PlNetworkStructInitialize>>
+
+|PlNetworkIsNeedMigration
+|データ移行の要否を判断します。
+|<<#_PlNetworkIsNeedMigration>>
+
+|PlNetworkInitMigration
+|データ移行の初期化処理を行います。
+|<<#_PlNetworkInitMigration>>
+
+|PlNetworkGetMigrationData
+|旧型式の設定データを取得します。
+|<<#_PlNetworkGetMigrationData>>
+
+|PlNetworkFinMigration
+|データ移行の終了処理を行います。
+|<<#_PlNetworkFinMigration>>
+
+|PlNetworkEraseMigrationSrcData
+|旧型式の設定データを削除します。
+|<<#_PlNetworkEraseMigrationSrcData>>
 |===
 
 <<<
@@ -1487,6 +1559,64 @@ typedef void (*PlNetworkEventHandler)(const char *if_name, PlNetworkEvent event,
 
 **``[IN] void *private_data``**:: 
 PlNetworkRegisterEventHandlerで指定されたprivate_dataがセットされます。
+
+[#_PlNetworkMigrationNeedParam]
+==== PlNetworkMigrationNeedParam
+データ移行の要否を判断するための情報を表す構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct {
+  int32_t netif_kind;
+} PlNetworkMigrationNeedParam;
+....
+
+* *値*
+
+[#_PlNetworkMigrationNeedParamValue]
+.PlNetworkMigrationNeedParamの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|int32_t netif_kind
+|ネットワークIFの種別(0: Wi-Fi 1: Ether)
+|===
+
+[#_PlNetworkMigrationHandle]
+==== PlNetworkMigrationHandle
+旧型式の設定データの取得に使用するハンドルです。
+
+* *書式*
+
+[source, C]
+....
+typedef void *PlNetworkMigrationHandle;
+....
+
+[#_PlNetworkMigrationDataId]
+==== PlNetworkMigrationDataId
+旧型式の設定データの種類を表す列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kPlNetworkMigrationDataIdIPAddress = 0,
+  kPlNetworkMigrationDataIdSubnetMask,
+  kPlNetworkMigrationDataIdGateway,
+  kPlNetworkMigrationDataIdDNS,
+  kPlNetworkMigrationDataIdIPMethod,
+  kPlNetworkMigrationDataIdNetifKind,
+  kPlNetworkMigrationDataIdProxyURL,
+  kPlNetworkMigrationDataIdProxyPort,
+  kPlNetworkMigrationDataIdProxyUserName,
+  kPlNetworkMigrationDataIdProxyPassword,
+  kPlNetworkMigrationDataIdMax
+} PlNetworkMigrationDataId;
+....
 
 <<<
 
@@ -2766,6 +2896,347 @@ PlNetworkStructInitialize((void*)&config, PlNetworkStructTypeWifiConfig);
 |-
 |影響なし
 |システム再起動
+|===
+
+<<<
+
+[#_PlNetworkIsNeedMigration]
+==== PlNetworkIsNeedMigration
+* *機能* +
+データ移行の要否を判断します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkIsNeedMigration(PlNetworkMigrationNeedParam *param,
+                                   bool *need_migration);
+....
+
+* *引数の説明* +
+**[IN] <<#_PlNetworkMigrationNeedParam,PlNetworkMigrationNeedParam>> *param**:: 
+データ移行の要否を判断するための情報。
+
+**[OUT] bool *need_migration**:: 
+データ移行の要否を表すフラグ。true:移行必要、false:移行不要。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** T4R以外はneed_migration=falseを返します。
+** T4Rはparamを参照してデータ移行の要否を判断し、結果をneed_migrationに返します。
+
+[#_PlNetworkIsNeedMigration_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkIsNeedMigration_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+|===
+
+<<<
+
+[#_PlNetworkInitMigration]
+==== PlNetworkInitMigration
+* *機能* +
+データ移行の初期化処理を行います。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkInitMigration(PlNetworkMigrationHandle *handle);
+....
+
+* *引数の説明* +
+**[OUT] <<#_PlNetworkMigrationHandle,PlNetworkMigrationHandle>> *handle**:: 
+旧型式の設定データの取得に使用するハンドルのポインタ。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** T4R以外は非サポートです。
+** T4Rは旧型式の設定データの取得に使用するハンドルを獲得できます。
+
+[#_PlNetworkInitMigration_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkInitMigration_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNoSupported
+|非サポート
+|-
+|影響なし
+|不要
+
+|kPlErrMemory
+|メモリ確保失敗
+|-
+|影響なし
+|システム再起動
+|===
+
+<<<
+
+[#_PlNetworkGetMigrationData]
+==== PlNetworkGetMigrationData
+* *機能* +
+旧型式の設定データを取得します。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetMigrationData(PlNetworkMigrationHandle handle,
+                                    PlNetworkMigrationDataId id, void *dst,
+                                    size_t dst_size);
+....
+
+* *引数の説明* +
+**[IN] <<#_PlNetworkMigrationHandle,PlNetworkMigrationHandle>> handle**:: 
+旧型式の設定データの取得に使用するハンドル。
+
+**[IN] <<#_PlNetworkMigrationDataId,PlNetworkMigrationDataId>> id**:: 
+旧型式の設定データの種類。
+
+**[OUT] void *dst**::
+取得結果。
+
+**[IN] size_t dst_size**::
+dstのサイズ[Byte]。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 本APIはPlNetworkInitMigrationの実行後に使用可能です。
+** T4R以外は非サポートです。
+** T4Rは旧型式の設定データを取得します。
+
+[#_PlNetworkGetMigrationData_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkGetMigrationData_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrInvalidParam
+|引数エラー
+|-
+|影響なし
+|システム再起動
+
+|kPlErrNoSupported
+|非サポート
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlNetworkFinMigration]
+==== PlNetworkFinMigration
+* *機能* +
+データ移行の終了処理を行います。
+
+* *書式* +
+
+[source, C]
+....
+PlErrCode PlNetworkFinMigration(PlNetworkMigrationHandle handle);
+....
+
+* *引数の説明* +
+**[IN] <<#_PlNetworkMigrationHandle,PlNetworkMigrationHandle>> handle**:: 
+旧型式の設定データの取得に使用するハンドル。
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** T4R以外は非サポートです。
+** T4Rは旧型式の設定データの取得に使用するハンドルを解放します。
+
+[#_PlNetworkFinMigration_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkFinMigration_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|kPlErrCodeOk
+|成功
+|-
+|影響なし
+|不要
+
+|kPlErrNoSupported
+|非サポート
+|-
+|影響なし
+|不要
+|===
+
+<<<
+
+[#_PlNetworkEraseMigrationSrcData]
+==== PlNetworkEraseMigrationSrcData
+* *機能* +
+旧型式の設定データを削除します。
+
+* *書式* +
+
+[source, C]
+....
+void PlNetworkEraseMigrationSrcData(void);
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+-
+
+* *説明* +
+** 本APIはPlNetworkInitializeの実行後に使用可能です。
+** T4R以外は何もしません。
+** T4Rは旧型式の設定データを削除します。
+
+[#_PlNetworkEraseMigrationSrcData_desc]
+.API詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API詳細情報  |説明
+|API種別
+|同期API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API内部でブロッキングするか
+|ブロッキングしない。
+|===
+
+[#_PlNetworkEraseMigrationSrcData_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT引数の状態 |エラー後のシステム状態 |復旧方法
+|-
+|-
+|-
+|-
+|-
 |===
 
 <<<
@@ -4414,5 +4885,22 @@ PHY ID 取得イベントを追加。
 
 ** 6.3. 各カメラのネットワーク状態サポート状況 +
 is_phy_id_valid を追加。
+
+|v0.0.5
+|
+* コンポーネントの機能説明を追加。
+** 3.5.11. データマイグレーション機能 +
+
+* データ型定義を追加。
+** 4.2.12. PlNetworkMigrationNeedParam +
+** 4.2.13. PlNetworkMigrationHandle +
+** 4.2.14. PlNetworkMigrationDataId +
+
+* API定義を追加。
+** 4.3.13. PlNetworkIsNeedMigration +
+** 4.3.14. PlNetworkInitMigration +
+** 4.3.15. PlNetworkGetMigrationData +
+** 4.3.16. PlNetworkFinMigration +
+** 4.3.17. PlNetworkEraseMigrationSrcData +
 
 |===

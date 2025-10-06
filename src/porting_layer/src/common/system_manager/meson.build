@@ -2,6 +2,5 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-pl_sources += files([
-	'pl_log_manager_cam_impl.c'
-])
+pl_includes_internal += include_directories('include')
+subdir('src')

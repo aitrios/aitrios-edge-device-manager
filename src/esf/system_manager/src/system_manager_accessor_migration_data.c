@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "system_manager_accessor_migration_data.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,8 +19,6 @@
 #include "system_manager_accessor_evp.h"
 #include "system_manager_accessor_hwinfo.h"
 #include "system_manager_accessor_root_auth.h"
-#include "system_manager_accessor_migration_data.h"
-
 #include "utility_log.h"
 #include "utility_log_module_id.h"
 
@@ -95,7 +94,7 @@ EsfSystemManagerResult EsfSystemManagerMigrationData(
     PlSystemManagerMigrationDataId id, void *dst, size_t dst_size) {
   EsfSystemManagerResult ret = kEsfSystemManagerResultOk;
 
-  PlErrCode pl_ret = PlSystemManagerGetMigrationDataImpl(id, dst, dst_size);
+  PlErrCode pl_ret = PlSystemManagerGetMigrationData(id, dst, dst_size);
   if (pl_ret != kPlErrCodeOk) {
     WRITE_DLOG_ERROR(
         MODULE_ID_SYSTEM, "%s-%d:Failed to get migration data. result=%d",

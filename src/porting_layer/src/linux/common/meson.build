@@ -12,3 +12,6 @@ if config_h.get('CONFIG_EXTERNAL_PL_NETWORK_IMPL', false)
   subdir('network_manager')
 endif
 subdir('power_manager')
+subdir('main')
+subdir('log_manager')
+subdir('system_manager')

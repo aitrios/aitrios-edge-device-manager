@@ -59,7 +59,7 @@ STATIC EsfClockManagerCallbackFunc g_ntp_sync_complete_cb_func_with_mutex = {
     .m_cb_func = NULL,
 };
 
-STATIC EsfClockManagerMillisecondT g_sleep_time = 0;
+STATIC EsfClockManagerMillisecondT g_notifier_sleep_time = 0;
 
 STATIC bool EsfClockManagerProcessNotificationEvent(
     const EsfClockManagerNotification *const notification);
@@ -296,7 +296,7 @@ STATIC void *EsfClockManagerNotifierMain(void *arg) {
         break;
       }
     } else {
-      EsfClockManagerWaitForNotification(g_sleep_time);
+      EsfClockManagerWaitForNotification(g_notifier_sleep_time);
     }
   }
 
@@ -436,7 +436,7 @@ void EsfClockManagerWaitForNotification(
     const EsfClockManagerMillisecondT timeout) {
   struct timespec abs_time = {0};
   bool calc_time = EsfClockManagerCalculateAbstimeInMonotonic(&abs_time,
-                                                              g_sleep_time);
+                                                              g_notifier_sleep_time);
 
   int rv =
       pthread_mutex_lock(&g_cond_for_notifier_with_mutex.m_cond_base.m_mutex);
@@ -450,7 +450,7 @@ void EsfClockManagerWaitForNotification(
     WRITE_DLOG_WARN(MODULE_ID_SYSTEM,
                     "%s-%d:%s --- pthread_mutex_lock failed.\n",
                     "clock_manager_notification.c", __LINE__, __func__);
-    sleep((unsigned int)(g_sleep_time / 1000U));
+    sleep((unsigned int)(g_notifier_sleep_time / 1000U));
   }
 
   if (rv == 0) {
@@ -465,7 +465,7 @@ void EsfClockManagerWaitForNotification(
 
 EsfClockManagerReturnValue EsfClockManagerCreateNotifierThread(
     EsfClockManagerMillisecondT surveillance_period) {
-  g_sleep_time = surveillance_period;
+  g_notifier_sleep_time = surveillance_period;
 
   if (pthread_mutex_lock(
           &g_notifier_thread_id_with_mutex.m_mutex_base.m_mutex)) {

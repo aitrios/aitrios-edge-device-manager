@@ -2,8 +2,8 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.8
-:toc:
+:revnumber: 0.1.9
+:toc: left
 :toc-title: 目次
 :toclevels: 3
 :lang: ja
@@ -45,11 +45,39 @@ ESF(AITRIOS Edge Software Framework) +
 == コンポーネントの説明
 === コンポーネントの概要
 
-<<#_FigureOverview>>通りの構成になっており、ESFモジュールの初期化管理、終了管理、システム停止管理を行うコンポーネントです。 +
-暫定対応として各機能の枠組みを用意し、実際の必要処理については各モジュールやアプリが記載する形で提供します。
+ESFモジュールの初期化管理、終了管理、システム停止管理を行うコンポーネントです。 +
+起動構成は<<#_FigureOverview>>の通りになっており、Nuttx系ではOSが直接ESF mainを起動します。Linux系ではlauncherが起動され、その子プロセスとしてESF mainが動きます。
+ESF main以下の詳細については、各モジュールやアプリのドキュメントを参照してください。
 
 [#_FigureOverview]
-.構成図
+.起動構成図
+[{mermaid_block}]
+....
+graph TB;
+  subgraph Nuttx系
+    os[OS]
+    main[ESF Main]
+    style main fill:#f9f
+  end
+  subgraph Linux系
+    os2[OS]
+    main2[ESF Main]
+    style main2 fill:#f9f
+    launcher
+  end
+
+os --> |起動| main
+main --> |終了| os
+
+os2 --> |親プロセス起動| launcher
+launcher --> |子プロセス起動| main2
+launcher --> |waipid| main2
+main2 --> |終了| launcher
+launcher --> |終了| os2
+....
+
+[#_FigureDetail]
+.詳細構成図
 [{mermaid_block}]
 ....
 graph TB;
@@ -62,7 +90,9 @@ graph TB;
   end
   evp_runtime[EVP Runtime等]
 
-os --> |起動/終了| main
+os --> |起動/終了（Linux系）| launcher
+launcher --> |起動/終了| main
+os --> |起動/終了（Nuttx系）| main
 main --> |初期化/終了| hal
 main --> |メッセージ送受信| hal
 main --> |"初期化/終了{mermaid_br}システム停止{mermaid_br}(再起動/シャットダウン/ファクトリーリセット)"| modules
@@ -99,7 +129,9 @@ graph TB;
   end
   evp_runtime[EVP Runtime等]
 
-os --> |起動| main_entry
+os --> |起動（Nuttx系）| main_entry
+os --> |起動（Linux系）| launcher
+launcher --> |起動| main_entry
 main_entry --> |初期化処理| boot
 boot --> |初期化処理| hal
 boot --> |"初期化処理 (ユーザ記載)"| hal
@@ -133,7 +165,9 @@ graph TB;
   end
   evp_runtime[EVP Runtime等]
 
-os --> |終了シグナル| main_entry
+os --> |終了シグナル（Nuttx系）| main_entry
+os --> |終了シグナル（Linux系）| launcher
+launcher --> |終了シグナル| main_entry
 main_entry --> |終了処理| finish
 finish --> |終了処理| hal
 finish --> |"終了処理 (ユーザ記載)"| hal
@@ -285,6 +319,7 @@ stateDiagram-v2
 * 機能詳細
     ** 起動 +
     OSから起動され、内部リソース初期化後に<<#_Function1, 初期化管理>>、<<#_Function3, システム停止管理>>を使用してMain処理を行います。
+    Linux系の場合、launcherプロセスが最初に起動し、ESF_mainはlauncherの子プロセスとして動きます。
     ** 終了 +
     OSからのシグナル受信を契機に<<#_Function2, 終了管理>>を使用して各モジュールの終了を行います。 +
     その後内部リソースを解放し、プロセスを終了します。
@@ -682,8 +717,8 @@ typedef enum EsfMainMsgType {
 == API使用時の呼び出し例
 各APIを使用する場合の呼び出し例を以下に示します。
 
-=== 初期化終了シーケンス
-[#_初期化終了シーケンスの例]
+=== 初期化終了シーケンス(Nuttx系)
+[#_初期化終了シーケンスの例(Nuttx系)]
 [{mermaid_block}]
 ....
 %%{init: {'noteAlign':'left'}}%%
@@ -729,6 +764,58 @@ sequenceDiagram
   end
   esf_main -->> -OS : 終了
   
+....
+
+=== 初期化終了シーケンス(Linux系)
+[#_初期化終了シーケンスの例(Linux系)]
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'left'}}%%
+sequenceDiagram
+    autonumber
+    participant OS
+    participant launcher
+    participant esf_main as Main
+    participant HAL as HAL/Utility
+
+  OS ->> +launcher : 親プロセス起動
+  launcher ->> +esf_main : 子プロセス起動
+  rect rgba(200, 150, 255,0.5)
+    Note left of esf_main: 初期化処理(EsfMainBoot)
+    esf_main ->> +HAL : Utility***Initialize
+    HAL -->> -esf_main : -
+    esf_main ->> +HAL : Hal***Initialize
+    HAL -->> -esf_main : -
+    Note over esf_main : 各モジュールで記載した起動処理を実行
+    Note over esf_main : 入力不可状態をLed Managerへ有効設定
+    esf_main ->> +HAL : UtilityMsgOpen
+    HAL -->> -esf_main : -
+    esf_main ->> esf_main : リソース確保
+  end
+
+  rect rgba(238, 220, 179, 0.5)
+    Note left of esf_main: システム停止通知待ち受け
+    loop 終了シグナル受信まで
+      esf_main ->> +HAL : UtilityMsgRecv
+      HAL -->> -esf_main : -
+      OS -) launcher : 終了シグナル
+      launcher -) esf_main : 終了シグナル
+    end
+  end
+
+  rect rgba(200, 150, 255,0.5)
+    Note left of esf_main: 終了処理(EsfMainFinish)
+    esf_main ->> +HAL : UtilityMsgClose
+    HAL -->> -esf_main : -
+    Note over esf_main : 各モジュールで記載した終了処理を実行
+    esf_main ->> +HAL : Hal***Finalize
+    HAL -->> -esf_main : -
+    esf_main ->> +HAL : Utility***Finalize
+    HAL -->> -esf_main : -
+    esf_main ->> esf_main : リソース解放
+  end
+  esf_main -->> -launcher : 終了
+  launcher -->> -OS : 終了
 ....
 
 === システム停止管理シーケンス
@@ -1083,5 +1170,10 @@ OSSを使用していません。
 
 * EsfMainProcessRebootとEsfMainProcessFactoryReset関数内のEsfPwrMgrExecuteRebootをEsfPwrMgrExecuteRebootExに変更
 * <<#__System_Shutdown_Management_Sequence_Example>> にEsfSystemManagerSetResetCauseを追加
+
+|0.1.9
+|記載内容の最新化
+
+* launcherを構成図、シーケンス図へ追加
 |===
 

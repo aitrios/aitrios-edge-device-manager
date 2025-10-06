@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.15
+:revnumber: 0.0.16
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
@@ -785,10 +785,6 @@ A list of APIs is shown in <<#_TableAPI>>.
 |EsfLogManagerSendBulkDlog
 |Used to send bulk Dlog data to EVP as a Blob.
 |<<#_EsfLogManagerSendBulkDlog>>
-
-|EsfLogManagerGetExceptionData
-|Retrieves exception information such as PC registers and stack content at the time of an exception.
-|<<#_EsfLogManagerGetExceptionData>>
 
 |===
 
@@ -1863,51 +1859,6 @@ If memory was allocated internally, it will be released at that time. +
 This API is reentrant (can be called multiple times concurrently). +
 *Note: This API is intended for UtilityLog use only. Do not use it in other modules.*
 
-[#_EsfLogManagerGetExceptionData]
-==== EsfLogManagerGetExceptionData
-
-* *Function* +
-Retrieves exception information such as PC registers and stack at the time of an exception.
-
-* *Format* +
-+
-``** EsfLogManagerStatus EsfLogManagerGetExceptionData(uint32_t size, uint8_t *buf, uint32_t *out_size) **``
-
-* *Arguments* +
-+
-**``[IN] uint32_t size``**::  
-Specifies the buffer size for exception data, obtained from the LogManager configuration. +
-If this size is insufficient, the data will not be written to the buffer.
-
-**``[OUT] uint8_t *buf``**::  
-Buffer to store exception data. +
-If NULL or smaller than the required size, an error will occur and no data will be stored.
-
-**``[OUT] uint32_t *out_size``**::  
-Returns the actual size of the exception data written. +
-Returns 0 on error or if there is no exception data.
-
-* *Return Value* +
-+
-Returns one of the following values from <<#_EsfLogManagerGetExceptionData_Return_Values>>:
-
-[#_EsfLogManagerGetExceptionData_Return_Values]
-.Description of EsfLogManagerGetExceptionData Return Values
-[width="100%", cols="30%,70%",options="header"]
-|===
-|Return Value |Description
-|kEsfLogManagerStatusOk
-|Successful completion
-|kEsfLogManagerStatusParamError
-|buf or out_size is NULL
-|kEsfLogManagerStatusFailed
-|Failure to access exception data, or the buffer is smaller than the exception data
-|===
-
-* *Description* +
-Stores the string-formatted exception data in the buffer specified by buf. +
-If an error occurs, no data will be written. +
-This API is reentrant (can be called multiple times concurrently).
 
 == Example API Usage
 
@@ -2215,4 +2166,6 @@ a|
 * Removed description of CONFIG_EXTERNAL_LOG_MANAGER_BULK_DLOG_MAX_ALLOCATE
 * Added description of EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUM
 * Added description of EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUM
+|v0.0.16
+| Removed EsfLogManagerGetExceptionData
 |===

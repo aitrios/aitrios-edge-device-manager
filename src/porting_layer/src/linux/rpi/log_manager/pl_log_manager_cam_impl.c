@@ -15,7 +15,7 @@ static const PlLogManagerBlockType
     s_block_type[PL_LOG_MANAGER_TARGET_BLOCK_TYPE_NUM] = {
         kPlLogManagerBlockTypeMain};
 
-const PlLogManagerBlockType *PlLogManagerGetLoadableBlock(
+const PlLogManagerBlockType *PlLogManagerGetLoadableBlockCamImpl(
     size_t *loadable_block_num) {
   if (loadable_block_num == NULL) {
     return NULL;
@@ -26,7 +26,7 @@ const PlLogManagerBlockType *PlLogManagerGetLoadableBlock(
   return s_block_type;
 }
 
-const PlLogManagerBlockType *PlLogManagerGetSaveableBlock(
+const PlLogManagerBlockType *PlLogManagerGetSaveableBlockCamImpl(
     PlLogManagerBlockType target_block, size_t *saveable_block_num) {
   if (saveable_block_num == NULL) {
     return NULL;
@@ -44,4 +44,4 @@ const PlLogManagerBlockType *PlLogManagerGetSaveableBlock(
   }
 }
 
-bool PlLogManagerLocalUploadAvailabilityCheck(void) { return false; }
+bool PlLogManagerLocalUploadAvailabilityCheckCamImpl(void) { return false; }
