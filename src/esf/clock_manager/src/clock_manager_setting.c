@@ -1698,9 +1698,6 @@ STATIC bool EsfClockManagerCheckParamSkipAndLimit(
     return false;
   }
   if (mask_skip_and_limit->type) {
-    if (skip_and_limit->type < kClockManagerParamTypeOff) {
-      return false;
-    }
     if (skip_and_limit->type >= kClockManagerParamTypeNumMax) {
       return false;
     }
@@ -1737,9 +1734,6 @@ STATIC bool EsfClockManagerCheckParamSlewParam(
     return false;
   }
   if (mask_slew_setting->type) {
-    if (slew_setting->type < kClockManagerParamTypeOff) {
-      return false;
-    }
     if (slew_setting->type >= kClockManagerParamTypeNumMax) {
       return false;
     }

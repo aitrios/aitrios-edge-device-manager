@@ -890,7 +890,7 @@ EsfFwMgrResult EsfFwMgrOpen(const EsfFwMgrOpenRequest* request,
       goto free_context_and_unlock_mutex_then_exit;
     }
   } else {
-    if (context->submodule_ops->erase == NULL) {
+    if (context->submodule_ops == NULL || context->submodule_ops->erase == NULL) {
       ret = kEsfFwMgrResultUnimplemented;
       ESF_FW_MGR_DLOG_ERROR("Erase for the target = %u is not supported.\n",
                             request->target);

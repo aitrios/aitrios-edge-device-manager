@@ -81,15 +81,13 @@ PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
 
 bool PlSystemManagerIsHwInfoSupported(void);
 
-bool PlSystemManagerRequiresJwtParsing(void);
-
 bool PlSystemManagerRequiresSerialNumberFromDeviceManifest(void);
 
 PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
                                       bool *reset_flag);
 
-PlErrCode PlSystemManagerGetMigrationDataImpl(PlSystemManagerMigrationDataId id,
-                                              void *dst, size_t dst_size);
+PlErrCode PlSystemManagerGetMigrationData(PlSystemManagerMigrationDataId id,
+                                          void *dst, size_t dst_size);
 
 PlErrCode PlSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id);
 

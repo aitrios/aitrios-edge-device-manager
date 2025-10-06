@@ -21,12 +21,12 @@
 
 static PlErrCode PlSystemManagerGetSerialNumber(char *serial_number);
 
-size_t PlSystemManagerGetHwInfoSize(void) {
+size_t PlSystemManagerGetHwInfoSizeCamImpl(void) {
   return (size_t)PL_SYSTEM_MANAGER_HWINFO_MAX_SIZE;
 }
 
-PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
-                                     PlSystemManagerHwInfo *data) {
+PlErrCode PlSystemManagerParseHwInfoCamImpl(char *hw_info,
+                                            PlSystemManagerHwInfo *data) {
   (void)hw_info;  // rpi porting layer does not use this parameter
 
   if ((data == NULL)) {
@@ -110,14 +110,14 @@ static PlErrCode PlSystemManagerGetSerialNumber(char *serial_number) {
   return kPlErrCodeOk;
 }
 
-bool PlSystemManagerIsHwInfoSupported(void) { return false; }
+bool PlSystemManagerIsHwInfoSupportedCamImpl(void) { return false; }
 
-bool PlSystemManagerRequiresSerialNumberFromDeviceManifest(void) {
+bool PlSystemManagerRequiresSerialNumberFromDeviceManifestCamImpl(void) {
   return false;
 }
 
-PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
-                                      bool *reset_flag) {
+PlErrCode PlSystemManagerIsNeedRebootCamImpl(
+    PlSystemManagerResetCause reset_cause, bool *reset_flag) {
   if (reset_flag == NULL) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:Parameter error. reset_flag=%p.",
                      "pl_system_manager.c", __LINE__, reset_flag);
@@ -129,8 +129,8 @@ PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
 }
 
 /*TODO : This is a provisional implementation to prevent build errors. */
-PlErrCode PlSystemManagerGetMigrationDataImpl(PlSystemManagerMigrationDataId id,
-                                              void *dst, size_t dst_size) {
+PlErrCode PlSystemManagerGetMigrationDataCamImpl(
+    PlSystemManagerMigrationDataId id, void *dst, size_t dst_size) {
   // RPI platform has no migration data, so return empty data
   if (dst != NULL && dst_size > 0) {
     // Set empty string to indicate no migration data available
@@ -145,7 +145,8 @@ PlErrCode PlSystemManagerGetMigrationDataImpl(PlSystemManagerMigrationDataId id,
   return kPlErrCodeOk;
 }
 
-PlErrCode PlSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id) {
+PlErrCode PlSystemManagerEraseMigrationDataCamImpl(
+    PlSystemManagerMigrationDataId id) {
   // RPI platform has no migration data files, so deletion is always successful
   WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
                   "%s-%d:RPI platform has no migration data for id=%d, "

@@ -33,7 +33,7 @@
 
 STATIC const char *const kThreadName = "ClockMgrNcMonit";
 
-STATIC EsfClockManagerMillisecondT g_sleep_time = 0;
+STATIC EsfClockManagerMillisecondT g_monitor_sleep_time = 0;
 
 STATIC EsfClockManagerThreadId g_monitor_thread_id_with_mutex = {
     .m_mutex_base =
@@ -118,15 +118,15 @@ EsfClockManagerReturnValue EsfClockManagerCreateMonitorThread(
     return kClockManagerStateTransitionError;
   }
 
-  const EsfClockManagerMillisecondT sleep_time_tmp = g_sleep_time;
-  g_sleep_time = surveillance_period;
+  const EsfClockManagerMillisecondT sleep_time_tmp = g_monitor_sleep_time;
+  g_monitor_sleep_time = surveillance_period;
   g_cond_for_monitor_with_mutex.m_req_fin = false;
 
   const int rv = pthread_create(&(g_monitor_thread_id_with_mutex.m_thread_id),
                                 NULL, EsfClockManagerMonitorThreadMain, NULL);
 
   if (rv) {
-    g_sleep_time = sleep_time_tmp;
+    g_monitor_sleep_time = sleep_time_tmp;
     (void)pthread_mutex_unlock(
         &g_monitor_thread_id_with_mutex.m_mutex_base.m_mutex);
     WRITE_ELOG_ERROR(MODULE_ID_SYSTEM, (uint16_t)0x8103);
@@ -343,8 +343,8 @@ STATIC void *EsfClockManagerMonitorThreadMain(void *arg) {
     ntp_status = NULL;
 
     {  // Check if the total error time exceeds the NTP error time
-      unsigned int total_error_time = num_of_errors *
-                                      (unsigned int)(g_sleep_time / 1000U);
+      unsigned int total_error_time =
+          num_of_errors * (unsigned int)(g_monitor_sleep_time / 1000U);
       if (total_error_time >= ntp_error_time) {
         WRITE_DLOG_WARN(
             MODULE_ID_SYSTEM, "%s-%d:%s --- NTP sync failed for %d seconds. \n",
@@ -354,8 +354,8 @@ STATIC void *EsfClockManagerMonitorThreadMain(void *arg) {
       }
     }
 
-    bool calc_time = EsfClockManagerCalculateAbstimeInMonotonic(&abs_time,
-                                                                g_sleep_time);
+    bool calc_time = EsfClockManagerCalculateAbstimeInMonotonic(
+        &abs_time, g_monitor_sleep_time);
 
     {
       // Wait for the condition variable to be signaled or timeout
@@ -374,7 +374,7 @@ STATIC void *EsfClockManagerMonitorThreadMain(void *arg) {
             &g_cond_for_monitor_with_mutex.m_cond_base.m_cond,
             &g_cond_for_monitor_with_mutex.m_cond_base.m_mutex, &abs_time);
       } else {
-        sleep((unsigned int)(g_sleep_time / 1000U));
+        sleep((unsigned int)(g_monitor_sleep_time / 1000U));
       }
 
       if (g_cond_for_monitor_with_mutex.m_req_fin) {

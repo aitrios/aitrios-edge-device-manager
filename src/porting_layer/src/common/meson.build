@@ -18,4 +18,6 @@ if config_h.get('CONFIG_EXTERNAL_PL_NETWORK', false)
 endif
 
 subdir('power_manager')
+subdir('system_manager')
 subdir('main')
+subdir('log_manager')

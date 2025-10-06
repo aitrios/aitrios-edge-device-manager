@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.14
+:revnumber: 0.1.15
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -580,6 +580,10 @@ a|* 点灯
 |ネットワーク接続情報保存機能
 |ネットワーク接続情報の保存および取得を行います。
 |<<#_FunctionNetworkSetting>>
+
+|データマイグレーション機能
+|過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+|<<#_FunctionMigration>>
 |===
 
 <<<
@@ -691,6 +695,20 @@ Network Managerが初期化されていること。
     *** ``**EsfNetworkManagerLoadParameter**``、``**EsfNetworkManagerLoadVariantParameter**``を呼び出すことで、ネットワーク接続情報をParameter Storage Manager経由で取得します。 +
     ** エラー時の挙動、復帰方法 +
         各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionSaveParameter, ネットワーク接続情報保存API>>
+
+[#_FunctionMigration]
+==== データマイグレーション機能
+* 機能概要 +
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+* 前提条件 +
+ParameterStorageManagerが初期化されていること。 +
+Network Managerが初期化されていること。
+* 機能詳細
+    ** 詳細挙動 +
+    *** ``**EsfNetworkManagerExecMigration**``を呼び出すことで、旧形式の設定データを新形式に移行します。 +
+    *** ``**EsfNetworkManagerEraseMigrationSrcData**``を呼び出すことで、旧型式の設定データを削除します。 +
+    ** エラー時の挙動、復帰方法 +
+        各API詳細説明にて記載しているため、そちらを参照ください。<<#_SampleFunctionExecMigration, データマイグレーションAPI>>
 
 <<<
 
@@ -983,6 +1001,14 @@ staticメモリは 128 byte使用します。
 |ネットワーク接続情報をParameter Storage Manager経由で取得します。 +
 ネットワーク接続情報は共用体で指定します。
 |<<#_SampleFunctionLoadVariantParameter>>
+
+|EsfNetworkManagerExecMigration
+|旧形式の設定データを新形式に移行します。
+|<<#_SampleFunctionExecMigration>>
+
+|EsfNetworkManagerEraseMigrationSrcData
+|旧型式の設定データを削除します。
+|<<#_SampleFunctionEraseMigrationSrcData>>
 
 |===
 
@@ -3515,6 +3541,128 @@ NULLを指定してはいけません。 +
 
 |===
 
+[#_SampleFunctionExecMigration]
+==== EsfNetworkManagerExecMigration
+* *機能* 
++
+過去のバージョンとの互換性を保つため、旧形式の設定データを新形式に移行します。
+
+
+* *書式* +
++
+``** EsfNetworkManagerResult EsfNetworkManagerExecMigration(void)**``  
+
+* *引数の説明* +
++
+引数はありません。
+
+* *戻り値* +
++
+実行結果に応じて<<#_TableReturnValueResult, EsfNetworkManagerResult>>のいずれかの値が返ります。
+
+
+* *説明* +
+** 動作詳細 +
+*** 以下の設定データの移行を行います：
+**** IPAddress: IPアドレス +
+**** SubnetMask: サブネットマスク +
+**** Gateway: ゲートウェイ +
+**** DNS: DNS +
+**** IPMethod: DHCP使用の選択(dhcp / static) +
+**** NetifKind: ネットワークIF種別の選択(WiFi / Eth) +
+**** ProxyURL: プロキシURL +
+**** ProxyPort: プロキシポート +
+**** ProxyUserName: プロキシユーザ名 +
+**** ProxyPassword: プロキシパスワード
+*** 旧型式の設定データから「IPAddress」が取得できない場合、新形式では「IPAddress、SubnetMask、Gateway、DNS」を設定しないで、「IPMethod」をdhcpに設定します。 +
+*** 旧型式の設定データから「ProxyURL」が取得できない場合、新形式では「ProxyURL、ProxyPort、ProxyUserName、ProxyPassword」を設定しません。 +
+*** 旧型式の設定データが読めない場合、旧型式の設定データが不正な値の場合は、新形式では「IPMethod」をdhcpに設定します。
+** 備考
+*** 同時に呼び出し不可。 +
+*** 複数のスレッドからの呼び出し不可。 +
+*** 複数のタスクからの呼び出し不可。 +
+*** API内部で以下理由によりブロッキングします。 +
+最大ブロッキング時間は1000ms未満です。 +
+**** リソースアクセスの排他制御のため +
+**** Parameter Storage Manager同時アクセス実行発生時のブロッキングのため +
+
+** エラー情報
++
+[#_ErrorTableExecMigration]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|kEsfNetworkManagerResultSuccess
+|成功
+|成功
+|なし
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|状態異常
+|未初期化状態
+|初期化してリトライ
+
+|kEsfNetworkManagerResultExternalError
+|外部APIエラー
+|Parameter Storage ManagerのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultHWIFError
+|PL APIエラー
+|PLのAPIからエラー応答
+|リトライ、リトライで復旧しない場合はシステム再起動
+
+|kEsfNetworkManagerResultInternalError
+|内部異常
+|内部処理で異常発生
+|システム再起動
+
+|===
+
+[#_SampleFunctionEraseMigrationSrcData]
+==== EsfNetworkManagerEraseMigrationSrcData
+* *機能* 
++
+旧型式の設定データを削除します。
+
+
+* *書式* +
++
+``** void EsfNetworkManagerEraseMigrationSrcData(void)**``  
+
+* *引数の説明* +
++
+引数はありません。
+
+* *戻り値* +
++
+戻り値はありません。
+
+
+* *説明* +
+** 動作詳細 +
+*** 旧型式の設定データを削除します。 +
+*** 旧形式の設定データを新形式に移行した後に、呼び出すことを想定しています。
+** 備考
+*** 同時に呼び出し不可。 +
+*** 複数のスレッドからの呼び出し不可。 +
+*** 複数のタスクからの呼び出し不可。 +
+
+** エラー情報
++
+[#_ErrorTableEraseMigrationSrcData]
+.エラー情報
+[width="100%", options="header"]
+|===
+|戻り値 |説明 |エラー条件 |復旧方法
+|なし
+|なし
+|なし
+|なし
+
+|===
+
 <<<
 
 == API使用時の呼び出し例
@@ -4263,6 +4411,17 @@ netutilsをDHCP操作、IP情報設定・取得に使用
   ** 以下APIのブロッキング記載を変更
     *** EsfNetworkManagerSaveParameter
     *** EsfNetworkManagerLoadParameter
+
+|v0.1.15
+|マイグレーション機能を追加
+
+* コンポーネントの機能説明
+  ** データマイグレーション機能を追加
+
+* API定義
+  ** 以下APIを追加
+    *** EsfNetworkManagerExecMigration
+    *** EsfNetworkManagerEraseMigrationSrcData
 
 |===
 

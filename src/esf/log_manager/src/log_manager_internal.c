@@ -1617,9 +1617,11 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalLocalUpload(void) {
       free(file_name);
       file_name = NULL;
 
-      const struct SYS_http_header headers = {.key = NULL, .value = NULL};
+      const struct SYS_http_header headers[] = {
+          {.key = NULL, .value = NULL}
+      };
       enum SYS_result result =
-          SYS_put_blob(s_dlog_sys_client, local_url, &headers,
+          SYS_put_blob(s_dlog_sys_client, local_url, headers,
                        (unsigned long long)data->m_upload_size,  // NOLINT
                        EsfLogManagerInternalLocalUploadCallback, (void *)data);
       free(local_url);

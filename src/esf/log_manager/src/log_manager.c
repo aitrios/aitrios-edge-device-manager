@@ -356,20 +356,3 @@ EsfLogManagerStatus EsfLogManagerSendBulkDlog(
   return kEsfLogManagerStatusOk;
 }
 #endif  // CONFIG_EXTERNAL_DLOG_DISABLE
-
-EsfLogManagerStatus EsfLogManagerGetExceptionData(uint32_t size, uint8_t *buf,
-                                                  uint32_t *out_size) {
-  uint8_t data[] = "exception data";
-  uint32_t data_size = sizeof(data);
-  if (size < data_size) {
-    *out_size = 0;
-    ESF_LOG_MANAGER_ERROR("Size failed:size %u\n", size);
-    return kEsfLogManagerStatusFailed;
-  } else {
-    *out_size = data_size;
-    memcpy(buf, data, sizeof(data));
-    LOG_MANAGER_TRACE_PRINT("size:%u, buf:%p, out_size:%d\n", size, buf,
-                            *out_size);
-    return kEsfLogManagerStatusOk;
-  }
-}

@@ -2,16 +2,24 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.9
+:revnumber: 0.1.11
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
-:lang: ja
+:lang: en
 :xrefstyle: short
 :figure-caption: Figure
 :table-caption: Table
 :section-refsig:
 :experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
 
 == Purpose and Scope
 
@@ -35,19 +43,34 @@ Provides APIs to access specific data for the App.
 Receives API calls from the App and performs data retrieval and settings through the ParameterStorageManager.
 
 .Component Diagram
-[source,mermaid]
+[{mermaid_block}]
 ....
 graph TB;
 direction LR
 
 App --> |Get/Set API| SystemManager
-SystemManager --> |Data Retrieve/Store| ParameterStorageManager
+SystemManager --> |Data Retrieval/Storage| ParameterStorageManager
+....
+
+For the device startup reason notification function and the exception information upload function, the configuration is as shown in the diagram below.
+
+.Component Diagram
+[{mermaid_block}]
+....
+graph TB;
+direction LR
+
+EsfMain --> |Device Startup Reason Notification / Exception Information Upload / Determination of Need for System Restart| SystemManager
+SystemManager --> |Determination of Need for Restart| PLSystemManager
+SystemManager --> |Acquisition of Startup Reasons / Exception Information| PowerManager
+SystemManager --> |Elog Output of Startup Reasons| UtilityLog
+SystemManager --> |BulkDlog Output of Exception Information| LogManager
 ....
 
 <<<
 
 === State Transition
-SystemManager does not maintain any internal state.
+The System Manager does not maintain any state.
 
 <<<
 
@@ -59,14 +82,22 @@ A list of functions is shown in <<#_TableFunction>>.
 [width="100%", cols="30%,55%,15%",options="header"]
 |===
 |Function Name |Description |Section Number
-
 |Data Retrieval Function
 |Retrieves the specified data from the ParameterStorageManager.
 |<<#_DataRetrievalFunction>>
 
 |Data Setting Function
-|Sets the specified data in the ParameterStorageManager.
+|Sets the specified data in the Parameter Storage Manager.
 |<<#_DataSettingFunction>>
+|Device Startup Reason Notification Function
+|Notifies the device startup reason through Elog.
+|<<#_ResetCauseNortifyFunction>>
+|Exception Information Upload Function
+|Uploads exception information to the cloud via BulkDlog.
+|<<#_ExceptionInfoUploadFunction>>
+|Data Migration Function
+|Migrates configuration data from the old format to the new format to maintain compatibility with previous versions.
+|<<#_DataMigrationFunction>>
 |===
 
 <<<
@@ -97,6 +128,85 @@ A list of functions is shown in <<#_TableFunction>>.
         *** Opens the ParameterStorageManager, sets the data, and closes the ParameterStorageManager.
     ** Behavior in Case of Error and Recovery Method
         *** Returns an error if the API call to the ParameterStorageManager fails.
+
+[#_ResetCauseNortifyFunction]
+==== Device Startup Reason Notification Function
+* Function Overview
+    ** Provides a function to notify the device startup reason through Elog.
+* Prerequisites
+    ** The Parameter Storage Manager / Power Manager must be initialized.
+* Function Details
+    ** Detailed Behavior
+        *** Notifies the device startup reason through Elog.
+    ** Behavior in Case of Error and Recovery Method
+        *** Returns an error if an API call to the Parameter Storage Manager or Power Manager fails.
+
+[#_DeviceResetCauseElogList]
+.List of Device Startup Reason Elog Entries
+[width="100%",options="header"]
+|===
+|ID |Description
+|0x6001
+|System restart due to power supply
+
+|0x6002
+|System restart due to voltage drop
+
+|0x6003
+|System restart due to normal software reset
+
+|0x6004
+|System restart due to abnormal software reset
+
+|0x6005
+|System restart due to deep sleep
+
+|0x6006
+|System restart due to WDT
+
+|0x6040
+|System restart due to EVP memory allocation failure
+
+|0x6041
+|System restart due to EVP freeze detection
+
+|===
+
+
+[#_ExceptionInfoUploadFunction]
+==== Exception Information Upload Function
+* Function Overview
+    ** Provides a function to upload exception information to the cloud via BulkDlog.
+* Prerequisites
+    ** The Parameter Storage Manager / Power Manager / Log Manager must be initialized.
+* Function Details
+    ** Detailed Behavior
+        *** Consists of two stages: exception information retrieval and upload.
+        *** Exception Information Retrieval
+        **** By calling ``EsfSystemManagerSetExceptionInfo()``, the startup reason is obtained. +
+             There are startup reasons obtained from EVP and those obtained from the Power Manager, with the EVP startup reason taking priority. +
+             If the startup reason is “System restart due to WDT,” the Power Manager retrieves the exception information, which is then stored in the Parameter Storage Manager. +
+        *** Exception Information Upload
+        **** By calling ``EsfSystemManagerUploadExceptionInfo()``, the exception information stored in the Parameter Storage Manager is retrieved and uploaded to the cloud via BulkDlog. +
+             After upload completion, the exception information stored in the Parameter Storage Manager is deleted. +
+             If no exception information exists, no action is taken.
+    ** Behavior in Case of Error and Recovery Method
+        *** Returns an error if an API call to the Parameter Storage Manager / Power Manager / Log Manager fails.
+
+[#_DataMigrationFunction]
+==== Data Migration Function
+* Function Overview
+    ** Provides a function to migrate configuration data from the old format to the new format to maintain compatibility with previous versions.
+* Prerequisites
+    ** The Parameter Storage Manager must be initialized.
+* Function Details
+    ** Sequentially executes migration for the following data types:
+        *** RootAuth: Migration of root certificate data and its SHA-256 hash value
+        *** DeviceManifest: Migration of device manifest data
+        *** HwInfo: Migration of hardware information data
+        *** EVP Setup Info: Migration of EVP setup information (Address/Port)
+    ** Deletes old-format data files after the migration is completed.
+    ** If the target data is empty, it is treated as a normal completion.
 
 <<<
 
@@ -135,7 +245,6 @@ A list of non-functional requirements is shown in <<#_TableNonFunction>>.
 
 [#_DescriptionofNonFunctionalRequirementsoftheComponent]
 === Description of Non-Functional Requirements of the Component
-
 [#_ContinuousProcessingTime]
 ==== Continuous Processing Time
 The maximum processing time for this component is 10 ms. +
@@ -168,176 +277,190 @@ Does not use threads.
 [width="100%", options="header"]
 |===
 |Config Name |Description |Default Value
-
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_URL
-|Default value returned when the DPS URL cannot be read from the ParameterStorageManager.
+|The default value returned when the DPS URL cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_COMMON_NAME
-|Default value returned when the Common Name cannot be read from the ParameterStorageManager.
+|The default value returned when the Common Name cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_DPS_SCOPE_ID
-|Default value returned when the DPS Scope ID cannot be read from the ParameterStorageManager.
+|The default value returned when the DPS Scope ID cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_PROJECT_ID
-|Default value returned when the Project ID cannot be read from the ParameterStorageManager.
+|The default value returned when the Project ID cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_REGISTER_TOKEN
-|Default value returned when the Register Token cannot be read from the ParameterStorageManager.
+|The default value returned when the Register Token cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_URL
-|Default value returned when the EVP Hub URL cannot be read from the ParameterStorageManager.
+|The default value returned when the EVP Hub URL cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_PORT
-|Default value returned when the EVP Hub Port cannot be read from the ParameterStorageManager.
+|The default value returned when the EVP Hub Port cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_IOT_PLATFORM
-|Default value returned when the IoT Platform cannot be read from the ParameterStorageManager.
+|The default value returned when the IoT Platform cannot be read from the Parameter Storage Manager.
 |``""``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS
 a|
-Default value returned when the EVP TLS cannot be read from the ParameterStorageManager.
+The default value returned when the EVP TLS cannot be read from the Parameter Storage Manager.
 
-* ``"0"``: TLS enabled
-* ``"1"``: TLS disabled
+* ``"0"``: TLS enabled  
+* ``"1"``: TLS disabled  
 
 |``"0"``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_QR_MODE_TIMEOUT_VALUE
-|Default value returned when the QR mode timeout value cannot be read from the ParameterStorageManager.
+|The default value returned when the QR mode timeout value cannot be read from the Parameter Storage Manager.
+
 |``0``
 
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_INITIAL_SETTING_FLAG
 a|
-Default value returned when the InitialSettingFlag cannot be read from the ParameterStorageManager.
+The default value returned when the InitialSettingFlag cannot be read from the Parameter Storage Manager.
 
-* ``0``: Initial setting not completed
-* ``1``: Initial setting completed
+* ``0``: Initial setting not performed  
+* ``1``: Initial setting completed  
 
 |``0``
 
 |===
 
 ==== Data Type List
-A list of data types is shown in <<#_TableDataType>>.
+<<#_TableDataType>> shows the list of data types.
 
 [#_TableDataType]
 .Data Type List
 [width="100%", cols="30%,55%,15%",options="header"]
 |===
 |Data Type Name |Description |Section Number
-
 |EsfSystemManagerResult
-|Enumeration defining the result of API execution.
+|An enumeration type that defines the execution result of the API.
 |<<#_EsfSystemManagerResult>>
 
 |ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE
-|Macro defining the data size of the Device Manifest.
+|A macro that defines the data size of the Device Manifest.
 |<<#_ESF_SYSTEM_MANAGER_DEVICE_MANIFEST_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE
-|Macro defining the data size of the DPS URL.
+|A macro that defines the data size of the DPS URL.
 |<<#_ESF_SYSTEM_MANAGER_DPS_URL_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE
-|Macro defining the data size of the Common Name.
+|A macro that defines the data size of the Common Name.
 |<<#_ESF_SYSTEM_MANAGER_COMMON_NAME_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE
-|Macro defining the data size of the DPS Scope ID.
+|A macro that defines the data size of the DPS Scope ID.
 |<<#_ESF_SYSTEM_MANAGER_DPS_SCOPE_ID_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE
-|Macro defining the data size of the Project ID.
+|A macro that defines the data size of the Project ID.
 |<<#_ESF_SYSTEM_MANAGER_PROJECT_ID_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE
-|Macro defining the data size of the Register Token.
+|A macro that defines the data size of the Register Token.
 |<<#_ESF_SYSTEM_MANAGER_REGISTER_TOKEN_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE
-|Macro defining the data size of the EVP Hub URL.
+|A macro that defines the data size of the EVP Hub URL.
 |<<#_ESF_SYSTEM_MANAGER_EVP_HUB_URL_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE
-|Macro defining the data size of the EVP Hub Port.
+|A macro that defines the data size of the EVP Hub Port.
 |<<#_ESF_SYSTEM_MANAGER_EVP_HUB_PORT_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE
-|Macro defining the data size of the EVP IoT Platform.
+|A macro that defines the data size of the EVP IoT Platform.
 |<<#_ESF_SYSTEM_MANAGER_IOT_PLATFORM_MAX_SIZE>>
 
 |EsfSystemManagerEvpTlsValue
-|Enumeration defining the configuration values for EVP TLS.
+|An enumeration type that defines the configuration values of EVP TLS.
 |<<#_EsfSystemManagerEvpTlsValue>>
 
 |ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE
-|Macro defining the data size of the Root Certificate.
+|A macro that defines the data size of the root certificate.
 |<<#_ESF_SYSTEM_MANAGER_ROOT_CA_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE
-|Macro defining the data size of the Root Certificate hash value.
+|A macro that defines the data size of the root certificate hash value.
 |<<#_ESF_SYSTEM_MANAGER_ROOT_CA_HASH_MAX_SIZE>>
 
 |EsfSystemManagerHwInfo
-|Structure containing data related to HW information set on the device.
+|A structure that contains hardware information data configured on the device.
 |<<#_EsfSystemManagerHwInfo>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
-|Macro defining the data size of the HW Info Model Name.
+|A macro that defines the data size of the HwInfo Model Name.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
-|Macro defining the data size of the HW Info Manufacturer Name.
+|A macro that defines the data size of the HwInfo Manufacturer Name.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
-|Macro defining the data size of the HW Info Product Serial Number.
+|A macro that defines the data size of the HwInfo Product Serial Number.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
-|Macro defining the data size of the HW Info Serial Number.
+|A macro that defines the data size of the HwInfo Serial Number.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
-|Macro defining the data size of the HW Info AIISP Chip ID.
+|A macro that defines the data size of the HwInfo AIISP Chip ID.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
-|Macro defining the data size of the HW Info Sensor ID.
+|A macro that defines the data size of the HwInfo Sensor ID.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE
-|Macro defining the data size of the HW Info Application Processor Type.
+|A macro that defines the data size of the HwInfo Application Processor Type.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE>>
 
 |ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
-|Macro defining the data size of the HW Info Sensor Model Name.
+|A macro that defines the data size of the HwInfo Sensor Model Name.
 |<<#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>
 
+|ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+|A macro that defines the data size of the HwInfo Device Name.
+|<<#_ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE>>
+
 |EsfSystemManagerInitialSettingFlag
-|Enumeration defining the configuration values for InitialSettingFlag.
+|An enumeration type that defines the configuration values of the InitialSettingFlag.
 |<<#_EsfSystemManagerInitialSettingFlag>>
+
+|EsfSystemManagerResetCause
+|An enumeration type that defines the startup reason values provided by the Power Manager.
+|<<#_EsfSystemManagerResetCause>>
+
+|EsfSystemManagerEvpResetCause
+|An enumeration type that defines the startup reason values provided by EVP.
+|<<#_EsfSystemManagerEvpResetCause>>
+
+|EsfSystemManagerRebootType
+|An enumeration type that defines the reboot type values.
+|<<#_EsfSystemManagerRebootType>>
 
 |===
 
 [#_APIList]
 ==== API List
-A list of APIs is shown below.
+This section shows the list of APIs.
 
 [#_GetAPI]
 .List of Retrieval APIs
 [width="100%",options="header"]
 |===
-|API Name |Description |Return Value When Data is Empty |Section Number
-
+|API Name |Description |Return Value When Data Is Empty |Section Number
 |EsfSystemManagerGetDeviceManifest
 |Retrieves the Device Manifest.
 |Error
@@ -368,10 +491,12 @@ A list of APIs is shown below.
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_REGISTER_TOKEN
 |<<#_EsfSystemManagerGetRegisterToken>>
 
+
 |EsfSystemManagerGetEvpHubUrl
 |Retrieves the EVP Hub URL.
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_HUB_URL
 |<<#_EsfSystemManagerGetEvpHubUrl>>
+
 
 |EsfSystemManagerGetEvpHubPort
 |Retrieves the EVP Hub Port.
@@ -388,13 +513,14 @@ A list of APIs is shown below.
 |CONFIG_EXTERNAL_SYSTEM_MANAGER_DEFAULT_EVP_TLS
 |<<#_EsfSystemManagerGetEvpTls>>
 
+
 |EsfSystemManagerGetRootCa
-|Retrieves the Root Certificate.
+|Retrieves the root certificate.
 |Error
 |<<#_EsfSystemManagerGetRootCa>>
 
 |EsfSystemManagerGetRootCaHash
-|Retrieves the Root Certificate hash value.
+|Retrieves the root certificate hash value.
 |Error
 |<<#_EsfSystemManagerGetRootCaHash>>
 
@@ -409,11 +535,22 @@ A list of APIs is shown below.
 |<<#_EsfSystemManagerGetInitialSettingFlag>>
 
 |EsfSystemManagerGetHwInfo
-|Retrieves the HW information set on the device.
+|Retrieves the hardware information configured on the device.
 |Returns empty data
 |<<#_EsfSystemManagerGetHwInfo>>
 
+|EsfSystemManagerGetEvpResetCause
+|Retrieves the startup reason provided by EVP.
+|``kEsfSystemManagerEvpResetCauseClear``
+|<<#_EsfSystemManagerGetEvpResetCause>>
+
+|EsfSystemManagerGetResetCause
+|Retrieves the startup reason provided by the Power Manager.
+|``kEsfSystemManagerResetCauseClear``
+|<<#_EsfSystemManagerGetResetCause>>
+
 |===
+
 
 
 [#_SetAPI]
@@ -451,7 +588,7 @@ A list of APIs is shown below.
 |<<#_EsfSystemManagerSetEvpHubPort>>
 
 |EsfSystemManagerSetEvpTls
-|Sets the EVP TLS setting.
+|Sets the EVP TLS value.
 |<<#_EsfSystemManagerSetEvpTls>>
 
 |EsfSystemManagerSetEvpIotPlatform
@@ -466,7 +603,47 @@ A list of APIs is shown below.
 |Sets the InitialSettingFlag.
 |<<#_EsfSystemManagerSetInitialSettingFlag>>
 
+|EsfSystemManagerSetEvpResetCause
+|Sets the startup reason provided by EVP.
+|<<#_EsfSystemManagerSetEvpResetCause>>
+
+|EsfSystemManagerSetResetCause
+|Sets the startup reason provided by the Power Manager.
+|<<#_EsfSystemManagerSetResetCause>>
 |===
+
+[#_OtherAPI]
+.List of Other APIs
+[width="100%",options="header"]
+|===
+|API Name |Description |Section Number
+
+|EsfSystemManagerSetExceptionInfo
+|Saves the startup reason and exception information.
+|<<#_EsfSystemManagerSetExceptionInfo>>
+
+|EsfSystemManagerSendResetCause
+|Notifies the startup reason through Elog.
+|<<#_EsfSystemManagerSendResetCause>>
+
+|EsfSystemManagerUploadExceptionInfo
+|Uploads exception information to the cloud via BulkDlog.
+|<<#_EsfSystemManagerUploadExceptionInfo>>
+
+|EsfSystemManagerIsNeedReboot
+|Determines whether a system reboot is required based on the startup reason.
+|<<#_EsfSystemManagerIsNeedReboot>>
+
+|EsfSystemManagerExecReboot
+|Executes a system reboot with the specified reboot type.
+|<<#_EsfSystemManagerExecReboot>>
+
+|EsfSystemManagerMigration
+|Executes the migration process for System Manager configuration data.
+|<<#_EsfSystemManagerMigration>>
+
+|===
+
 
 <<<
 
@@ -488,6 +665,7 @@ typedef enum {
 } EsfSystemManagerResult;
 ....
 
+
 * *Values*
 
 [#_TableReturnValue]
@@ -495,7 +673,6 @@ typedef enum {
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Member Name |Description
-
 |kEsfSystemManagerResultOk
 |Processing succeeded.
 
@@ -632,13 +809,11 @@ typedef enum {
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Member Name |Description
-
 |kEsfSystemManagerEvpTlsDisable
 |EVP TLS disabled
 
 |kEsfSystemManagerEvpTlsEnable
 |EVP TLS enabled
-
 |===
 
 
@@ -681,6 +856,7 @@ typedef struct EsfSystemManagerHwInfo{
   char sensor_id[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE];
   char application_processor_type[ESF_SYSTEM_MANAGER_HWINFO_APPLICATION_PROCESSOR_TYPE_MAX_SIZE];
   char sensor_model_name[ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];
+  char device_name[ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE];
 } EsfSystemManagerHwInfo;
 ....
 
@@ -690,7 +866,6 @@ typedef struct EsfSystemManagerHwInfo{
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Member Name |Description
-
 |model_name
 |Model Name
 
@@ -714,7 +889,11 @@ typedef struct EsfSystemManagerHwInfo{
 
 |sensor_model_name
 |Sensor Model Name
+
+|device_name
+|Device Name
 |===
+
 
 [#_ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE]
 ==== ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
@@ -727,6 +906,7 @@ Macro defining the data size of the HW Info Model Name.
 #define ESF_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE (33)
 ....
 
+
 [#_ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE]
 ==== ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
 Macro defining the data size of the HW Info Manufacturer Name.
@@ -737,6 +917,7 @@ Macro defining the data size of the HW Info Manufacturer Name.
 ....
 #define ESF_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE (33)
 ....
+
 
 [#_ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE]
 ==== ESF_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
@@ -804,6 +985,29 @@ Macro defining the data size of the HW Info Sensor Model Name.
 #define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
 ....
 
+[#_ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+A macro that defines the data size of the HwInfo Sensor Model Name.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+....
+
+[#_ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE]
+==== ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+A macro that defines the data size of the HwInfo Device Name.
+
+* *Format*
+
+[source, C]
+....
+#define ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE (33)
+....
+
+
 [#_EsfSystemManagerInitialSettingFlag]
 ==== EsfSystemManagerInitialSettingFlag
 Enumeration defining the configuration values for InitialSettingFlag.
@@ -824,12 +1028,154 @@ typedef enum {
 [width="100%", cols="30%,70%",options="header"]
 |===
 |Member Name |Description
-
 |kEsfSystemManagerInitialSettingNotCompleted
 |Initial setting not completed
 
 |kEsfSystemManagerInitialSettingCompleted
 |Initial setting completed
+|===
+
+[#_EsfSystemManagerResetCause]
+==== EsfSystemManagerResetCause
+An enumeration type that defines the startup reasons provided by the Power Manager.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerResetCauseUnknown = -1,
+  kEsfSystemManagerResetCauseSysChipPowerOnReset = 0,
+  kEsfSystemManagerResetCauseSysBrownOut,
+  kEsfSystemManagerResetCauseCoreSoft,
+  kEsfSystemManagerResetCauseCoreDeepSleep,
+  kEsfSystemManagerResetCauseWDT,
+  kEsfSystemManagerResetCauseSoftResetNormal,
+  kEsfSystemManagerResetCauseSoftResetError,
+  kEsfSystemManagerResetCauseDefault,
+  kEsfSystemManagerResetCauseClear,
+  kEsfSystemManagerResetCauseMax
+} EsfSystemManagerResetCause;
+....
+
+* *Values* 
+
+.Description of EsfSystemManagerResetCause Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kEsfSystemManagerResetCauseUnknown
+|Unsupported reset cause.
+
+|kEsfSystemManagerResetCauseSysChipPowerOnReset
+|System restart due to power supply.
+
+|kEsfSystemManagerResetCauseSysBrownOut
+|System restart due to voltage drop.
+
+|kEsfSystemManagerResetCauseCoreSoft
+|software core reset
+
+|kEsfSystemManagerResetCauseCoreDeepSleep
+|System restart due to deep sleep.
+
+|kEsfSystemManagerResetCauseWDT
+|System restart due to WDT.
+
+|kEsfSystemManagerResetCauseSoftResetNormal
+|System restart due to normal software reset.
+
+|kEsfSystemManagerResetCauseSoftResetError
+|System restart due to abnormal software reset.
+
+|kEsfSystemManagerResetCauseDefault
+|Default state where no startup reason is set.
+
+|kEsfSystemManagerResetCauseClear
+a|
+* When setting: Deletes the startup reason provided by the Power Manager.
+* When getting: No startup reason provided by the Power Manager exists.
+
+|kEsfSystemManagerResetCauseMax
+|Maximum number of elements.
+|===
+
+
+[#_EsfSystemManagerEvpResetCause]
+==== EsfSystemManagerEvpResetCause
+An enumeration type that defines the startup reasons provided by EVP.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerEvpResetCauseClear,
+  kEsfSystemManagerEvpResetCauseMemoryAllocFailure,
+  kEsfSystemManagerEvpResetCauseFreezeDetection,
+  kEsfSystemManagerEvpResetCauseMax,
+} EsfSystemManagerEvpResetCause;
+....
+
+* *Values* 
+
+.Description of EsfSystemManagerEvpResetCause Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kEsfSystemManagerEvpResetCauseClear
+a|
+* When setting: Disables the startup reason provided by EVP.
+* When getting: No startup reason provided by EVP.
+
+|kEsfSystemManagerEvpResetCauseMemoryAllocFailure
+|Memory allocation failure.
+
+|kEsfSystemManagerEvpResetCauseFreezeDetection
+|Freeze detection.
+
+|kEsfSystemManagerEvpResetCauseMax
+|Maximum number of elements.
+|===
+
+
+[#_EsfSystemManagerRebootType]
+==== EsfSystemManagerRebootType
+An enumeration type that defines the reboot type values.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kEsfSystemManagerRebootTypeSystemNormal,
+  kEsfSystemManagerRebootTypeSystemAbnormal,
+  kEsfSystemManagerRebootTypeEvpMemoryAllocFailure,
+  kEsfSystemManagerRebootTypeEvpFreezeDetection,
+  kEsfSystemManagerRebootTypeMax
+} EsfSystemManagerRebootType;
+....
+
+* *Values*
+
+.Description of EsfSystemManagerRebootType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|kEsfSystemManagerRebootTypeSystemNormal
+|Normal system reboot.
+
+|kEsfSystemManagerRebootTypeSystemAbnormal
+|Abnormal system reboot.
+
+|kEsfSystemManagerRebootTypeEvpMemoryAllocFailure
+|EVP memory allocation failure.
+
+|kEsfSystemManagerRebootTypeEvpFreezeDetection
+|EVP freeze detection.
+
+|kEsfSystemManagerRebootTypeMax
+|Maximum number of elements.
 |===
 
 <<<
@@ -838,8 +1184,8 @@ typedef enum {
 
 [#_EsfSystemManagerGetDeviceManifest]
 ==== EsfSystemManagerGetDeviceManifest
-
-* *Function* +
+* *Function* 
++
 Retrieves the Device Manifest.
 
 * *Format* +
@@ -868,7 +1214,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetDeviceManifestReturnValue]
 .Description of Return Values for EsfSystemManagerGetDeviceManifest
 [width="100%",options="header"]
@@ -902,8 +1249,8 @@ a|
 
 [#_EsfSystemManagerGetDpsUrl]
 ==== EsfSystemManagerGetDpsUrl
-
-* *Function* +
+* *Function* 
++
 Retrieves the DPS URL.
 
 * *Format* +
@@ -932,7 +1279,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetDpsUrlReturnValue]
 .Description of Return Values for EsfSystemManagerGetDpsUrl
 [width="100%",options="header"]
@@ -962,8 +1310,8 @@ a|
 
 [#_EsfSystemManagerSetDpsUrl]
 ==== EsfSystemManagerSetDpsUrl
-
-* *Function* +
+* *Function* 
++
 Sets the DPS URL.
 
 * *Format* +
@@ -991,7 +1339,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetDpsUrlReturnValue]
 .Description of Return Values for EsfSystemManagerSetDpsUrl
 [width="100%",options="header"]
@@ -1018,7 +1367,8 @@ a|
 [#_EsfSystemManagerGetCommonName]
 ==== EsfSystemManagerGetCommonName
 
-* *Function* +
+* *Function* 
++
 Retrieves the Common Name.
 
 * *Format* +
@@ -1047,7 +1397,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetCommonNameReturnValue]
 .Description of Return Values for EsfSystemManagerGetCommonName
 [width="100%",options="header"]
@@ -1077,8 +1428,8 @@ a|
 
 [#_EsfSystemManagerSetCommonName]
 ==== EsfSystemManagerSetCommonName
-
-* *Function* +
+* *Function* 
++
 Sets the Common Name.
 
 * *Format* +
@@ -1106,7 +1457,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetCommonNameReturnValue]
 .Description of Return Values for EsfSystemManagerSetCommonName
 [width="100%",options="header"]
@@ -1162,7 +1514,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetDpsScopeIdReturnValue]
 .Description of Return Values for EsfSystemManagerGetDpsScopeId
 [width="100%",options="header"]
@@ -1221,7 +1574,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetDpsScopeIdReturnValue]
 .Description of Return Values for EsfSystemManagerSetDpsScopeId
 [width="100%",options="header"]
@@ -1247,8 +1601,8 @@ a|
 
 [#_EsfSystemManagerGetProjectId]
 ==== EsfSystemManagerGetProjectId
-
-* *Function* +
+* *Function* 
++
 Retrieves the Project ID.
 
 * *Format* +
@@ -1277,7 +1631,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetProjectIdReturnValue]
 .Description of Return Values for EsfSystemManagerGetProjectId
 [width="100%",options="header"]
@@ -1307,8 +1662,8 @@ a|
 
 [#_EsfSystemManagerSetProjectId]
 ==== EsfSystemManagerSetProjectId
-
-* *Function* +
+* *Function* 
++
 Sets the Project ID.
 
 * *Format* +
@@ -1336,7 +1691,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetProjectIdReturnValue]
 .Description of Return Values for EsfSystemManagerSetProjectId
 [width="100%",options="header"]
@@ -1392,7 +1748,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetRegisterTokenReturnValue]
 .Description of Return Values for EsfSystemManagerGetRegisterToken
 [width="100%",options="header"]
@@ -1422,8 +1779,8 @@ a|
 
 [#_EsfSystemManagerSetRegisterToken]
 ==== EsfSystemManagerSetRegisterToken
-
-* *Function* +
+* *Function* 
++
 Sets the Register Token.
 
 * *Format* +
@@ -1451,7 +1808,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetRegisterTokenReturnValue]
 .Description of Return Values for EsfSystemManagerSetRegisterToken
 [width="100%",options="header"]
@@ -1507,7 +1865,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetEvpHubUrlReturnValue]
 .Description of Return Values for EsfSystemManagerGetEvpHubUrl
 [width="100%",options="header"]
@@ -1566,7 +1925,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetEvpHubUrlReturnValue]
 .Description of Return Values for EsfSystemManagerSetEvpHubUrl
 [width="100%",options="header"]
@@ -1622,7 +1982,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerGetEvpHubPortReturnValue]
 .Description of Return Values for EsfSystemManagerGetEvpHubPort
 [width="100%",options="header"]
@@ -1681,7 +2042,8 @@ One of the values listed in <<#_TableReturnValue>> will be returned depending on
 *** Can be called from multiple threads.  
 *** Can be called from multiple tasks.  
 *** Internally performs blocking.  
-** Error Information +
+** Error Information 
++
 [#_EsfSystemManagerSetEvpHubPortReturnValue]
 .Description of Return Values for EsfSystemManagerSetEvpHubPort
 [width="100%",options="header"]
@@ -2288,15 +2650,488 @@ a|
 |Properly configure HW information on the device.  
 |===
 
+[#_EsfSystemManagerGetEvpResetCause]
+==== EsfSystemManagerGetEvpResetCause
+* *Function* +
+Retrieves the startup reason provided by EVP.
+
+* *Format* +
+``** EsfSystemManagerResult EsfSystemManagerGetEvpResetCause( EsfSystemManagerEvpResetCause *evp_reset_cause )**``  
+
+* *Argument Description* +
+**``[OUT] EsfSystemManagerEvpResetCause *evp_reset_cause``**:: 
+Stores the retrieved startup reason provided by EVP.
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Retrieves the startup reason provided by EVP and stores it in ``evp_reset_cause``.  
+** If ``evp_reset_cause`` contains ``kEsfSystemManagerEvpResetCauseClear``, it indicates that no startup reason provided by EVP has been saved.  
+** Execution Information
+*** Can be called concurrently.  
+*** Can be called from multiple threads.  
+*** Can be called from multiple tasks.  
+*** Blocking occurs inside the API.  
+** Error Information 
++
+[#_EsfSystemManagerGetEvpResetCauseReturnValue]
+.Description of EsfSystemManagerGetEvpResetCause Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+|Occurs when ``evp_reset_cause == NULL``.
+|Unchanged
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the Parameter Storage Manager.
+|The stored value may be undefined.
+|Cannot be recovered.
+|===
+
+
+
+[#_EsfSystemManagerSetEvpResetCause]
+==== EsfSystemManagerSetEvpResetCause
+* *Function*
++
+Sets the startup reason provided by EVP.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetEvpResetCause( EsfSystemManagerEvpResetCause evp_reset_cause )**``
+
+* *Argument Description* +
+**``[IN] EsfSystemManagerEvpResetCause evp_reset_cause``**::
+The startup reason provided by EVP.
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Sets the startup reason provided by EVP.
+** If ``evp_reset_cause`` is specified as ``kEsfSystemManagerEvpResetCauseClear``, deletes the saved startup reason provided by EVP.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information 
++
+[#_EsfSystemManagerSetEvpResetCauseReturnValue]
+.Description of EsfSystemManagerSetEvpResetCause Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+``evp_reset_cause >= kEsfSystemManagerEvpResetCauseMax``
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the Parameter Storage Manager.
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerGetResetCause]
+==== EsfSystemManagerGetResetCause
+* *Function* 
++
+Retrieves the startup reason provided by the Power Manager.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerGetResetCause( EsfSystemManagerResetCause *reset_cause )**``  
+
+* *Argument Description* +
++
+**``[OUT] EsfSystemManagerResetCause *reset_cause``**:: 
+Stores the retrieved startup reason provided by the Power Manager.
+
+* *Return Value* +
++
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Retrieves the startup reason provided by the Power Manager and stores it in ``reset_cause``.
+** If ``reset_cause`` contains ``kEsfSystemManagerResetCauseClear``, it indicates that no startup reason provided by the Power Manager has been saved.
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information
++
+[#_EsfSystemManagerGetResetCauseReturnValue]
+.Description of EsfSystemManagerGetResetCause Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+|Occurs when ``reset_cause == NULL``.
+|Unchanged
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the Parameter Storage Manager.
+|The stored value may be undefined.
+|Cannot be recovered.
+
+|===
+
+[#_EsfSystemManagerSetResetCause]
+==== EsfSystemManagerSetResetCause
+* *Function*
++
+Sets the startup reason provided by the Power Manager.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetResetCause( EsfSystemManagerResetCause reset_cause )**``
+
+* *Argument Description* +
+**``[IN] EsfSystemManagerResetCause reset_cause``**::
+The startup reason provided by the Power Manager.
+
+* *Return Value* +
++
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Sets the startup reason provided by the Power Manager.
+** If ``reset_cause`` is specified as ``kEsfSystemManagerResetCauseClear``, deletes the saved startup reason provided by the Power Manager.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information
++
+[#_EsfSystemManagerSetResetCauseReturnValue]
+.Description of EsfSystemManagerSetResetCause Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* ``reset_cause <= kEsfSystemManagerResetCauseUnknown``  
+* ``reset_cause >= kEsfSystemManagerResetCauseMax``
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the Parameter Storage Manager.
+|Cannot be recovered.
+
+|===
+
+
+[#_EsfSystemManagerSetExceptionInfo]
+==== EsfSystemManagerSetExceptionInfo
+* *Function*
++
+Saves the startup reason and exception information.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSetExceptionInfo( void )**``
+
+* *Argument Description* +
+No arguments are specified. +
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Based on the startup reason obtained from the Power Manager, saves the exception information and the startup reason to the Parameter Storage Manager.
+** Processing flow:
+*** Retrieves the startup reason from the Power Manager.
+*** If the startup reason is ``kEsfPwrMgrResetCauseWDT`` or ``kEsfPwrMgrResetCauseCoreSoft``:
+**** Retrieves ``ExceptionInfo`` from the Power Manager.
+**** If ``ExceptionInfo`` exists, saves it to the Parameter Storage Manager.
+**** Clears the ``ExceptionInfo`` in the Power Manager.
+*** If ``ExceptionInfo`` does not exist:
+**** If a startup reason provided by EVP is already saved, no action is taken.
+**** If a startup reason has already been saved, no action is taken.
+*** Determination and saving of the startup reason:
+**** On the first boot, saves ``kEsfSystemManagerResetCauseSysChipPowerOnReset``.
+**** If the startup reason is ``kEsfPwrMgrResetCauseSysChipPowerOnReset`` or ``kEsfPwrMgrResetCauseCoreSoft`` and ``ExceptionInfo`` is not present, it is handled as an abnormal condition.
+**** Other startup reasons are converted to the appropriate value and saved.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information 
++
+[#_EsfSystemManagerSetExceptionInfoReturnValue]
+.Description of EsfSystemManagerSetExceptionInfo Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultInternalError
+a|
+* An error occurred while obtaining the startup reason from the Power Manager.
+* An error occurred while obtaining ``ExceptionInfo`` from the Power Manager (only on WDT startup).
+* An error occurred in the Parameter Storage Manager.
+* An error occurred while clearing ``ExceptionInfo`` in the Power Manager.
+* An error occurred while obtaining the startup reason provided by EVP.
+* An error occurred while getting or setting the startup reason.
+|-
+|Cannot be recovered.
+
+|===
+
+[#_EsfSystemManagerSendResetCause]
+==== EsfSystemManagerSendResetCause
+* *Function*
++
+Notifies the startup reason through Elog.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerSendResetCause( void )**``
+
+* *Argument Description* +
+No arguments are specified. +
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Retrieves from the Parameter Storage Manager the startup reason provided by EVP or by the Power Manager, and notifies it through Elog.
+** Refer to <<#_DeviceResetCauseElogList>> for details of the Elog entries to be notified.
+** Notification of the startup reason provided by EVP takes precedence.
+** After the Elog notification is completed, the startup reason provided by EVP stored in the Parameter Storage Manager is deleted, and the startup reason provided by the Power Manager is written as ``kEsfSystemManagerResetCauseDefault``.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information 
++
+[#_EsfSystemManagerSendResetCauseReturnValue]
+.Description of EsfSystemManagerSendResetCause Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |Recovery Method
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the Parameter Storage Manager.
+|Cannot be recovered.
+
+|===
+
+[#_EsfSystemManagerUploadExceptionInfo]
+==== EsfSystemManagerUploadExceptionInfo
+* *Function*
++
+Uploads exception information to the cloud via BulkDlog.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerUploadExceptionInfo( void )**``
+
+* *Argument Description* +
+No arguments are specified. +
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Uploads exception information to the cloud via BulkDlog.
+** After upload completion, the exception information stored in the Parameter Storage Manager is deleted.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information 
++
+[#_EsfSystemManagerUploadExceptionInfoReturnValue]
+.Description of EsfSystemManagerUploadExceptionInfo Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |Recovery Method
+
+|kEsfSystemManagerResultInternalError
+|An error occurred in the Parameter Storage Manager. +
+An error occurred in the Power Manager. +
+An error occurred in the Log Manager.
+|Cannot be recovered.
+
+|===
+
+[#_EsfSystemManagerIsNeedReboot]
+==== EsfSystemManagerIsNeedReboot
+* *Function*
++
+Determines whether a system reboot is required based on the startup reason.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerIsNeedReboot( bool *reset_flag )**``
+
+* *Argument Description* +
+**``[OUT] bool *reset_flag``**::
+This output pointer is used to return whether a reboot is required. +
+``true``: reboot required, ``false``: reboot not required +
+If ``NULL`` is specified, the function returns ``kEsfSystemManagerResultParamError`` and terminates.
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Determines the need for a system reboot based on the startup reason obtained from the Power Manager.
+** Processing flow:
+*** Retrieves the startup reason from the Power Manager.
+*** If the startup reason is ``kEsfPwrMgrResetCauseCoreSoft``, checks the existence of ``ExceptionInfo`` in the Parameter Storage Manager.
+*** If ``ExceptionInfo`` exists, treats the startup reason as ``kEsfPwrMgrResetCauseWDT``.
+*** Calls ``PlSystemManagerIsNeedReboot`` to determine whether a reboot is required.
+** If ``reset_flag`` is returned as ``true``, perform a system reboot.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information +
+[#_EsfSystemManagerIsNeedRebootReturnValue]
+.Description of EsfSystemManagerIsNeedReboot Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |State of OUT Parameter |Recovery Method
+
+|kEsfSystemManagerResultParamError
+a|
+* Occurs when ``reset_flag == NULL``.
+|-
+|Set the correct argument and retry.
+
+|kEsfSystemManagerResultInternalError
+a|
+* An error occurred while obtaining the startup reason from the Power Manager
+* An error occurred in the Parameter Storage Manager
+* An error occurred in the PL System Manager
+|The stored value may be undefined.
+|Cannot be recovered.
+
+|===
+
+[#_EsfSystemManagerExecReboot]
+==== EsfSystemManagerExecReboot
+* *Function*
++
+Executes a system reboot with the specified reboot type.
+
+* *Format* +
++
+``** void EsfSystemManagerExecReboot( EsfSystemManagerRebootType reboot_type )**``
+
+* *Argument Description* +
+**``[IN] EsfSystemManagerRebootType reboot_type``**::
+The reboot type to execute. Specify one of the enumeration values of ``EsfSystemManagerRebootType``.
+
+* *Return Value* +
++
+None (``void``). Since this function performs a system reboot, it does not return in the normal case.
+
+* *Description* +
+** Executes a system reboot with the specified reboot type.
+** The reboot reason and processing are determined by the reboot type.
+** Because this function executes a reboot, it does not return to the caller in the normal case.
+
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information
++
+[#_EsfSystemManagerExecRebootReturnValue]
+.Description of EsfSystemManagerExecReboot Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |Recovery Method
+
+|No return value
+|In the normal case, this function does not return because it performs a system reboot.
+|Not applicable
+|===
+
+
+[#_EsfSystemManagerMigration]
+==== EsfSystemManagerMigration
+* *Function*
++
+Executes the migration process for System Manager configuration data.
+
+* *Format* +
++
+``** EsfSystemManagerResult EsfSystemManagerMigration( void )**``
+
+* *Argument Description* +
+No arguments are specified. +
+
+* *Return Value* +
+Returns one of the values in <<#_TableReturnValue>> according to the execution result.
+
+* *Description* +
+** Migrates data saved in the old format to the new format.
+** Sequentially migrates the following data types:
+*** RootAuth : Root certificate data and its SHA-256 hash value
+*** DeviceManifest : Device manifest data
+*** HwInfo : Hardware information data
+*** EVP Setup Info : EVP setup information
+** After the migration of each data item is completed, deletes the corresponding old-format data file.
+** If no target data exists, it is treated as a normal completion.
+** Execution Information
+*** Can be called concurrently.
+*** Can be called from multiple threads.
+*** Can be called from multiple tasks.
+*** Blocking occurs inside the API.
+** Error Information
++
+[#_EsfSystemManagerMigrationReturnValue]
+.Description of EsfSystemManagerMigration Return Values
+[width="100%",options="header"]
+|===
+|Return Value |Condition |Recovery Method
+
+|kEsfSystemManagerResultInternalError
+a|
+* An error occurred in the PL System Manager
+* An error occurred while saving data to the Parameter Storage Manager
+* Memory allocation failed
+* SHA-256 hash calculation failed (RootAuth only)
+|Cannot be recovered.
+
+|===
+
 
 <<<
-
 
 == Example Usage of API Calls
 
 Examples of how to invoke each API are shown below.
 
-[source, mermaid]
+=== Set/Get APIs
+
+
+[{mermaid_block}]
 ....
 %%{init: {'noteAlign':'left'}}%%
 sequenceDiagram
@@ -2334,6 +3169,180 @@ ParameterStorageManager -->> -SystemManager: -
 SystemManager -->> -App: Data
 ....
 
+=== Device Startup Reason Notification Sequence
+
+
+[{mermaid_block}]
+....
+sequenceDiagram
+participant sc as Some Component
+participant evp as EVP
+participant main as EsfMain
+participant SystemManager
+participant PlSystemManager as PL System Manager
+participant ParameterStorageManager as Parameter Storage Manager
+participant PowerManager as Power Manager
+participant UtilityLog as Utility Log
+participant LogManager as Log Manager
+autonumber
+
+alt When restarting the system due to a normal software reset
+    sc ->> +SystemManager: EsfSystemManagerExecReboot(kEsfSystemManagerRebootTypeSystemNormal)
+    SystemManager ->> +ParameterStorageManager: Save startup reason
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> -PowerManager: EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeSW);
+    Note over PowerManager: Return to [System Startup]
+
+else When restarting the system due to an abnormal software reset
+    sc ->> +SystemManager: EsfSystemManagerExecReboot(kEsfSystemManagerRebootTypeSystemAbnormal)
+    SystemManager ->> +ParameterStorageManager: Save startup reason
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> -PowerManager: EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeHW);
+    Note over PowerManager: Return to [System Startup]
+
+else When restarting the system due to EVP
+    evp ->> +SystemManager: EsfSystemManagerExecReboot(kEsfSystemManagerRebootTypeEvpMemoryAllocFailure or kEsfSystemManagerRebootTypeEvpFreezeDetection)
+    SystemManager ->> +ParameterStorageManager: Save startup reason provided by EVP
+    ParameterStorageManager -->> -SystemManager: -
+    SystemManager ->> -PowerManager: EsfPwrMgrExecuteRebootEx(EsfPwrMgrRebootTypeHW);
+    Note over PowerManager: Return to [System Startup]
+
+else When restarting the system due to WDT
+	PowerManager ->> PowerManager: System restart due to WDT
+    Note over PowerManager: Return to [System Startup]
+end
+
+%%-----------------------------------------------------------------------------%%
+
+Note over sc, LogManager: [System Startup]
+Note over main: After initializing Parameter Storage Manager and Power Manager
+
+main ->> +SystemManager: EsfSystemManagerSetExceptionInfo()
+
+%%---Obtain startup reason from Power Manager
+SystemManager ->> +PowerManager: EsfPwrMgrGetResetCause()
+PowerManager -->> -SystemManager: Startup reason
+
+alt If the startup reason is kEsfPwrMgrResetCauseWDT or kEsfPwrMgrResetCauseCoreSoft
+	SystemManager ->> +PowerManager: EsfPwrMgrGetExceptionInfo()
+    PowerManager -->> -SystemManager: Exception information
+    
+    opt If exception information exists
+        SystemManager ->> +ParameterStorageManager: Save exception information
+        ParameterStorageManager -->> -SystemManager: -
+        SystemManager ->> +PowerManager: EsfPwrMgrClearExceptionInfo()
+        PowerManager -->> -SystemManager: kEsfPwrMgrOk
+        Note over SystemManager: ExceptionInfo processing completed; proceed to save the startup reason
+    end
+    
+    opt If no exception information exists
+        SystemManager ->> +ParameterStorageManager: Check whether a startup reason provided by EVP is saved
+        ParameterStorageManager -->> -SystemManager: Startup reason provided by EVP
+        opt If a startup reason provided by EVP is saved
+            Note over SystemManager: EVP startup reason takes precedence; return to complete processing
+            SystemManager -->> main: kEsfSystemManagerResultOk
+        end
+
+        SystemManager ->> +ParameterStorageManager: Check whether a startup reason is saved
+        ParameterStorageManager -->> -SystemManager: Startup reason
+        opt If a startup reason is saved
+            SystemManager -->> main: kEsfSystemManagerResultOk
+        end
+    end
+
+else For other startup reasons
+    SystemManager ->> +ParameterStorageManager: Check whether a startup reason provided by EVP is saved
+    ParameterStorageManager -->> -SystemManager: Startup reason provided by EVP
+    opt If a startup reason provided by EVP is saved
+        Note over SystemManager: EVP startup reason takes precedence; return to complete processing
+        SystemManager -->> main: kEsfSystemManagerResultOk
+    end
+
+    SystemManager ->> +ParameterStorageManager: Check whether a startup reason is saved
+    ParameterStorageManager -->> -SystemManager: Startup reason
+    opt If a startup reason is saved
+        SystemManager -->> main: kEsfSystemManagerResultOk
+    end
+end
+
+SystemManager ->> +ParameterStorageManager: Save the startup reason
+Note over SystemManager: If no startup reason exists (kEsfSystemManagerResetCauseClear), save kEsfSystemManagerResetCauseSysChipPowerOnReset (no startup reason exists only on first boot; treat as normal).
+Note over SystemManager: If kEsfPwrMgrResetCauseSysChipPowerOnReset or kEsfPwrMgrResetCauseCoreSoft and no ExceptionInfo exists, save kEsfSystemManagerResetCauseSoftResetError (treat a reboot with no startup reason set as abnormal).
+ParameterStorageManager -->> -SystemManager: -
+
+SystemManager -->> -main: kEsfSystemManagerResultOk
+
+%%-----------------------------------------------------------------------------%%
+
+%%---Reboot decision
+main ->> +SystemManager: EsfSystemManagerIsNeedReboot()
+SystemManager ->> +PowerManager: EsfPwrMgrGetResetCause()
+PowerManager -->> -SystemManager: Startup reason
+
+alt If the startup reason is kEsfPwrMgrResetCauseCoreSoft
+    SystemManager ->> +ParameterStorageManager: Check size of ExceptionInfo
+    ParameterStorageManager -->> -SystemManager: Size
+    opt If ExceptionInfo size > 0
+        Note over SystemManager: Change the startup reason to kEsfPwrMgrResetCauseWDT
+    end
+end
+
+SystemManager ->> +PlSystemManager: PlSystemManagerIsNeedReboot()
+PlSystemManager -->> -SystemManager: Reboot decision (true or false) 
+SystemManager -->> -main: Reboot decision (true or false) 
+
+opt Reboot decision == true
+    main ->> main: System reboot
+    Note over main: Return to [System Startup]
+end
+
+%%-----------------------------------------------------------------------------%%
+main ->> +SystemManager: EsfSystemManagerSendResetCause()
+
+SystemManager ->> +ParameterStorageManager: Check whether a startup reason provided by EVP is saved
+ParameterStorageManager -->> -SystemManager: Startup reason provided by EVP
+
+alt If a startup reason provided by EVP is saved
+	Note over SystemManager: Startup reason provided by EVP takes precedence
+    SystemManager ->> +ParameterStorageManager: Get startup reason provided by EVP
+    ParameterStorageManager -->> -SystemManager: Startup reason provided by EVP
+else If a startup reason provided by EVP is not saved
+    SystemManager ->> +ParameterStorageManager: Get startup reason
+    ParameterStorageManager -->> -SystemManager: Startup reason
+end
+
+SystemManager ->> SystemManager: Convert the startup reason (EVP or non-EVP) to an Elog ID
+SystemManager ->> +UtilityLog: WRITE_ELOG_CRITICAL(0x60XX)
+UtilityLog -->> -SystemManager: -
+
+SystemManager ->> +ParameterStorageManager: Delete startup reason provided by EVP and set startup reason to kEsfSystemManagerResetCauseDefault
+ParameterStorageManager -->> -SystemManager: -
+SystemManager -->> -main: kEsfSystemManagerResultOk
+
+%%-----------------------------------------------------------------------------%%
+main ->> +SystemManager: EsfSystemManagerUploadExceptionInfo()
+
+SystemManager ->> +ParameterStorageManager: Check whether exception information is saved
+ParameterStorageManager -->> -SystemManager: Size of exception information
+alt If exception information is saved
+  SystemManager ->> +ParameterStorageManager: Get exception information
+  ParameterStorageManager -->> -SystemManager: Exception information
+else If no exception information is saved
+  Note over SystemManager: Normal startup; take no action and return
+  SystemManager -->> main: kEsfSystemManagerResultOk
+end
+
+SystemManager ->> +PowerManager: EsfPwrMgrConvExceptionInfo(Exception information)
+PowerManager -->> -SystemManager: Exception information after string conversion
+SystemManager ->> +LogManager: EsfLogManagerSendBulkDlog(Exception information after string conversion)
+Note over LogManager: If the destination Blob setting is written to Flash,<br>force upload even with UART settings
+LogManager -->> -SystemManager: -
+SystemManager ->> +ParameterStorageManager: Delete exception information
+ParameterStorageManager -->> -SystemManager: kEsfParameterStorageManagerStatusOk
+SystemManager -->> -main: kEsfSystemManagerResultOk
+
+....
+
 <<<
 
 == Special Notes and Component-Specific Information
@@ -2359,10 +3368,8 @@ No OSS is used.
 [width="100%", cols="20%,80%",options="header"]
 |===
 |Version |Changes 
-
 |v0.1.0
 |Initial release
-
 |v0.1.1
 a|
 * Added <<#_ConfigList>>  
@@ -2458,6 +3465,32 @@ a|
 |v0.1.9
 a|
 * Updated ``ESF_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE`` to 64  
+
+|v0.1.10
+a|
+* Data types added
+** Added ``EsfSystemManagerResetCause``
+** Added ``EsfSystemManagerEvpResetCause``
+** Added ``EsfSystemManagerRebootType``
+
+* APIs added
+** Added ``EsfSystemManagerGetEvpResetCause``
+** Added ``EsfSystemManagerSetEvpResetCause``
+** Added ``EsfSystemManagerGetResetCause``
+** Added ``EsfSystemManagerSetResetCause``
+** Added ``EsfSystemManagerSetExceptionInfo``
+** Added ``EsfSystemManagerSendResetCause``
+** Added ``EsfSystemManagerUploadExceptionInfo``
+** Added ``EsfSystemManagerIsNeedReboot``
+** Added ``EsfSystemManagerExecReboot``
+8
+|v0.1.11
+a|
+** Added ``ESF_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE``
+** Added ``device_name`` to ``EsfSystemManagerHwInfo``
+** Added ``EsfSystemManagerMigration``
+** Updated the description of ``EsfSystemManagerSetExceptionInfo``
+** Updated the description of ``EsfSystemManagerIsNeedReboot``
 
 |===
 

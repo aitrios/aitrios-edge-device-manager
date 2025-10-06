@@ -11,6 +11,7 @@
 #define ESF_SYSTEM_MANAGER_ACCESSOR_MIGRATION_DATA_H_
 
 #include "parameter_storage_manager_common.h"
+#include "pl_system_manager.h"
 #include "system_manager.h"
 
 #ifdef __cplusplus
@@ -64,7 +65,8 @@ EsfSystemManagerResult EsfSystemManagerMigrateEvpSetupInfo(void);
 //   kEsfSystemManagerResultOk: if the operation is successful.
 //   kEsfSystemManagerResultInternalError: if the erase operation fails.
 // """
-EsfSystemManagerResult EsfSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id);
+EsfSystemManagerResult EsfSystemManagerEraseMigrationData(
+    PlSystemManagerMigrationDataId id);
 
 #ifdef __cplusplus
 }
