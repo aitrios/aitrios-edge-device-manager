@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
+#include <sys/wait.h>
 
 static volatile sig_atomic_t s_child_pid = 0;
 static void SigHandler(int sig) {

@@ -8,6 +8,7 @@
 #include <sys/reboot.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include "pl.h"
 

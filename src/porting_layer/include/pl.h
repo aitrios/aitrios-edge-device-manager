@@ -36,9 +36,11 @@ typedef enum {
   kPlErrMagicCode,
   kPlErrBufferOverflow,
   kPlErrWrite,
+  kPlErrRead,
+  kPlErrCrypto,
+  kPlErrVerify,
   kPlErrTimeout,
   kPlErrCodeMax,
 } PlErrCode;  // T.B.D.
 
 #endif /* __PL_H__ */
-

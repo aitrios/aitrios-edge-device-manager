@@ -2,8 +2,5 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-pl_includes_internal += include_directories('.')
-
-pl_sources += files([
-  'pl_main_cam_impl.c'
-])
+pl_includes_internal += include_directories('include')
+subdir('src')

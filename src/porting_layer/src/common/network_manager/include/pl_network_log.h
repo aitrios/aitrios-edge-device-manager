@@ -172,6 +172,7 @@ typedef enum {
   kElog_MII_BMSR = 0x967A,
   kElog_MII_PHYSID1 = 0x967B,
   kElog_MII_PHYSID2 = 0x967C,
+  kElog_PlNetworkEraseMigrationSrcDataOsImpl = 0x967D,
 } PlNetworkElog;
 
 #endif  // PL_NETWORK_LOG_H_

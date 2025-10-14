@@ -486,7 +486,10 @@ static bool ShouldRenewDhcp(uint64_t now_sec, uint64_t previous_sec) {
 }
 
 static void WaitEventHandleInit(WaitEventHandle *h) {
-  sem_init(&h->sem, 0, 0);
+  int ret = sem_init(&h->sem, 0, 0);
+  if (ret != 0) {
+    ESF_NETWORK_MANAGER_ERR("sem_init failed. ret=%d errno=%d", ret, errno);
+  }
   h->done = false;
   return;
 }
