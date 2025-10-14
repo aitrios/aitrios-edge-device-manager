@@ -3,5 +3,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
 pl_sources += files([
-  'pl_main_impl.c'
+  'pl_main_os_impl.c'
 ])

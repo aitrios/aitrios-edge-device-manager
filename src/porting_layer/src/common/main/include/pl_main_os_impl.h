@@ -12,9 +12,11 @@
 
 #define PL_MAIN_LITTLEFS_FILESYSTEM_TYPE "littlefs"
 
-PlErrCode PlMainFileSystemFormatLittleFsImpl(
+PlErrCode PlMainFileSystemFormatLittleFsOsImpl(
     const PlMainDeviceInformation* info);
-PlErrCode PlMainFileSystemFormatOtherImpl(const PlMainDeviceInformation* info);
-PlErrCode PlMainFileSystemFormatFat32Impl(const PlMainDeviceInformation* info);
-
+PlErrCode PlMainFileSystemFormatOtherOsImpl(const PlMainDeviceInformation* info);
+PlErrCode PlMainFileSystemFormatFat32OsImpl(const PlMainDeviceInformation* info);
+bool PlMainIsMigrationSupportedOsImpl(void);
+void PlMainEraseMigrationSrcDataOsImpl(void);
+PlErrCode PlMainExecMigrationOsImpl(void);
 #endif  // PL_MAIN_IMPL_H__

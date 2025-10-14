@@ -10,6 +10,10 @@ if config_h.get('CONFIG_EXTERNAL_PL_BUTTON', false)
   subdir('button_manager')
 endif
 
+if config_h.get('CONFIG_FIRMWARE_MANAGER_PORTING_LAYER', false)
+  subdir('firmware_manager')
+endif
+
 subdir('parameter_storage_manager')
 subdir('memory_manager')
 
@@ -21,3 +25,7 @@ subdir('power_manager')
 subdir('system_manager')
 subdir('main')
 subdir('log_manager')
+
+if config_h.get('CONFIG_EXTERNAL_PL_CLOCK_MANAGER', false)
+  subdir('clock_manager')
+endif

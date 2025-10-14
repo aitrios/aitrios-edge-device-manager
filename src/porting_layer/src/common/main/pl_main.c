@@ -7,6 +7,7 @@
 #include "pl_main.h"
 
 #include "pl_main_internal.h"
+#include "pl_main_os_impl.h"
 #include "pl_main_table.inc"
 
 // Functions ------------------------------------------------------------------
@@ -42,17 +43,11 @@ PlErrCode PlMainIsFeatureSupported(PlMainFeatureType type) {
 }
 // -----------------------------------------------------------------------------
 bool PlMainIsMigrationSupported(void) {
-#ifdef CONFIG_EXTERNAL_TARGET_T4R
-  return true;
-#else
-  return false;
-#endif
+  return PlMainIsMigrationSupportedOsImpl();
 }
 // -----------------------------------------------------------------------------
 void PlMainEraseMigrationSrcData(void) {
-  return PlMainInternalEraseMigrationSrcData();
+  return PlMainEraseMigrationSrcDataOsImpl();
 }
 // ----------------------------------------------------------------------------
-PlErrCode PlMainExecMigration(void) {
-  return PlMainInternalExecMigration();
-}
+PlErrCode PlMainExecMigration(void) { return PlMainExecMigrationOsImpl(); }

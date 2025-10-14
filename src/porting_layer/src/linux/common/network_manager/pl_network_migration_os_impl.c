@@ -379,6 +379,10 @@ PlErrCode PlNetworkIsNeedMigrationOsImpl(PlNetworkMigrationNeedParam *param,
 
 // -----------------------------------------------------------------------------
 void PlNetworkEraseMigrationSrcDataOsImpl(void) {
-  remove(CONFIG_PL_NETWORK_IMPL_MIGRATION_DATA_PATH_ENVIRONMENT);
+  int ret = remove(CONFIG_PL_NETWORK_IMPL_MIGRATION_DATA_PATH_ENVIRONMENT);
+  if (ret != 0) {
+    DLOGW("%s:%d", __func__, ret);
+    ELOGW(kElog_PlNetworkEraseMigrationSrcDataOsImpl);
+  }
   return;
 }

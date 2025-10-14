@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.16
+:revnumber: 0.0.17
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -65,13 +65,11 @@ UtilityLog["UtilityLog"]
 end
 style master2 color:#fff, fill:#fff, stroke:#fff 
 log["LogManager"]
-HAL["HAL"]
 Security["Security"]
 repo[("データ保存領域")]
 
 UtilityLog -->|"ログデータ蓄積<br>Bulk送信<br>ログ設定変化通知設定"| log
 log -->|"ログ設定変化通知<br>Bulk送信結果通知"| UtilityLog
-log -->|"例外発生情報取得"| HAL
 log -->|"データ格納用APIコール"|EVP
 EVP -->|"データ格納結果"|log
 log -->|"データ"| repo
@@ -126,7 +124,6 @@ subgraph master
       subgraph データ処理
         HAL_StorageCtrl[Storage操作]
         HAL_UARTCtrl[UART操作]
-        HAL_ExceptionCtrl[例外情報操作]
       end
     end
 
@@ -138,18 +135,17 @@ subgraph master
   style right color:#fff, fill:#fff, stroke:#fff
   style master color:#fff, fill:#fff, stroke:#fff
 
-Top_Apps --> |LogManager構成情報取得<br>例外発生情報取得| LogManager
+Top_Apps --> |LogManager構成情報取得| LogManager
 
 Module --> |Dlogデータ<br>Elogデータ | UtilityLog
 
-LogManager ---> |LogManager構成情報<br>例外発生情報| Top_Apps
+LogManager ---> |LogManager構成情報| Top_Apps
 
 UtilityLog --> |Log書き込み要求<br>Bulk送信要求<br>Log設定変更通知設定 | LogManager
 LogManager --> |Log設定変更通知<br>Bulk送信結果通知| UtilityLog
 
 LogManager --> |Dlog設定保存・取得<br>Elog設定保存・取得|ParameterStorageManager
 LogManager --> |Dlogデータ保存<br>Elogデータ保存|Storage
-LogManager --> |例外発生情報取得| データ処理
 
 上位Apps --> |Log出力先/Dlogレベル/Elogレベル/Dlogフィルタ設定| LogManager
 
@@ -188,10 +184,6 @@ end
 
 |EVP
 |DeviceControlServiceを利用し、EVPにBlob送信またはテレメトリ送信を行う
-|
-
-|HAL
-|例外発生情報の取得を行う
 |
 
 |FileSystem
@@ -345,10 +337,6 @@ CAUTION: 状態遷移を伴うAPI（``**EsfLogManagerInit**``、``**EsfLogManage
 |LogManager構成情報取得
 |Dlog、RAM、バッファサイズ等LogManager構成情報を取得する機能です。
 |<<#_RetrieveLogManagerConfigurationInfo>>
-
-|例外発生情報取得（T.B.D）
-|例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
-|<<#_RetrieveExceptionInformation>>
 
 |===
 
@@ -564,19 +552,6 @@ CAUTION: 状態遷移を伴うAPI（``**EsfLogManagerInit**``、``**EsfLogManage
     *** Exception用データのバッファイズと面数（T.B.D）
     ** 構成情報の格納バッファがNULLの場合のみエラーとなります。
     ** 未サポート(T.B.D)の項目は、面数とデータサイズ共に0で返します。
-
-[#_RetrieveExceptionInformation]
-==== 例外発生情報取得(T.B.D)
-* 機能概要
-    ** 例外発生時のPCレジスタ、スタック等の例外発生情報を取得します。
-    
-* 前提条件
-    ** 特になし
-
-* 機能詳細
-    ** アプリ等から受理したバッファに例外発生時の情報を文字列化して格納します。 
-    ** 例外発生情報が積まれていない場合、何も返さず結果も正常応答します。
-    ** 例外発生情報にアクセスできない等異常が発生した場合、エラーとなります。
 
 === コンポーネントの非機能要件一覧
 
@@ -2130,4 +2105,6 @@ a|
 * EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUMの記載を追加
 |v0.0.16
 |EsfLogManagerGetExceptionDataを削除
+|v0.0.17
+|例外発生情報取得に関する記述を削除
 |===

@@ -311,7 +311,10 @@ static void DeleteNmconnectionFile(void) {
       snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
       struct stat st;
       if (stat(fullpath, &st) == 0) {
-        remove(fullpath);
+        int ret = remove(fullpath);
+        if (ret != 0) {
+          LOG_ERR(0x3B, "Failed to delete file: %s\n", fullpath);
+        }
       }
     }
   }
@@ -341,7 +344,11 @@ static PlErrCode ResetNmconnectionFile(void) {
       "method=ignore\n"
   );  // NOLINT
   fclose(fp);
-  chmod(path, 0600);
+  int ret = chmod(path, 0600);
+  if (ret != 0) {
+    LOG_ERR(0x3C, "Failed to set file permissions: %s\n", path);
+    return kPlErrInternal;
+  }
   return kPlErrCodeOk;
 }
 

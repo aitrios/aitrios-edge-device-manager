@@ -340,7 +340,6 @@ STATIC void *EsfClockManagerMonitorThreadMain(void *arg) {
     }
 
     free(ntp_status);
-    ntp_status = NULL;
 
     {  // Check if the total error time exceeds the NTP error time
       unsigned int total_error_time =

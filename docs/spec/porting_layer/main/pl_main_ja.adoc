@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.1
+:revnumber: 0.0.2
 :toc: left
 :toc-title: 目次
 :toclevels: 3
@@ -93,6 +93,10 @@ PL Main は状態遷移しません。
 |指定された機能が使用可能か判定します。
 |<<#_Function3>>
 
+|データマイグレーション機能
+|過去のバージョンとの互換性を保つため、旧型式の設定データを新形式に移行します。
+|<<#_Function4>>
+
 |===
 
 === コンポーネントの機能説明
@@ -143,6 +147,30 @@ Flashを初期化・マウント、アンマウントします。
 再起動、シャットダウン、ファクトリーリセット、ダウングレードの中から1つ指定し、サポートしているか判定します。 +
 エラー時の挙動、復帰方法::
 エラー発生した場合、入力パラメータを確認してリトライしてください。
+検討事項::
+なし
+
+[#_Function4]
+==== データマイグレーション機能
+機能概要::
+過去のバージョンとの互換性を保つため、旧型式の設定データを新形式に移行します。
+前提条件::
+なし
+機能詳細::
+データ移行が使用可能か判定します。 +
+詳細は <<#_PlMainIsMigrationSupported, PlMainIsMigrationSupported>> を参照してください。 +
+データ移行処理を実施します。 +
+詳細は <<#_PlMainExecMigration, PlMainExecMigration>> を参照してください。 +
+旧データの設定データを削除します。 +
+詳細は <<#_PlMainEraseMigrationSrcData, PlMainEraseMigrationSrcData>> を参照してください。 +
+詳細挙動::
+詳細は <<#_PlMainIsMigrationSupported, PlMainIsMigrationSupported>> を参照してください。 +
+詳細は <<#_PlMainExecMigration, PlMainExecMigration>> を参照してください。 +
+詳細は <<#_PlMainEraseMigrationSrcData, PlMainEraseMigrationSrcData>> を参照してください。 +
+エラー時の挙動、復帰方法::
+詳細は <<#_PlMainIsMigrationSupported, PlMainIsMigrationSupported>> を参照してください。 +
+詳細は <<#_PlMainExecMigration, PlMainExecMigration>> を参照してください。 +
+詳細は <<#_PlMainEraseMigrationSrcData, PlMainEraseMigrationSrcData>> を参照してください。 +
 検討事項::
 なし
 
@@ -270,6 +298,18 @@ nの場合は標準出力にログ出力します。
 |PlMainIsFeatureSupported
 |指定された機能が使用可能か判定します。
 |<<#_PlMainIsFeatureSupported>>
+
+|PlMainIsMigrationSupported
+|データ移行が使用可能か判定します。
+|<<#_PlMainIsMigrationSupported>>
+
+|PlMainExecMigration
+|データ移行処理を実施します。
+|<<#_PlMainExecMigration>>
+
+|PlMainEraseMigrationSrcData
+|旧データの設定データを削除します。
+|<<#_PlMainEraseMigrationSrcData>>
 
 |===
 
@@ -841,6 +881,171 @@ Main の機能一覧を表す列挙型です。 +
 |不要
 |===
 
+[#_PlMainIsMigrationSupported]
+==== PlMainIsMigrationSupported
+
+* *機能* +
+データ移行が使用可能か判定します。
+
+* *書式* +
+[source, C]
+....
+bool PlMainIsMigrationSupported(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて bool型のいずれかの値が返ります。
+
+* *説明* +
+T4R以外の場合、``**false**``を返します。 +
+T4Rの場合、``**true**``を返します。 +
+
+[#_PlMainIsMigrationSupported_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainIsMigrationSupported_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|-
+|-
+|-
+|-
+|-
+|===
+
+[#_PlMainExecMigration]
+==== PlMainExecMigration
+
+* *機能* +
+データ移行処理を実施します。
+
+* *書式* +
+[source, C]
+....
+PlErrCode PlMainExecMigration(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+実行結果に応じて PlErrCode のいずれかの値が返ります。
+
+* *説明* +
+** T4R以外の場合 +
+  非サポートであり``**kPlErrCodeOk**``を返します。 +
+** T4Rの場合 +
+  成功した場合``**kPlErrCodeOk**``を返します。 +
+  失敗した場合``**kPlErrInternal**``を返します。
+
+[#_PlMainExecMigration_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainExecMigration_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+
+|kPlErrInternal
+|内部エラー
+|-
+|影響なし
+|不要
+|===
+
+[#_PlMainEraseMigrationSrcData]
+==== PlMainEraseMigrationSrcData
+
+* *機能* +
+旧データの設定データを削除します。
+
+* *書式* +
+[source, C]
+....
+void PlMainEraseMigrationSrcData(void)
+....
+
+* *引数の説明* +
+-
+
+* *戻り値* +
+-
+
+* *説明* +
+** T4R以外の場合 +
+  非サポートであり何もしません。 +
+** T4Rの場合 +
+  旧データの設定データを削除します。 +
+
+[#_PlMainEraseMigrationSrcData_desc]
+.API 詳細情報
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API 詳細情報  |説明
+|API 種別
+|同期 API
+|実行コンテキスト
+|呼び元のコンテキストで動作
+|同時呼び出し
+|不可
+|複数スレッドからの呼び出し
+|不可
+|複数タスクからの呼び出し
+|不可
+|API 内部でブロッキングするか
+|ブロッキングしません。
+|===
+
+[#_PlMainEraseMigrationSrcData_error]
+.エラー情報
+[options="header"]
+|===
+|エラーコード |原因 |OUT 引数の状態 |エラー後のシステム状態 |復旧方法
+|
+|
+|
+|
+|
+|===
+
 == API 使用時の呼び出し例
 初期化・終了APIはありません。 +
 
@@ -871,4 +1076,15 @@ pl -->> -main: return
 |Version |Changes 
 |0.0.1
 |初版
+
+|0.0.2
+|
+* コンポーネントの機能説明を追加
+** 3.5.4 データマイグレーション機能
+
+* API定義を追加
+** 4.4.8 PlMainIsMigrationSupported
+** 4.4.9 PlMainExecMigration
+** 4.4.10 PlMainEraseMigrationSrcData
+
 |===

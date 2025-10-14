@@ -213,7 +213,7 @@ PlErrCode PlLedStartSync(const PlLedStartParam *param, uint32_t param_len) {
   }
   PlLedStartParamEx *param_ex = calloc(param_len, sizeof(PlLedStartParamEx));
   if (param_ex == NULL) {
-    LOG_E(0x10, "Failed to calloc(%u, %u)",
+    LOG_E(0x10, "Failed to calloc(%u, %lu)",
           param_len, sizeof(PlLedStartParamEx));
     return kPlErrMemory;
   }
@@ -922,7 +922,7 @@ static PlErrCode RegisterSeq(uint32_t led_id,
                              uint32_t seq_len) {
   PlLedSequence *tmp_seq = calloc(seq_len, sizeof(PlLedSequence));
   if (tmp_seq == NULL) {
-    LOG_E(0x67, "Failed to calloc:%u", seq_len * sizeof(PlLedSequence));
+    LOG_E(0x67, "Failed to calloc:%lu", seq_len * sizeof(PlLedSequence));
     return kPlErrMemory;
   }
   if (s_ctrl_info[led_id].seq != NULL) {

@@ -2,11 +2,11 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.16
+:revnumber: 0.0.17
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
-:lang: ja
+:lang: en
 :xrefstyle: short
 :figure-caption: Figure
 :table-caption: Table
@@ -65,13 +65,11 @@ UtilityLog["UtilityLog"]
 end
 style master2 color:#fff, fill:#fff, stroke:#fff 
 log["LogManager"]
-HAL["HAL"]
 Security["Security"]
 repo[("Data Storage Area")]
 
 UtilityLog -->|"Log data accumulation<br>Bulk transmission<br>Log setting change notification setting"| log
 log -->|"Log setting change notification<br>Bulk transmission result notification"| UtilityLog
-log -->|"Exception information retrieval"| HAL
 log -->|"API call for data storage"|EVP
 EVP -->|"Data storage result"|log
 log -->|"Data"| repo
@@ -126,7 +124,6 @@ subgraph master
       subgraph Data Processing
         HAL_StorageCtrl[Storage Control]
         HAL_UARTCtrl[UART Control]
-        HAL_ExceptionCtrl[Exception Info Control]
       end
     end
 
@@ -138,18 +135,17 @@ subgraph master
   style right color:#fff, fill:#fff, stroke:#fff
   style master color:#fff, fill:#fff, stroke:#fff
 
-Top_Apps --> |Retrieve LogManager Configuration Info<br>Retrieve Exception Info| LogManager
+Top_Apps --> |Retrieve LogManager Configuration Info| LogManager
 
 Module --> |Dlog Data<br>Elog Data | UtilityLog
 
-LogManager ---> |LogManager Configuration Info<br>Exception Info| Top_Apps
+LogManager ---> |LogManager Configuration Info| Top_Apps
 
 UtilityLog --> |Log Write Request<br>Bulk Transmission Request<br>Log Setting Change Notification Setting | LogManager
 LogManager --> |Log Setting Change Notification<br>Bulk Transmission Result Notification| UtilityLog
 
 LogManager --> |Save/Retrieve Dlog Settings<br>Save/Retrieve Elog Settings|ParameterStorageManager
 LogManager --> |Store Dlog Data<br>Store Elog Data|Storage
-LogManager --> |Retrieve Exception Info| Data<br>Processing
 
 UpperApps --> |Log Output Destination / Dlog Level / Elog Level / Dlog Filter Settings| LogManager
 
@@ -188,10 +184,6 @@ end
 
 |EVP
 |Uses DeviceControlService to send Blobs or telemetry to EVP
-|
-
-|HAL
-|Retrieves exception information
 |
 
 |FileSystem
@@ -345,10 +337,6 @@ A list of functions is shown in <<#_TableFunction>>.
 |Retrieve LogManager Configuration Info
 |Retrieves LogManager configuration info such as Dlog, RAM, and buffer sizes.
 |<<#_RetrieveLogManagerConfigurationInfo>>
-
-|Retrieve Exception Information (T.B.D)
-|Retrieves exception information such as PC registers and stack at the time of exception.
-|<<#_RetrieveExceptionInformation>>
 
 |===
 
@@ -578,20 +566,6 @@ A list of functions is shown in <<#_TableFunction>>.
     *** Size per buffer and number of buffers for Exception data (T.B.D)
     ** An error occurs only if the buffer to store configuration info is NULL.
     ** For unsupported (T.B.D) items, both the buffer count and data size will be returned as 0.
-
-[#_RetrieveExceptionInformation]
-==== Retrieve Exception Information (T.B.D)
-
-* Function Overview
-    ** Retrieves exception information such as PC register values and stack content at the time of exception.
-    
-* Prerequisites
-    ** None.
-
-* Detailed Behavior
-    ** Stores the exception information as a string in the buffer provided by the application.
-    ** If no exception information is available, nothing is returned and a normal response is issued.
-    ** If an error occurs while accessing the exception information, an error is returned.
 
 === Component Non-Functional Requirements List
 
@@ -2167,5 +2141,7 @@ a|
 * Added description of EXTERNAL_LOG_MANAGER_LOCAL_LIST_MAX_NUM
 * Added description of EXTERNAL_LOG_MANAGER_CLOUD_LIST_MAX_NUM
 |v0.0.16
-| Removed EsfLogManagerGetExceptionData
+|Removed EsfLogManagerGetExceptionData
+|v0.0.17
+|Removed description related to exception information handling.
 |===
