@@ -1,0 +1,1079 @@
+= Firmware Manager Porting Layer (T4) Functional Specifications
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc: left
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+
+
+== Purpose and Scope
+
+This document describes the specifications of the Firmware Manager Porting Layer for T4.
+
+<<<
+
+== Terms
+
+[#_words]
+.Term List (To be updated)
+[options="header"]
+|===
+|Term |Description
+
+|AP
+|Application Processor
+
+|AP Binary
+|Binary files such as firmware. In T4, files are in RAUC bundle format.
+
+|Upper Layer
+|The layer that calls the Firmware Manager Porting Layer. (Other components of the Firmware Manager)
+|===
+
+<<<
+
+== Block Description
+The Firmware Manager Porting Layer is one of the components of the Firmware Manager.
+The Firmware Manager is responsible for updating binary files (such as firmware) stored in the AP (Application Processor). The Porting Layer abstracts the AP-dependent processes within this operation, allowing the upper layer (other components of the Firmware Manager) to function without being aware of AP differences.
+A different Porting Layer is used for each AP. This document describes the specifications of the Porting Layer for T4.
+This block is intended to be called only from within the Firmware Manager.
+
+WARNING: Firmware or data updates for camera peripherals (such as sensors) are not assumed in this block.
+
+=== Block Overview
+
+The following figure shows the software configuration with this block as the central component.
+
+[{mermaid_block}]
+----
+flowchart TB
+  subgraph "Firmware Manager"
+    direction TB
+    node_1["Upper Layer"]
+    node_2["Firmware Manager Porting Layer"]
+  end
+  node_3[RAUC]
+  node_4[OS]
+
+  node_1 --> node_2
+  node_2 --> node_3
+  node_2 --> node_4
+----
+<<<
+
+=== Detailed Description of the Block
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Link
+
+|OS
+|Saving temporary files, etc.
+|
+
+|RAUC
+|Updating FW and bootloader
+|
+|===
+
+<<<
+
+=== State Transition
+
+The Firmware Manager Porting Layer can take the states shown in <<#_TableStates>> below.
+[#_TableStates]
+.State List
+[width="100%", cols="20%,80%",options="header"]
+|===
+|State |Description
+
+|NotInitialized
+|The Firmware Manager Porting Layer has not been initialized.
+
+|Closed
+|Initialization of the Firmware Manager Porting Layer is complete, and an AP binary update can be started.
+
+|Open
+|An AP binary update has started, and writing to the AP binary is possible.
+
+|Aborted
+|The AP binary update has been aborted.
+|===
+
+The Firmware Manager Porting Layer performs the state transitions shown below. +
+Note that no state transition occurs when an error occurs in any API. +
+
+State transition diagram
+[{mermaid_block}]
+----
+stateDiagram-v2
+  [*] --> NotInitialized
+  NotInitialized --> Closed : FwMgrPlInitialized
+  Closed --> Open : FwMgrPlOpen
+  Open --> Aborted : FwMgrPlAbort
+  Aborted --> Closed : FwMgrPlClose
+  Open --> Closed : FwMgrPlClose
+  Aborted --> NotInitialized : FwMgrPlFinalize
+  Closed --> NotInitialized : FwMgrPlFinalize
+  Open --> NotInitialized : FwMgrPlFinalize
+  Open --> Open : FwMgrPlWrite
+----
+
+For each state, the availability of APIs and their subsequent transition destinations are shown in <<#_TableStateTransition>>.
+The state names in the table represent the destination states after the API execution is completed, which also indicates that the API can be called.
+However, if the process does not complete successfully (i.e., the return value is other than kPlErrCodeOk), the state does not transition.
+An × indicates that the API cannot be accepted. If an API is called in a state where it is not accepted, an error is returned.
+
+[#_TableStateTransition]
+.State Transition Table
+[width="100%", cols="5%,10%,10%,10%,10%,10%"]
+|===
+2.2+| 4+|State
+|NotInitialized|Closed|Open|Aborted
+.40+|API Name
+
+|``**FwMgrPlInitialize**``
+|Closed
+|×
+|×
+|×
+
+|``**FwMgrPlFinalize**``   
+|×
+|NotInitialized
+|NotInitialized
+|NotInitialized
+
+|``**FwMgrPlOpen**``   
+|×
+|Open
+|×
+|×
+
+|``**FwMgrPlClose**``   
+|×
+|×
+|Closed
+|Closed
+
+|``**FwMgrPlWrite**``   
+|×
+|×
+|Open
+|×
+
+|``**FwMgrPlAbort**``   
+|×
+|×
+|Aborted
+|×
+
+|===
+
+<<<
+
+=== Block Function List
+<<#_TableOperation>> shows the list of functions.
+
+[#_TableOperation]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Overview |Section Number
+
+|AP Binary Update
+|Writes the specified AP binary to the AP so that the new AP binary will be used at the next and subsequent startups.
+Currently, updates of FW and bootloader are supported.
+|<<#_Operation1>>
+
+|===
+
+<<<
+
+=== Block Function Description
+[#_Operation1]
+==== AP Binary Update
+
+Function Overview::
+Writes the specified AP binary to the AP so that the new AP binary will be used at the next and subsequent startups.
+
+Preconditions::
+The Firmware Manager Porting Layer must be in the Closed state.
+
+Function Details::
+Receives the type of AP binary and the AP binary itself, then writes it to the flash memory.
+Afterward, it updates the configuration so that the AP uses the new AP binary at the next and subsequent startups.
+The write location in the flash memory varies depending on the type of AP binary.
+If an AP binary update is being performed in another context, the update cannot be executed.
+
+Detailed Behavior::
+By specifying the type of AP binary and calling FwMgrPlOpen, a handle is obtained. Using that handle, FwMgrPlWrite is called (possibly multiple times) to write the AP binary to a temporary file.
+Then, by calling FwMgrPlClose, the temporary file is passed to RAUC, which performs the update of the firmware and bootloader. RAUC updates the configuration so that the new AP binary will be used at the next and subsequent startups. +
+
+For details, refer to <<#_FwMgrPlOpen, FwMgrPlOpen>>, <<#_FwMgrPlClose, FwMgrPlClose>>, and <<#_FwMgrPlWrite, FwMgrPlWrite>>.
+
+<<<
+
+=== List of Non-Functional Requirements
+
+<<#_TableNonFunctionalRequirements>> shows the list of non-functional requirements.
+
+[#_TableNonFunctionalRequirements]
+.List of Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Item Name |Overview |Section Number
+
+|Maximum Stack Usage
+|Maximum stack usage consumed within the block
+|<<#_MaxStackUsage>>
+
+|Maximum Heap Usage
+|Maximum heap usage within the block (excluding the portion allocated using LHeap)
+|<<#_MaxHeapUsage>>
+
+|Maximum LHeap Usage
+|Maximum amount of memory allocated within the block using LHeap
+|<<#_MaxLHeapUsage>>
+
+|Maximum Static Data Usage
+|Maximum static data usage within the block
+|<<#_MaxStaticDataUsage>>
+
+|Performance
+|Processing time required for each API
+|<<#_Performance>>
+|===
+
+=== Description of Non-Functional Requirements
+
+[#_MaxStackUsage]
+==== Maximum Stack Usage
+1 KB or less (planned)
+
+[#_MaxHeapUsage]
+==== Maximum Heap Usage
+5 KB or less (planned)
+※ During FwMgrPlWrite, the AP binary is placed in memory allocated by the upper layer. Since the Firmware Manager Porting Layer API receives a pointer to that memory, the Firmware Manager Porting Layer itself does not allocate memory for the AP binary.
+
+[#_MaxLHeapUsage]
+==== Maximum LHeap Usage
+None
+
+[#_MaxStaticDataUsage]
+==== Maximum Static Data Usage
+1 KB or less (planned)
+
+[#_Performance]
+==== Performance
+
+.Performance of each process in the Firmware Manager Porting Layer
+[width="100%", cols="30%,15%,55%",options="header"]
+|===
+|API |Processing Time |Remarks
+
+|FwMgrPlOpen
+|[To be measured]
+|
+
+|FwMgrPlClose
+|[To be measured]
+|
+
+|FwMgrPlWrite
+|[To be measured]
+|
+
+|FwMgrPlAbort
+|[To be measured]
+|
+
+|FwMgrPlGetInfo
+|0.1 ms or less
+|
+
+|===
+
+<<<
+
+== API Specifications
+=== Definition List
+==== Data Type List
+
+<<#_TableDataType>> shows the list of data types.
+
+[#_TableDataType]
+.List of Data Types
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Overview |Section Number
+
+|PlErrCode
+|Enumeration type that defines the execution results of the API.
+|[In preparation]
+
+|FwMgrPlHandle
+|Structure that represents a handle for AP binary updates.
+|<<#_FwMgrPlHandle>>
+
+|FwMgrPlType
+|Enumeration type that represents the type of AP binary.
+|<<#_FwMgrPlType>>
+|===
+
+==== API List
+<<#_TableAPI>> shows the list of APIs.
+
+[#_TableAPI]
+.List of APIs Available from Outside the Block
+[width="100%", cols="10%,60%,20%",options="header"]
+|===
+|API Name |Overview |Section Number
+
+|FwMgrPlInitialize
+|Performs the initialization process of this block.
+|<<#_FwMgrPlInitialize>>
+
+|FwMgrPlFinalize
+|Performs the finalization process of this block.
+|<<#_FwMgrPlFinalize>>
+
+|FwMgrPlOpen
+|Performs the process to start an AP binary update. Deletes existing data at the AP binary write destination and obtains a handle.
+|<<#_FwMgrPlOpen>>
+
+|FwMgrPlClose
+|Performs the process to complete the AP binary update.
+If the AP binary has been written successfully, the configuration is updated so that the new AP binary will be used at the next and subsequent startups.
+|<<#_FwMgrPlClose>>
+
+|FwMgrPlWrite
+|Performs writing of the AP binary.
+|<<#_FwMgrPlWrite>>
+
+|FwMgrPlAbort
+|Aborts the AP binary update.
+|<<#_FwMgrPlAbort>>
+
+|FwMgrPlGetInfo
+|Retrieves the version, hash, and update date/time of the AP binary.
+|<<#_FwMgrPlGetInfo>>
+|===
+
+<<<
+
+=== Data Type Definitions
+[#_FwMgrPlHandle]
+==== FwMgrPlHandle
+A structure that represents a handle for AP binary updates.
+
+* *Format*
+
+[source, C]
+....
+typedef void* FwMgrPlHandle;
+....
+
+[#_FwMgrPlType]
+==== FwMgrPlType
+An enumeration type that represents the type of AP binary.
+
+* *Format*
+
+[source, C]
+....
+typedef enum TagFwMgrPlType {
+  kFwMgrPlTypeFirmware,
+  kFwMgrPlTypeBootloader,
+  kFwMgrPlTypePartitionTable,
+} FwMgrPlType;
+....
+* *Values*
+
+.Description of FwMgrPlType Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|kFwMgrPlTypeFirmware
+|Represents firmware (FW).
+|kFwMgrPlTypeBootloader
+|Represents the bootloader.
+|kFwMgrPlTypePartitionTable
+|Represents the partition table.
+|===
+
+=== Description of Each API
+
+[#_FwMgrPlInitialize]
+==== FwMgrPlInitialize
+* *Function* +
+Performs initialization processing for this block.
+
+* *Format* 
+
+[source, C]
+....
+PlErrCode FwMgrPlInitialize(void);
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+** Performs initialization processing related to the AP binary.  
+** Must be called before using other Firmware Manager Porting Layer APIs.  
+** Normally, it is assumed to be called at system startup.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Not allowed (returns an error)
+|Calls from Multiple Threads
+|Not allowed (returns an error)
+|Calls from Multiple Tasks
+|Not allowed (returns an error)
+|Blocking Inside API
+|Blocks during execution
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|-
+|No impact
+|None required
+
+|kPlErrInvalidState
+|The state of the Firmware Manager Porting Layer is not NotInitialized.
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+
+[#_FwMgrPlFinalize]
+==== FwMgrPlFinalize
+* *Function* +
+Performs the finalization process of this block.
+
+* *Format*
+
+[source, C]
+....
+PlErrCode FwMgrPlFinalize(void);
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+** Performs the finalization process of this block.  
+** Normally, it is assumed to be called at system shutdown.  
+** This API always succeeds regardless of the current state. However, if it is called in a state other than *Closed*, update finalization or abort processing will not be performed, which may result in a memory leak.
+
+[#_FwMgrPlFinalize_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Not allowed (returns an error)
+|Calls from Multiple Threads
+|Not allowed (returns an error)
+|Calls from Multiple Tasks
+|Not allowed (returns an error)
+|Blocking Inside API
+|Blocks during execution
+|===
+
+[#_FwMgrPlFinalize_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+
+[#_FwMgrPlOpen]
+==== FwMgrPlOpen
+
+* *Function* +
+Performs the process to start an AP binary update. Creates a temporary file for AP binary writing and obtains a handle.
+
+* *Format*
+
+[source, C]
+....
+PlErrCode FwMgrPlOpen(FwMgrPlType type, uint32_t total_write_size, uint8_t *hash,
+                      FwMgrPlHandle *handle, uint32_t *max_write_size);
+....
+
+* *Argument Description* +
+**[IN] FwMgrPlType type**::  
+Type of AP binary to be updated.  
+If an unsupported type is specified, an error is returned.
+
+**[IN] uint32_t total_write_size**::  
+Size of the AP binary to be updated.
+
+**[IN] uint8_t hash**::  
+Hash of the AP binary. Specify the starting address of a 32-byte array.  
+The value specified here can be obtained using ``FwMgrPlGetInfo``.  
+Note that this value is not verified against the actual hash value of the written binary.
+
+**[OUT] FwMgrPlHandle *handle**::  
+Handle for the update. The handle obtained here must be passed as an argument in subsequent calls to FwMgrPlWrite, FwMgrPlClose, and FwMgrPlAbort.  
+If NULL is specified, an error is returned.
+
+**[OUT] uint32_t *max_write_size**::  
+Maximum size that can be specified in FwMgrPlWrite.  
+If NULL is specified, an error is returned.
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+** Obtains a handle for AP binary update.  
+** Deletes data in the area of the flash memory where the AP binary will be written.  
+** This API can be executed only when the Firmware Manager Porting Layer is in the Closed state.  
+If called in any other state, it returns an error without performing any operation (no data is deleted).  
+** If another context is executing a Firmware Manager Porting Layer API, this API returns an error without performing any operation (no data is deleted).  
+** The handle obtained by this API must always be closed using FwMgrPlClose, regardless of whether the update was aborted or not.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Not allowed (returns an error)
+|Calls from Multiple Threads
+|Not allowed (returns an error)
+|Calls from Multiple Tasks
+|Not allowed (returns an error)
+|Blocking Inside API
+|Blocks during execution
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidState
+|The state of the Firmware Manager Porting Layer is not Closed.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidParam
+|Invalid argument specified.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrNoSupported
+|An unsupported type is specified in type.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInternal
+|An unexpected error occurred during API execution.
+|Invalid value
+|T.B.D.
+|T.B.D.
+|===
+
+<<<
+
+
+[#_FwMgrPlClose]
+==== FwMgrPlClose
+* *Function* +
+Performs the process to complete the AP binary update.  
+The AP binary saved in a temporary file by ``FwMgrPlWrite`` is passed to RAUC, which performs the update of the firmware and bootloader.  
+(RAUC also performs signature verification of the AP binary and switching of the boot partition.)
+
+* *Format*
+
+[source, C]
+....
+PlErrCode FwMgrPlClose(FwMgrPlHandle handle, bool *updated);
+....
+
+* *Argument Description* +
+**[IN] FwMgrPlHandle handle**::  
+Handle.  
+Specify the handle obtained by FwMgrPlOpen.
+
+**[OUT] bool *updated**::  
+Indicates whether the AP binary was updated.  
+If true, the new AP binary will be used at the next and subsequent startups.  
+This value becomes true only when this API is called in the Open state and the process completes successfully.  
+If called in the Aborted state, it remains false even if the process succeeds.  
+If it is not necessary to obtain information about whether the binary was updated, NULL can be specified.
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+** Performs the process to complete the AP binary update.  
+** This API can be executed in either the Open or Aborted state. The processing differs depending on the state in which it is executed.  
+*** **Open state**: If the total size of the AP binary written using FwMgrPlWrite matches the total_write_size specified in FwMgrPlOpen, the AP binary written by ``FwMgrPlWrite`` is passed to RAUC for firmware and bootloader update. RAUC also performs signature verification of the AP binary and boot partition switching.  
+*** **Aborted state**: Completes the update process without updating the AP binary. (RAUC does not perform the AP binary update.)  
+** If this API succeeds, the handle specified at the time of the call becomes invalid and can no longer be used in subsequent API calls. (If it fails, the handle remains valid.)  
+** If another context is executing a Firmware Manager Porting Layer API, this API returns an error without performing any operation.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Not allowed (returns an error)
+|Calls from Multiple Threads
+|Not allowed (returns an error)
+|Calls from Multiple Tasks
+|Not allowed (returns an error)
+|Blocking Inside API
+|Blocks during execution
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidParam
+|Invalid argument specified.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidState
+|The state of the Firmware Manager Porting Layer is neither Open nor Aborted.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidOperation
+|The total size of the AP binary written by FwMgrPlWrite does not match the total_write_size specified in FwMgrPlOpen.
+|Invalid value
+|No impact
+|Call FwMgrPlWrite so that the total_write_size matches, or call FwMgrPlAbort followed by this API again to abort the update.
+
+|kPlErrInvalidValue
+|The AP binary update by RAUC failed.
+|Invalid value
+|Some or all of the AP binary may have been written to the inactive partition. However, the active partition is not switched.
+|Call FwMgrPlAbort and then call this API again to abort the update.  
+If retrying the AP binary update, start over from FwMgrPlOpen.
+
+|kPlErrInternal
+|An unexpected error occurred during API execution.
+|Invalid value
+|T.B.D.
+|T.B.D.
+|===
+
+<<<
+
+
+[#_FwMgrPlWrite]
+==== FwMgrPlWrite
+* *Function* +
+Writes the AP binary to a temporary file. This temporary file is passed to RAUC by ``FwMgrPlClose`` for the AP binary update.
+
+* *Format*
+
+[source, C]
+....
+PlErrCode FwMgrPlWrite(FwMgrPlHandle handle,
+                       EsfMemoryManagerHandle buffer_handle,
+                       uint32_t buffer_offset, uint32_t write_size,
+                       uint32_t *written_size);
+....
+
+* *Argument Description* +
+**[IN] FwMgrPlHandle handle**::  
+Handle.  
+Specify the handle obtained by FwMgrPlOpen.
+
+**[IN] EsfMemoryManagerHandle buffer_handle**::  
+Memory Manager handle for the buffer to be written.
+
+**[IN] const uint32_t buffer_offset**::  
+Start position in the target buffer where writing begins.
+
+**[IN] const uint32_t write_size**::  
+Write size.  
+If 0 or a value larger than max_write_size (obtained from FwMgrPlOpen) is specified, an error is returned.
+
+**[OUT] uint32_t *written_size**::  
+Actual size written.  
+If NULL is specified, an error is returned.
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+** Writes the AP binary to a temporary file.  
+** This API can be executed only in the Open state. If called in any other state, it returns an error without performing any operation.  
+** This API can be executed multiple times. Ensure that the total size of all written AP binary data matches the total_write_size specified in FwMgrPlOpen.  
+** If the sum of “the total size of AP binary data written so far by this API” and write_size exceeds the total_write_size specified in FwMgrPlOpen, an error is returned.  
+** If another context is executing a Firmware Manager Porting Layer API, this API returns an error without performing any operation.  
+** When this API succeeds, *written_size is always set to write_size.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Not allowed (returns an error)
+|Calls from Multiple Threads
+|Not allowed (returns an error)
+|Calls from Multiple Tasks
+|Not allowed (returns an error)
+|Blocking Inside API
+|Blocks during execution
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidParam
+|Invalid argument specified.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidState
+|The state of the Firmware Manager Porting Layer is not Open.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidOperation
+|The operation is invalid in the current state.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInternal
+|An unexpected error occurred during API execution.
+|Invalid value
+|T.B.D.
+|T.B.D.
+|===
+
+<<<
+
+
+[#_FwMgrPlAbort]
+==== FwMgrPlAbort
+* *Function* +
+Aborts the AP binary update.
+
+* *Format*
+
+[source, C]
+....
+PlErrCode FwMgrPlAbort(FwMgrPlHandle handle);
+....
+
+* *Argument Description* +
+**[IN] FwMgrPlHandle handle**::  
+Specify the handle obtained by FwMgrPlOpen.  
+If the update for the AP binary specified when obtaining the handle does not support aborting, an error is returned.
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+** Aborts the currently ongoing AP binary update using the specified handle.  
+** This API can be executed only in the Open state. If called in any other state, it returns an error without performing any operation.  
+** If another context is executing a Firmware Manager Porting Layer API, this API returns an error without performing any operation.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Not allowed (returns an error)
+|Calls from Multiple Threads
+|Not allowed (returns an error)
+|Calls from Multiple Tasks
+|Not allowed (returns an error)
+|Blocking Inside API
+|Blocks during execution
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|-
+|No impact
+|None required
+
+|kPlErrInvalidParam
+|Invalid argument specified.
+|-
+|No impact
+|None required
+
+|kPlErrInvalidState
+|The state of the Firmware Manager Porting Layer is not Open.
+|-
+|No impact
+|None required
+|===
+
+<<<
+
+
+[#_FwMgrPlGetInfo]
+==== FwMgrPlGetInfo
+* *Function* +
+Retrieves the version, hash, and update date/time of the AP binary.
+
+* *Format*
+
+[source, C]
+....
+PlErrCode FwMgrPlGetInfo(FwMgrPlType type, int32_t version_size, char *version,
+                         int32_t hash_size, uint8_t *hash,
+                         int32_t update_date_size, char *update_date);
+....
+
+* *Argument Description* +
+**[IN] FwMgrPlType type**::  
+Type of AP binary.
+
+**[IN] int32_t version_size**::  
+Size of the version array.
+
+**[OUT] char *version**::  
+If NULL is specified, an error is returned.  
+Version. For Firmware, an empty string ("") is returned.
+
+**[IN] int32_t hash_size**::  
+Size of the hash array.
+
+**[OUT] uint8_t *hash**::  
+If NULL is specified, an error is returned.  
+Hash. Returns the value specified in FwMgrPlOpen.  
+If a factory-programmed binary is running, returns 000000..00 (32 bytes).
+
+**[IN] int32_t update_date_size**::  
+Size of the update_date array.
+
+**[OUT] char *update_date**::  
+If NULL is specified, an error is returned.  
+Update date/time of the binary.  
+If a factory-programmed binary is running, an empty string ("") is returned.
+
+* *Return Value* +
+Returns kPlErrCodeOk when successful.  
+If it fails, returns one of the PlErrCode values (other than kPlErrCodeOk).
+
+* *Description* +
+Retrieves the hash, version, and update date/time for the AP binary specified in type.  
+This API can be executed when the Firmware Manager Porting Layer is in the Open, Closed, or Aborted state.
+
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Detail |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller's context
+|Concurrent Calls
+|Allowed
+|Calls from Multiple Threads
+|Not allowed
+|Calls from Multiple Tasks
+|Not allowed
+|Blocking Inside API
+|Blocks during execution
+|===
+
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+
+|kPlErrLock
+|Another context is executing a Firmware Manager Porting Layer API.
+|-
+|No impact
+|None required
+
+|kPlErrInvalidParam
+|Invalid argument specified.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrInvalidState
+|The state of the Firmware Manager Porting Layer is NotInitialized.
+|Invalid value
+|No impact
+|None required
+
+|kPlErrNoSupported
+|An unsupported type is specified in type.
+|Invalid value
+|No impact
+|None required
+|===
+
+<<<
+
+== Example of API Usage
+=== Example of AP Binary Update
+
+[{mermaid_block}]
+----
+sequenceDiagram
+  participant upper_layer as Upper Layer
+  participant fw_mgr_pl as Firmware Manager Porting Layer
+  participant rauc as RAUC
+  participant os as OS
+  upper_layer ->> fw_mgr_pl: FwMgrPlInitialize
+  fw_mgr_pl -->> upper_layer: {mermaid_br}
+  upper_layer ->> fw_mgr_pl: FwMgrPlOpen
+  fw_mgr_pl -->> upper_layer: {mermaid_br}
+  fw_mgr_pl ->> os: Open tmp.raucb
+  os -->> fw_mgr_pl: {mermaid_br}
+  loop
+    upper_layer ->> fw_mgr_pl: FwMgrPlWrite
+    fw_mgr_pl ->> os: Write to tmp.raucb
+    os -->> fw_mgr_pl: {mermaid_br}
+    fw_mgr_pl -->> upper_layer: {mermaid_br}
+  end
+  upper_layer ->> fw_mgr_pl: FwMgrPlClose
+  fw_mgr_pl ->> os: Close tmp.raucb
+  os -->> fw_mgr_pl: {mermaid_br}
+  fw_mgr_pl ->> rauc: rauc install tmp.raucb
+  rauc -->> fw_mgr_pl: {mermaid_br}
+  upper_layer ->> fw_mgr_pl: FwMgrPlFinalize
+  fw_mgr_pl -->> upper_layer: {mermaid_br}
+----
+
+
+== Special Notes and Block-Specific Descriptions
+None
+
+
+== List of OSS Used
+None
+
+<<<
+
+== References
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|0.0.1
+|First edition
+|===

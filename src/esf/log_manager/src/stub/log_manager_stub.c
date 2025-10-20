@@ -12,11 +12,6 @@
 #include <string.h>
 #include <sys/sys.h>
 
-#ifdef LOG_MANAGER_ENCRYPT_ENABLE
-#include "sec_mod_public.h"
-#include "sec_util_public.h"
-#endif  // LOG_MANAGER_ENCRYPT_ENABLE
-
 // enum
 enum SYS_event_type {
   SYS_EVENT_TYPE_MSTP,
@@ -71,7 +66,6 @@ static int stub_sys_put_blob_mstp_fail_no = 0;
 static uint8_t *static_test_tmp_blob = NULL;
 static size_t static_test_tmp_blob_size = 0;
 static uint8_t *static_decrypted_test_blob = NULL;
-static bool static_test_non_decrypted_flag = false;
 static char *static_stub_SYS_put_blob_mstp_storage_name = NULL;
 static char *static_stub_SYS_put_blob_mstp_filename = NULL;
 
@@ -87,9 +81,6 @@ static bool stub_backdoor_get_agent_status_disconnected = false;
 
 // define
 #define LOG_MANAGER_BLOB_WORKER_BUFFER_SIZE (2048 + 128)
-
-static void stub_test_decrypt_data(uint8_t *data, uint32_t data_size,
-                                   uint8_t *decrypt_data);
 
 /* stub function */
 // providing a Client ID
@@ -337,13 +328,8 @@ enum SYS_result stub_mstp_SYS_process_event(struct SYS_client *c
     free(static_decrypted_test_blob);
     static_decrypted_test_blob = calloc(1, static_test_tmp_blob_size);
 
-    if (static_test_non_decrypted_flag == true) {
-      memcpy(static_decrypted_test_blob, static_test_tmp_blob,
-             static_test_tmp_blob_size);
-    } else {
-      stub_test_decrypt_data(static_test_tmp_blob, static_test_tmp_blob_size,
-                             static_decrypted_test_blob);
-    }
+    memcpy(static_decrypted_test_blob, static_test_tmp_blob,
+           static_test_tmp_blob_size);
 
     free(static_test_tmp_blob);
     static_test_tmp_blob = NULL;
@@ -443,7 +429,6 @@ char *stub_get_http_url(void) { return static_stub_SYS_put_blob_url; }
 void stub_clear_decrypt_data(void) {
   free(static_decrypted_test_blob);
   static_decrypted_test_blob = NULL;
-  static_test_non_decrypted_flag = false;
 
   free(static_stub_SYS_put_blob_mstp_storage_name);
   static_stub_SYS_put_blob_mstp_storage_name = NULL;
@@ -458,62 +443,6 @@ void stub_clear_decrypt_data(void) {
   static_test_tmp_http_blob = NULL;
   static_test_tmp_http_blob_size = 0;
 }
-
-static void stub_test_decrypt_data(uint8_t *data, uint32_t data_size,
-                                   uint8_t *decrypt_data) {
-// This func does nothing because encryption is not performed by
-// LogManager.
-#ifdef LOG_MANAGER_ENCRYPT_ENABLE
-  uint8_t p_key[SECUTIL_KEY_SIZE_DETAIL_LOG / 8] = {0};
-  uint16_t key_length = 0;
-
-  EsfSecUtilStatus ret = EsfSecUtilInit();
-  if (ret != kEsfSecUtilSuccess) {
-    printf("%s:EsfSecUtilInit failed. ret:%x\n", __func__, ret);
-    goto process_fin;
-  }
-
-  uint32_t total_length = EsfSecUtilGetBlockFlashDataSize(data_size);
-  printf("%s:total_length:%u\n", __func__, total_length);
-  if (data_size < total_length) {
-    printf("%s:Parameter error. total_length over than data_size.\n", __func__);
-    goto process_fin;
-  }
-
-  ret = SecMod_GetKeySize(SEC_MOD_KEY_ID_DETAIL_LOG, &key_length);
-  if (ret != kEsfSecUtilSuccess) {
-    printf("%s:SecMod_GetKeySize failed. ret:%x\n", __func__, ret);
-    goto process_fin;
-  }
-
-  ret = SecMod_GetKey(SEC_MOD_KEY_ID_DETAIL_LOG, p_key, &key_length);
-  if (ret != kEsfSecUtilSuccess) {
-    printf("%s:SecMod_GetKey failed. ret:%x\n", __func__, ret);
-    goto process_fin;
-  }
-
-  uint8_t iv_output[SECUTIL_AES_BLOCK_SIZE] = {0};
-  memcpy(iv_output, data, SECUTIL_AES_BLOCK_SIZE);
-  uint8_t *data_skip_iv = data + SECUTIL_AES_BLOCK_SIZE;
-  ret = EsfSecUtilDecryptAesCbc(SECUTIL_KEY_SIZE_DETAIL_LOG, p_key,
-                                total_length, iv_output, data_skip_iv,
-                                decrypt_data);
-  if (ret != kEsfSecUtilSuccess) {
-    printf("%s:EsfSecUtilDecryptAesCbc failed. ret:%x\n", __func__, ret);
-    goto process_fin;
-  }
-
-process_fin:
-  if (ret != kEsfSecUtilSuccess) {
-    stub_clear_decrypt_data();
-  }
-  (void)EsfSecUtilDeinit();
-
-  // Free the static_decrypted_test_blob upon normal termination at
-  // the end of the test.
-#endif  // LOG_MANAGER_ENCRYPT_ENABLE
-}
-void stub_test_set_non_decrypt(void) { static_test_non_decrypted_flag = true; }
 
 enum evp_agent_status stub_EVP_getAgentStatus(void) {
   if (stub_backdoor_get_agent_status_disconnected) {
