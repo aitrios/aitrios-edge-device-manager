@@ -940,11 +940,17 @@ EsfMemoryManagerAllocateWasm(const wasm_exec_env_t *exec_env, int32_t size,
                              EsfMemoryManagerHandle *user_handle) {
   // check parameters.
   if ((size <= 0) || (user_handle == (EsfMemoryManagerHandle *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - size=%d, user_handle=%p",
+                     __FILE__, __LINE__, __func__, size, user_handle);
     return kEsfMemoryManagerResultParamError;
   }
   *user_handle = (EsfMemoryManagerHandle)0;
 
   if (!EsfMemoryManagerValidateWasmModuleInstance(exec_env)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] invalid wasm module instance", __FILE__,
+                     __LINE__, __func__);
     return kEsfMemoryManagerResultParamError;
   }
   wasm_module_inst_t module_inst =
@@ -971,6 +977,9 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerGenerateMemoryInfo(
 
   // check parameters.
   if ((size <= 0) || (user_handle == (EsfMemoryManagerHandle *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - size=%d, user_handle=%p",
+                     __FILE__, __LINE__, __func__, size, user_handle);
     return kEsfMemoryManagerResultParamError;
   }
   *user_handle = (EsfMemoryManagerHandle)0;
@@ -1010,6 +1019,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerGenerateMemoryInfo(
       break;
     case kEsfMemoryManagerTargetWasmHeap:
     default:
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:[%s] parameter error - unsupported target area, "
+                       "target_area=%d",
+                       __FILE__, __LINE__, __func__, target_area);
       ret = kEsfMemoryManagerResultParamError;
       goto error_exit;
   }
@@ -1050,9 +1063,19 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFreeWasm(
   // check parameters.
   if ((MEMORY_MANAGER_HANDLE_ID(handle) != 0) ||
       (MEMORY_MANAGER_HANDLE_OFFSET(handle) == 0)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - handle=0x%08x, "
+                     "handle_id=%d, offset=0x%08x",
+                     __FILE__, __LINE__, __func__, handle,
+                     MEMORY_MANAGER_HANDLE_ID(handle),
+                     MEMORY_MANAGER_HANDLE_OFFSET(handle));
     return kEsfMemoryManagerResultParamError;
   }
   if (!EsfMemoryManagerValidateWasmModuleInstance(exec_env)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - invalid wasm module "
+                     "instance, exec_env=%p",
+                     __FILE__, __LINE__, __func__, exec_env);
     return kEsfMemoryManagerResultParamError;
   }
 
@@ -1069,6 +1092,10 @@ EsfMemoryManagerDiscardMemoryInfo(EsfMemoryManagerHandle handle) {
   EsfMemoryManagerResult ret = kEsfMemoryManagerResultSuccess;
   // memory information existence check
   if (!EsfMemoryManagerHandleExists(handle)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - handle does not exist, handle=0x%08x",
+        __FILE__, __LINE__, __func__, handle);
     ret = kEsfMemoryManagerResultParamError;
     goto error_exit;
   }
@@ -1085,6 +1112,12 @@ EsfMemoryManagerDiscardMemoryInfo(EsfMemoryManagerHandle handle) {
       // unmap error,close error
       if ((entry->map_address != MEMORY_MANAGER_UNMAP) ||
           (entry->file_descriptor >= 0)) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:[%s] operation error - memory still mapped or file open, "
+            "handle=0x%08x, map_address=0x%016lx, fd=%d",
+            __FILE__, __LINE__, __func__, handle, entry->map_address,
+            entry->file_descriptor);
         ret = kEsfMemoryManagerResultOperationError;
         goto error_exit;
       }
@@ -1092,6 +1125,11 @@ EsfMemoryManagerDiscardMemoryInfo(EsfMemoryManagerHandle handle) {
       switch (entry->target_area) {
         case kEsfMemoryManagerTargetLargeHeap:
           if (PlLheapFree((PlLheapHandle)(uintptr_t)entry->allocate_address)) {
+            WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                             "%s-%d:[%s] other error - large heap free failed, "
+                             "handle=0x%08x, address=0x%lx",
+                             __FILE__, __LINE__, __func__, handle,
+                             (unsigned long)entry->allocate_address);
             ret = kEsfMemoryManagerResultOtherError;
             goto error_exit;
           }
@@ -1099,12 +1137,21 @@ EsfMemoryManagerDiscardMemoryInfo(EsfMemoryManagerHandle handle) {
         case kEsfMemoryManagerTargetDma:
           if (PlDmaMemFree(
                   (PlDmaMemHandle)(uintptr_t)entry->allocate_address)) {
+            WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                             "%s-%d:[%s] other error - DMA memory free failed, "
+                             "handle=0x%08x, address=0x%lx",
+                             __FILE__, __LINE__, __func__, handle,
+                             (unsigned long)entry->allocate_address);
             ret = kEsfMemoryManagerResultOtherError;
             goto error_exit;
           }
           break;
         case kEsfMemoryManagerTargetWasmHeap:
         default:
+          WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                           "%s-%d:[%s] parameter error - unsupported target "
+                           "area, target_area=%d",
+                           __FILE__, __LINE__, __func__, entry->target_area);
           ret = kEsfMemoryManagerResultParamError;
           goto error_exit;
       }
@@ -1131,6 +1178,9 @@ EsfMemoryManagerMapWasm(EsfMemoryManagerHandle handle, int32_t size,
   PlErrCode err_code = kPlErrCodeOk;
   // check parameters.
   if ((address == (void **)NULL) || (size <= 0)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - address=%p, size=%d",
+                     __FILE__, __LINE__, __func__, address, size);
     return kEsfMemoryManagerResultParamError;
   }
   // map address initialize
@@ -1142,15 +1192,30 @@ EsfMemoryManagerMapWasm(EsfMemoryManagerHandle handle, int32_t size,
   //  address is returned as the mapping address.
   if ((MEMORY_MANAGER_HANDLE_ID(handle) != 0) ||
       (MEMORY_MANAGER_HANDLE_OFFSET(handle) == 0)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - handle=0x%08x, "
+                     "handle_id=%d, offset=0x%08x",
+                     __FILE__, __LINE__, __func__, handle,
+                     MEMORY_MANAGER_HANDLE_ID(handle),
+                     MEMORY_MANAGER_HANDLE_OFFSET(handle));
     return kEsfMemoryManagerResultParamError;
   }
   if (!EsfMemoryManagerValidateWasmModuleInstance(exec_env)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - invalid wasm module "
+                     "instance, exec_env=%p",
+                     __FILE__, __LINE__, __func__, exec_env);
     return kEsfMemoryManagerResultParamError;
   }
   wasm_module_inst_t module_inst =
       wasm_runtime_get_module_inst((wasm_exec_env_t)*exec_env);
   if (!wasm_runtime_validate_app_addr(
           module_inst, MEMORY_MANAGER_HANDLE_OFFSET(handle), (uint32_t)size)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - invalid wasm app address, "
+                     "handle=0x%08x, offset=0x%08x, size=%d",
+                     __FILE__, __LINE__, __func__, handle,
+                     MEMORY_MANAGER_HANDLE_OFFSET(handle), size);
     return kEsfMemoryManagerResultParamError;
   }
   void *native_address = wasm_runtime_addr_app_to_native(
@@ -1174,6 +1239,9 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerMapMemoryInfo(
   EsfMemoryManagerResult ret = kEsfMemoryManagerResultSuccess;
   // check parameters.
   if ((address == (void **)NULL) || (size <= 0)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - address=%p, size=%d",
+                     __FILE__, __LINE__, __func__, address, size);
     return kEsfMemoryManagerResultParamError;
   }
   // map address initialize
@@ -1181,6 +1249,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerMapMemoryInfo(
 
   // memory operation handle (handle_id = 1-127)
   if (!EsfMemoryManagerHandleExists(handle)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - handle does not exist, handle=0x%08x",
+        __FILE__, __LINE__, __func__, handle);
     return kEsfMemoryManagerResultParamError;
   }
   // selecting memory information from the memory management information list
@@ -1195,15 +1267,30 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerMapMemoryInfo(
       // map area check
       uint32_t area_size = 0;
       if (entry->target_area == kEsfMemoryManagerTargetWasmHeap) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] parameter error - wasm heap not supported "
+                         "for mapping, handle=0x%08x",
+                         __FILE__, __LINE__, __func__, handle);
         return kEsfMemoryManagerResultParamError;
       }
       if ((uint32_t)entry->allocate_size <
           MEMORY_MANAGER_HANDLE_OFFSET(handle)) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:[%s] parameter error - offset exceeds allocated size, "
+            "handle=0x%08x, allocate_size=%d, offset=0x%08x",
+            __FILE__, __LINE__, __func__, handle, entry->allocate_size,
+            MEMORY_MANAGER_HANDLE_OFFSET(handle));
         return kEsfMemoryManagerResultParamError;
       }
       area_size = (uint32_t)entry->allocate_size -
                   MEMORY_MANAGER_HANDLE_OFFSET(handle);
       if (area_size < (uint32_t)size) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:[%s] parameter error - requested size exceeds available "
+            "area, handle=0x%08x, area_size=%u, requested_size=%d",
+            __FILE__, __LINE__, __func__, handle, area_size, size);
         return kEsfMemoryManagerResultParamError;
       }
       // virtual Address Map processing
@@ -1212,6 +1299,9 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerMapMemoryInfo(
       //  beginning of the area).
       ret = EsfMemoryManagerMapMemory(entry);
       if (ret != kEsfMemoryManagerResultSuccess) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] map memory failed, handle=0x%08x, ret=%d",
+                         __FILE__, __LINE__, __func__, handle, ret);
         return ret;
       }
       // map management information list unregistered check
@@ -1242,6 +1332,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerMapMemoryInfo(
       return kEsfMemoryManagerResultSuccess;
     }
   }
+  WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                   "%s-%d:[%s] parameter error - handle not found in memory "
+                   "info list, handle=0x%08x",
+                   __FILE__, __LINE__, __func__, handle);
   return kEsfMemoryManagerResultParamError;
 }
 /* ------------------------------------------------------------------------ */
@@ -1251,6 +1345,9 @@ EsfMemoryManagerMapMemory(struct EsfMemoryManagerHandleInternal *entry) {
   PlErrCode err_code = kPlErrCodeOk;
   // check parameters.
   if (entry == (struct EsfMemoryManagerHandleInternal *)NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - entry is NULL", __FILE__,
+                     __LINE__, __func__);
     return kEsfMemoryManagerResultParamError;
   }
   // virtual Address Map processing
@@ -1263,6 +1360,11 @@ EsfMemoryManagerMapMemory(struct EsfMemoryManagerHandleInternal *entry) {
       case kEsfMemoryManagerTargetLargeHeap:
         if (!PlLheapIsValid(
                 (PlLheapHandle)(uintptr_t)entry->allocate_address)) {
+          WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                           "%s-%d:[%s] parameter error - invalid large heap "
+                           "handle, handle=0x%lx",
+                           __FILE__, __LINE__, __func__,
+                           (unsigned long)entry->allocate_address);
           return kEsfMemoryManagerResultParamError;
         }
         err_code = PlLheapMap((PlLheapHandle)(uintptr_t)entry->allocate_address,
@@ -1271,6 +1373,11 @@ EsfMemoryManagerMapMemory(struct EsfMemoryManagerHandleInternal *entry) {
       case kEsfMemoryManagerTargetDma:
         if (!PlDmaMemIsValid(
                 (PlDmaMemHandle)(uintptr_t)entry->allocate_address)) {
+          WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                           "%s-%d:[%s] parameter error - invalid DMA memory "
+                           "handle, handle=0x%lx",
+                           __FILE__, __LINE__, __func__,
+                           (unsigned long)entry->allocate_address);
           return kEsfMemoryManagerResultParamError;
         }
         err_code =
@@ -1279,6 +1386,10 @@ EsfMemoryManagerMapMemory(struct EsfMemoryManagerHandleInternal *entry) {
         break;
       case kEsfMemoryManagerTargetWasmHeap:
       default:
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] parameter error - unsupported target "
+                         "area, target_area=%d",
+                         __FILE__, __LINE__, __func__, entry->target_area);
         return kEsfMemoryManagerResultParamError;
     }
     if ((err_code != kPlErrCodeOk) || (vaddr == (void *)NULL)) {
@@ -1299,11 +1410,21 @@ EsfMemoryManagerUnmapWasm(EsfMemoryManagerHandle handle, void **address) {
   PlErrCode err_code = kPlErrCodeOk;
   // check parameters.
   if ((address == (void **)NULL) || (*address == (void *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - address=%p, *address=%p",
+                     __FILE__, __LINE__, __func__, address,
+                     address ? *address : NULL);
     return kEsfMemoryManagerResultParamError;
   }
   // user handle(handle_id = 0): when specified
   if ((MEMORY_MANAGER_HANDLE_ID(handle) != 0) ||
       (MEMORY_MANAGER_HANDLE_OFFSET(handle) == 0)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - invalid handle, "
+                     "handle=0x%08x, handle_id=%d, offset=0x%08x",
+                     __FILE__, __LINE__, __func__, handle,
+                     MEMORY_MANAGER_HANDLE_ID(handle),
+                     MEMORY_MANAGER_HANDLE_OFFSET(handle));
     return kEsfMemoryManagerResultParamError;
   }
   err_code = PlAppmemUnmap(*address);
@@ -1318,6 +1439,10 @@ EsfMemoryManagerUnmapMemoryInfo(EsfMemoryManagerHandle handle) {
   EsfMemoryManagerResult ret = kEsfMemoryManagerResultSuccess;
   // memory operation handle (handle_id = 1-127)
   if (!EsfMemoryManagerHandleExists(handle)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - handle does not exist, handle=0x%08x",
+        __FILE__, __LINE__, __func__, handle);
     return kEsfMemoryManagerResultParamError;
   }
   // selecting memory information from the memory management information list
@@ -1330,9 +1455,17 @@ EsfMemoryManagerUnmapMemoryInfo(EsfMemoryManagerHandle handle) {
         (MEMORY_MANAGER_HANDLE_ID(entry->link_info) ==
          MEMORY_MANAGER_HANDLE_ID(handle))) {
       if (entry->map_address == MEMORY_MANAGER_UNMAP) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:[%s] operation error - memory not mapped, handle=0x%08x",
+            __FILE__, __LINE__, __func__, handle);
         return kEsfMemoryManagerResultOperationError;
       }
       if (!EsfMemoryManagerMapInfoExists(handle, entry)) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] parameter error - map info does not "
+                         "exist, handle=0x%08x",
+                         __FILE__, __LINE__, __func__, handle);
         return kEsfMemoryManagerResultParamError;
       }
       // virtual Address Unmap processing
@@ -1364,6 +1497,10 @@ EsfMemoryManagerUnmapMemoryInfo(EsfMemoryManagerHandle handle) {
       return kEsfMemoryManagerResultSuccess;
     }
   }
+  WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                   "%s-%d:[%s] parameter error - handle not found in memory "
+                   "info list, handle=0x%08x",
+                   __FILE__, __LINE__, __func__, handle);
   return kEsfMemoryManagerResultParamError;
 }
 /* ------------------------------------------------------------------------ */
@@ -1372,6 +1509,9 @@ EsfMemoryManagerUnmapMemory(struct EsfMemoryManagerHandleInternal *entry) {
   PlErrCode err_code = kPlErrCodeOk;
   // check parameters.
   if (entry == (struct EsfMemoryManagerHandleInternal *)NULL) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - entry is NULL", __FILE__,
+                     __LINE__, __func__);
     return kEsfMemoryManagerResultParamError;
   }
   // virtual Address unmap processing
@@ -1388,6 +1528,10 @@ EsfMemoryManagerUnmapMemory(struct EsfMemoryManagerHandleInternal *entry) {
         break;
       case kEsfMemoryManagerTargetWasmHeap:
       default:
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] parameter error - unsupported target "
+                         "area, target_area=%d",
+                         __FILE__, __LINE__, __func__, entry->target_area);
         return kEsfMemoryManagerResultParamError;
     }
     if (err_code != kPlErrCodeOk) {
@@ -1681,8 +1825,13 @@ EsfMemoryManagerFileIoFopen(EsfMemoryManagerHandle handle, int32_t size) {
   bool handle_exist = EsfMemoryManagerIsHandleExist(handle, &entry);
   // If "handle does not exist" or "handle entry info not exist", return error.
   if ((!handle_exist) ||
-      (entry == (struct EsfMemoryManagerHandleInternal *)NULL))
+      (entry == (struct EsfMemoryManagerHandleInternal *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - handle does not exist or "
+                     "invalid entry, handle=0x%08x, handle_exist=%d, entry=%p",
+                     __FILE__, __LINE__, __func__, handle, handle_exist, entry);
     return kEsfMemoryManagerResultParamError;
+  }
   // If the maximum capacity is specified, the size specification is replaced
   // with the entire size of the handle (memory area).
   if (size == MEMORY_MANAGER_OPEN_MAX_SIZE) size = entry->allocate_size;
@@ -1742,6 +1891,10 @@ EsfMemoryManagerFileIoFopen(EsfMemoryManagerHandle handle, int32_t size) {
       struct EsfMemoryManagerHandleAddressOffset *new_list = NULL;
       new_list = malloc(sizeof(struct EsfMemoryManagerHandleAddressOffset));
       if (new_list == NULL) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] other error - malloc failed for map info, "
+                         "handle=0x%08x",
+                         __FILE__, __LINE__, __func__, handle);
         return kEsfMemoryManagerResultOtherError;
       }
       new_list->address_offset = MEMORY_MANAGER_HANDLE_OFFSET(handle);
@@ -1752,6 +1905,10 @@ EsfMemoryManagerFileIoFopen(EsfMemoryManagerHandle handle, int32_t size) {
       // mutex initialize
       int32_t err = pthread_mutex_init(&(new_list->handle_mutex), NULL);
       if (err != 0) {
+        WRITE_DLOG_ERROR(
+            MODULE_ID_SYSTEM,
+            "%s-%d:[%s] other error - mutex init failed, handle=0x%08x, err=%d",
+            __FILE__, __LINE__, __func__, handle, err);
         free(new_list);
         return kEsfMemoryManagerResultOtherError;
       }
@@ -1772,8 +1929,13 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoGetHandleEntry(
   EsfMemoryManagerResult ret = kEsfMemoryManagerResultSuccess;
   // check parameters.
   if ((handle_entry == (struct EsfMemoryManagerHandleInternal **)NULL) ||
-      (map_entry == (struct EsfMemoryManagerHandleAddressOffset **)NULL))
+      (map_entry == (struct EsfMemoryManagerHandleAddressOffset **)NULL)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - handle_entry=%p, map_entry=%p", __FILE__,
+        __LINE__, __func__, handle_entry, map_entry);
     return kEsfMemoryManagerResultParamError;
+  }
   // selecting memory information from the memory management
   // information list
   struct EsfMemoryManagerHandleInternal *entry =
@@ -1783,6 +1945,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoGetHandleEntry(
   // If "handle does not exist" or "handle entry info not exist", return error.
   if ((!handle_exist) ||
       (entry == (struct EsfMemoryManagerHandleInternal *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - handle does not exist or "
+                     "invalid entry, handle=0x%08x, handle_exist=%d, entry=%p",
+                     __FILE__, __LINE__, __func__, handle, handle_exist, entry);
     ret = kEsfMemoryManagerResultParamError;
     goto exit;
   }
@@ -1796,6 +1962,11 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoGetHandleEntry(
   // If "it is closed", return an error.
   if ((!map_info_exist) ||
       (map_info_entry == (struct EsfMemoryManagerHandleAddressOffset *)NULL)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - map info does not exist or closed, "
+        "handle=0x%08x, map_info_exist=%d, map_info_entry=%p",
+        __FILE__, __LINE__, __func__, handle, map_info_exist, map_info_entry);
     ret = kEsfMemoryManagerResultParamError;
     goto exit;
   }
@@ -1823,9 +1994,20 @@ EsfMemoryManagerFileIoFclose(EsfMemoryManagerHandle handle) {
   // Search for the corresponding map(open) information from the map(open)
   // management information list.
   ret = EsfMemoryManagerFileIoGetHandleEntry(handle, &entry, &map_info_entry);
-  if (ret != kEsfMemoryManagerResultSuccess) goto exit;
+  if (ret != kEsfMemoryManagerResultSuccess) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] get handle entry failed, handle=0x%08x, ret=%d", __FILE__,
+        __LINE__, __func__, handle, ret);
+    goto exit;
+  }
   // If "it is closed", return an error.
   if (map_info_entry->file_descriptor < 0) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] operation error - file already closed, "
+                     "handle=0x%08x, fd=%d",
+                     __FILE__, __LINE__, __func__, handle,
+                     map_info_entry->file_descriptor);
     ret = kEsfMemoryManagerResultOperationError;
     goto exit;
   }
@@ -1910,27 +2092,56 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFseekPreCheck(
   switch (param->whence) {
     case SEEK_SET:
       // Set Seek position as the position from beginning of file
-      if ((param->offset < 0) || (param->offset > (off_t)map_info->size))
+      if ((param->offset < 0) || (param->offset > (off_t)map_info->size)) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] parameter error - SEEK_SET offset out of "
+                         "range, offset=%ld, size=%u",
+                         __FILE__, __LINE__, __func__, param->offset,
+                         map_info->size);
         return kEsfMemoryManagerResultParamError;
+      }
       break;
     case SEEK_CUR:
       // Set Seek position as position to move from current file position
       if (param->offset >= 0) {
-        if ((map_info->seek_position + param->offset) > (off_t)map_info->size)
+        if ((map_info->seek_position + param->offset) > (off_t)map_info->size) {
+          WRITE_DLOG_ERROR(
+              MODULE_ID_SYSTEM,
+              "%s-%d:[%s] parameter error - SEEK_CUR forward offset out of "
+              "range, seek_pos=%ld, offset=%ld, size=%u",
+              __FILE__, __LINE__, __func__, map_info->seek_position,
+              param->offset, map_info->size);
           return kEsfMemoryManagerResultParamError;
+        }
       } else {
-        if (map_info->seek_position < (off_t)(llabs(param->offset)))
+        if (map_info->seek_position < (off_t)(llabs(param->offset))) {
+          WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                           "%s-%d:[%s] parameter error - SEEK_CUR backward "
+                           "offset out of range, seek_pos=%ld, offset=%ld",
+                           __FILE__, __LINE__, __func__,
+                           map_info->seek_position, param->offset);
           return kEsfMemoryManagerResultParamError;
+        }
       }
       break;
     case SEEK_END:
       // Set Seek position as position to move from end of file
       if ((param->offset > 0) ||
-          ((off_t)map_info->size < (off_t)(llabs(param->offset))))
+          ((off_t)map_info->size < (off_t)(llabs(param->offset)))) {
+        WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                         "%s-%d:[%s] parameter error - SEEK_END offset out of "
+                         "range, offset=%ld, size=%u",
+                         __FILE__, __LINE__, __func__, param->offset,
+                         map_info->size);
         return kEsfMemoryManagerResultParamError;
+      }
       break;
     default:
       // Undefined
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:[%s] parameter error - invalid whence value, whence=%d",
+          __FILE__, __LINE__, __func__, param->whence);
       return kEsfMemoryManagerResultParamError;
   }
   return kEsfMemoryManagerResultSuccess;
@@ -1957,6 +2168,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFseekExec(
       break;
     default:
       // If the parameters are invalid, error is returned.
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:[%s] parameter error - invalid whence value, whence=%d",
+          __FILE__, __LINE__, __func__, param->whence);
       return kEsfMemoryManagerResultParamError;
   }
   err_code = PlLheapFseek((PlLheapHandle)(uintptr_t)allocate_address,
@@ -1969,6 +2184,11 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFseekExec(
     ret = kEsfMemoryManagerResultSuccess;
   } else if (err_code == kPlErrInvalidParam) {
     // If the parameters are invalid, error is returned.
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - PLheap seek failed with "
+                     "invalid param, fd=%d, pos=%ld",
+                     __FILE__, __LINE__, __func__, file_descriptor,
+                     request_position);
     ret = kEsfMemoryManagerResultParamError;
   } else {
     // If file cannot be seek, error is returned.
@@ -1984,8 +2204,13 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFseekExec(
 STATIC EsfMemoryManagerResult
 EsfMemoryManagerFileIoSeekParamCheck(EsfMemoryManagerFileIoFseekParam *param) {
   if ((param == (EsfMemoryManagerFileIoFseekParam *)NULL) ||
-      (param->result_offset == (off_t *)NULL))
+      (param->result_offset == (off_t *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - param=%p, result_offset=%p",
+                     __FILE__, __LINE__, __func__, param,
+                     param ? param->result_offset : NULL);
     return kEsfMemoryManagerResultParamError;
+  }
   return kEsfMemoryManagerResultSuccess;
 }
 /* ------------------------------------------------------------------------- */
@@ -2066,6 +2291,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFseek(
     EsfMemoryManagerResult ret2 =
         EsfMemoryManagerFileIoGetHandleEntry(handle, &entry, &map_info_entry);
     if (ret2 != kEsfMemoryManagerResultSuccess) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:[%s] get handle entry failed after seek, "
+                       "handle=0x%08x, ret2=%d",
+                       __FILE__, __LINE__, __func__, handle, ret2);
       ret = kEsfMemoryManagerResultOtherError;
       goto exit;
     }
@@ -2111,6 +2340,11 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFwriteFreadExec(
        (operation != kEsfMemoryManagerFileIoFread)) ||
       (param == (EsfMemoryManagerFileIoAccessParam *)NULL) ||
       (seek_position == (off_t *)NULL)) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - address=0x%016lx, fd=%d, "
+                     "operation=%d, param=%p, seek_position=%p",
+                     __FILE__, __LINE__, __func__, allocate_address,
+                     file_descriptor, operation, param, seek_position);
     return kEsfMemoryManagerResultParamError;
   }
   // FileIO access preparation
@@ -2183,11 +2417,20 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoAccessParamCheck(
     EsfMemoryManagerFileIoAccessParam *param) {
   if ((operation != kEsfMemoryManagerFileIoFwrite) &&
       (operation != kEsfMemoryManagerFileIoFread)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - invalid operation, operation=%d",
+        __FILE__, __LINE__, __func__, operation);
     return kEsfMemoryManagerResultParamError;
   }
   if ((param == (EsfMemoryManagerFileIoAccessParam *)NULL) ||
       (param->buff == (void *)NULL) || (param->size == 0) ||
       (param->rsize == (size_t *)NULL)) {
+    WRITE_DLOG_ERROR(
+        MODULE_ID_SYSTEM,
+        "%s-%d:[%s] parameter error - param=%p, buff=%p, size=%zu, rsize=%p",
+        __FILE__, __LINE__, __func__, param, param ? param->buff : NULL,
+        param ? param->size : 0, param ? param->rsize : NULL);
     return kEsfMemoryManagerResultParamError;
   }
   return kEsfMemoryManagerResultSuccess;
@@ -2201,6 +2444,10 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFwriteFread(
   // check parameters.
   ret = EsfMemoryManagerFileIoAccessParamCheck(operation, param);
   if (ret != kEsfMemoryManagerResultSuccess) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] access param check failed, handle=0x%08x, "
+                     "operation=%d, ret=%d",
+                     __FILE__, __LINE__, __func__, handle, operation, ret);
     return ret;
   }
   int32_t err = pthread_mutex_lock(&s_memory_manager_mutex);
@@ -2335,11 +2582,24 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoPwritePread(
         &(map_info_entry->handle_mutex);  // FileIO handle(fd) mutex
     // check parameters.
     if ((int32_t)(seek_position + access_param->size) > allocate_size) {
+      WRITE_DLOG_ERROR(
+          MODULE_ID_SYSTEM,
+          "%s-%d:[%s] Parameter size check failed - seek_position=%ld, "
+          "access_param->size=%u, allocate_size=%d",
+          __FILE__, __LINE__, __func__, seek_position, access_param->size,
+          allocate_size);
       ret = kEsfMemoryManagerResultParamError;
       goto exit;
     }
     ret = EsfMemoryManagerFileIoFseekPreCheck(map_info_entry, seek_param);
-    if (ret != kEsfMemoryManagerResultSuccess) goto exit;
+    if (ret != kEsfMemoryManagerResultSuccess) {
+      WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                       "%s-%d:[%s] Fseek precheck failed - ret=%d, "
+                       "map_info_entry=%p, seek_param=%p",
+                       __FILE__, __LINE__, __func__, ret, map_info_entry,
+                       seek_param);
+      goto exit;
+    }
 
     pthread_mutex_unlock(&s_memory_manager_mutex);
     // FileIO access processing (mutex lock)
@@ -2443,10 +2703,16 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerSetHandleInfo(
   struct EsfMemoryManagerHandleInternal *entry =
       (struct EsfMemoryManagerHandleInternal *)NULL;
   bool handle_exist = EsfMemoryManagerIsHandleExist(handle, &entry);
+  WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:[%s] handle=0x%08x, handle_exist=%s",
+                  __FILE__, __LINE__, __func__, handle,
+                  handle_exist ? "true" : "false");
   // If "handle does not exist", return an error.
   if (!handle_exist) {
     // Anything not under the handle management of the memory manager is
     // considered to be "other area."
+    WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+                    "%s-%d:[%s] handle does not exist, staying with OtherHeap",
+                    __FILE__, __LINE__, __func__);
     ret = kEsfMemoryManagerResultSuccess;
     goto exit;
   }
@@ -2497,6 +2763,9 @@ EsfMemoryManagerResult EsfMemoryManagerInitialize(int32_t app_mem_div_num) {
 
   // Parameter check
   if (app_mem_div_num <= 0) {
+    WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
+                     "%s-%d:[%s] parameter error - app_mem_div_num=%d",
+                     __FILE__, __LINE__, __func__, app_mem_div_num);
     return kEsfMemoryManagerResultParamError;
   }
   int32_t err = pthread_mutex_lock(&s_memory_manager_mutex);
@@ -3205,6 +3474,14 @@ EsfMemoryManagerResult EsfMemoryManagerGetHandleInfo(
   info->target_area = kEsfMemoryManagerTargetOtherHeap;
   info->allocate_size = 0;
 
+  // Log handle information for debugging
+  WRITE_DLOG_INFO(
+      MODULE_ID_SYSTEM,
+      "%s-%d:[%s] handle=0x%08x, handle_id=%d, handle_offset=0x%08x", __FILE__,
+      __LINE__, __func__, handle,
+      MEMORY_MANAGER_HANDLE_ID((EsfMemoryManagerHandle)handle),
+      MEMORY_MANAGER_HANDLE_OFFSET((EsfMemoryManagerHandle)handle));
+
   int32_t err = pthread_mutex_lock(&s_memory_manager_mutex);
   if (err != 0) {
     // Elog (telemetry) output
@@ -3233,6 +3510,7 @@ EsfMemoryManagerResult EsfMemoryManagerGetHandleInfo(
   } else {  // Handle check : LargeHeap,DMA or OtherArea ?
     ret = EsfMemoryManagerSetHandleInfo((EsfMemoryManagerHandle)handle, info);
   }
+
   if (ret != kEsfMemoryManagerResultSuccess) {
     // TODO: Error log.
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM, "%s-%d:[%s] failed(%d)", __FILE__,
