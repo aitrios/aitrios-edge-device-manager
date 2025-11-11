@@ -878,6 +878,16 @@ static const EsfParameterStorageManagerStorageAdapterDataInfo
       .data_id = {.pl_storage = PlStorageDataMigrationDone},
       .factory_reset_required = false,
     },
+    [kEsfParameterStorageManagerItemDNSSecondary] = {
+      .storage = kEsfParameterStorageManagerStoragePl,
+      .data_id = {.pl_storage = PlStorageDataDNSSecondary},
+      .factory_reset_required = true,
+    },
+    [kEsfParameterStorageManagerItemNTPServerSecondary] = {
+      .storage = kEsfParameterStorageManagerStoragePl,
+      .data_id = {.pl_storage = PlStorageDataNTPServerSecondary},
+      .factory_reset_required = true,
+    },
 };
 
 #endif  // ESF_PARAMETER_STORAGE_MANAGER_SRC_PARAMETER_STORAGE_MANAGER_STORAGE_ADAPTER_SETTINGS_TABLE_H_  /* NOLINT */

@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.3.3
+:revnumber: 0.3.5
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -1100,6 +1100,8 @@ typedef enum EsfParameterStorageManagerItemID {
   kEsfParameterStorageManagerItemExceptionInfo,
   kEsfParameterStorageManagerItemEvpExceptionFactor,
   kEsfParameterStorageManagerItemMigrationDone,
+  kEsfParameterStorageManagerItemDNSSecondary,
+  kEsfParameterStorageManagerItemNTPServerSecondary,
   kEsfParameterStorageManagerItemCustom,
   kEsfParameterStorageManagerItemMax
 } EsfParameterStorageManagerItemID;
@@ -1451,6 +1453,10 @@ typedef enum EsfParameterStorageManagerItemID {
 |EVP が原因の Exception 要因です。
 |kEsfParameterStorageManagerItemMigrationDone
 |FWのMigration実施有無を表します。
+|kEsfParameterStorageManagerItemDNSSecondary
+|DNS(セカンダリ設定)です。
+|kEsfParameterStorageManagerItemNTPServerSecondary
+|NTPサーバーのURL(セカンダリ設定)です。
 |kEsfParameterStorageManagerItemCustom
 |カスタム動作用の識別子です。
 |kEsfParameterStorageManagerItemMax
@@ -6874,6 +6880,22 @@ Parameter Storage Manager で扱うデータは、T5, T5_EVT, T3R-S3ではlittle
 |戻さない
 |×
 
+|kEsfParameterStorageManagerItemDNSSecondary
+|PlStorageDataDNSSecondary
+|/camera_data_encr/DNSSecondary
+|Read/Write
+|×
+|戻す
+|×
+
+|kEsfParameterStorageManagerItemNTPServerSecondary
+|PlStorageDataNTPServerSecondary
+|/camera_data_encr/NTPServerSecondary
+|Read/Write
+|×
+|戻す
+|×
+
 |kEsfParameterStorageManagerItemCustom
 |PlStorageDataCustom
 |
@@ -7158,5 +7180,13 @@ a|Migration情報出力対応
 以下のItemIDを追加
 
 * ``**kEsfParameterStorageManagerItemMigrationDone**``
+
+|v0.3.5
+a|Secondary DNS and NTP対応
+
+以下のItemIDを追加
+
+* ``**kEsfParameterStorageManagerItemDNSSecondary**``
+* ``**kEsfParameterStorageManagerItemNTPServerSecondary**``
 
 |===

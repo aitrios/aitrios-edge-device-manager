@@ -187,6 +187,8 @@ static const PlStorageIdTbl s_id_tbl[PlStorageDataMax] = {
   [PlStorageDataExceptionInfo]              = {O_RDWR,   0, false},
   [PlStorageDataEvpExceptionFactor]         = {O_RDWR,   0, true},
   [PlStorageDataMigrationDone]              = {O_RDWR,   0, true},
+  [PlStorageDataDNSSecondary]               = {O_RDWR,   0, true},
+  [PlStorageDataNTPServerSecondary]         = {O_RDWR,   0, true},
 };
 
 // ----------------------------------------------------------------------------

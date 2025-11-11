@@ -491,6 +491,8 @@ typedef enum EsfParameterStorageManagerItemID {
   kEsfParameterStorageManagerItemAIModelSlotInfo,
   kEsfParameterStorageManagerItemAIISPAIModelSlotInfo,
   kEsfParameterStorageManagerItemEsfSensorConfig,
+  kEsfParameterStorageManagerItemDNSSecondary,
+  kEsfParameterStorageManagerItemNTPServerSecondary,
 
   // fixed
   kEsfParameterStorageManagerItemCustom,  // Identifier for custom operation.

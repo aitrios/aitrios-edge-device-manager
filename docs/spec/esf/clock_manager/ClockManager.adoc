@@ -1256,7 +1256,7 @@ The maximum value for string length used for any of the following (unit: bytes).
 
 [source, C]
 ....
-#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (272)
+#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (256)
 
 ....
 

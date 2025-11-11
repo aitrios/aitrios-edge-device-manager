@@ -185,6 +185,8 @@ typedef enum {
   PlStorageDataExceptionInfo,
   PlStorageDataEvpExceptionFactor,
   PlStorageDataMigrationDone,
+  PlStorageDataDNSSecondary,
+  PlStorageDataNTPServerSecondary,
   PlStorageDataMax
 } PlStorageDataId;
 

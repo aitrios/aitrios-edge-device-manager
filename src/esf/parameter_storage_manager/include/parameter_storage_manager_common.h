@@ -427,6 +427,8 @@ typedef enum EsfParameterStorageManagerItemID {
   kEsfParameterStorageManagerItemExceptionInfo,
   kEsfParameterStorageManagerItemEvpExceptionFactor,
   kEsfParameterStorageManagerItemMigrationDone,
+  kEsfParameterStorageManagerItemDNSSecondary,
+  kEsfParameterStorageManagerItemNTPServerSecondary,
   kEsfParameterStorageManagerItemCustom,
   kEsfParameterStorageManagerItemMax
 } EsfParameterStorageManagerItemID;

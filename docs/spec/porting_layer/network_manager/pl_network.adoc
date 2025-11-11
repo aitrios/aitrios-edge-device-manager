@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 4
 :chapter-label:
-:revnumber: 0.0.4
+:revnumber: 0.0.5
 :toc: left
 :toc-title: Table of Contents
 :toclevels: 4
@@ -683,6 +683,10 @@ stateDiagram-v2
 |Initialize Various Structures
 |Initializes structures specific to PL Network.
 |<<#_Function10>>
+
+|Data Migration Function
+|To maintain compatibility with previous versions, this function migrates configuration data from the old format to the new format.
+|<<#_Function11>>
 |===
 
 <<<
@@ -907,6 +911,47 @@ See <<#_PlNetworkStructInitialize, PlNetworkStructInitialize>> for details.
 Considerations::  
 None
 
+[#_Function11]
+==== Data Migration Function
+Function Overview::
+To maintain compatibility with previous versions, this function migrates configuration data from the old format to the new format.
+
+Prerequisites::
+PlNetworkInitialize must have been executed.
+
+Function Details::
+Determines whether data migration is required. +
+For details, refer to <<#_PlNetworkIsNeedMigration, PlNetworkIsNeedMigration>>. +
++
+Performs initialization processing for data migration. +
+For details, refer to <<#_PlNetworkInitMigration, PlNetworkInitMigration>>. +
++
+Retrieves configuration data in the old format. +
+For details, refer to <<#_PlNetworkGetMigrationData, PlNetworkGetMigrationData>>. +
++
+Performs finalization processing for data migration. +
+For details, refer to <<#_PlNetworkFinMigration, PlNetworkFinMigration>>. +
++
+Deletes configuration data in the old format. +
+For details, refer to <<#_PlNetworkEraseMigrationSrcData, PlNetworkEraseMigrationSrcData>>.
+
+Detailed Behavior::
+For details, refer to <<#_PlNetworkIsNeedMigration, PlNetworkIsNeedMigration>>. +
+For details, refer to <<#_PlNetworkInitMigration, PlNetworkInitMigration>>. +
+For details, refer to <<#_PlNetworkGetMigrationData, PlNetworkGetMigrationData>>. +
+For details, refer to <<#_PlNetworkFinMigration, PlNetworkFinMigration>>. +
+For details, refer to <<#_PlNetworkEraseMigrationSrcData, PlNetworkEraseMigrationSrcData>>.
+
+Error Behavior and Recovery::
+For details, refer to <<#_PlNetworkIsNeedMigration, PlNetworkIsNeedMigration>>. +
+For details, refer to <<#_PlNetworkInitMigration, PlNetworkInitMigration>>. +
+For details, refer to <<#_PlNetworkGetMigrationData, PlNetworkGetMigrationData>>. +
+For details, refer to <<#_PlNetworkFinMigration, PlNetworkFinMigration>>. +
+For details, refer to <<#_PlNetworkEraseMigrationSrcData, PlNetworkEraseMigrationSrcData>>.
+
+Considerations::
+None
+
 <<<
 
 === Non-functional Requirements of the Component
@@ -1129,6 +1174,18 @@ Includes sub-structures representing each I/F's status.
 |PlNetworkEventHandler
 |Function pointer type for network event handlers.
 |<<#_PlNetworkEventHandler>>
+
+|struct PlNetworkMigrationNeedParam
+|Structure representing information used to determine whether data migration is required.
+|<<#_PlNetworkMigrationNeedParam>>
+
+|PlNetworkMigrationHandle
+|Handle used to retrieve configuration data in the old format.
+|<<#_PlNetworkMigrationHandle>>
+
+|enum PlNetworkMigrationDataId
+|Enumeration representing the types of configuration data in the old format.
+|<<#_PlNetworkMigrationDataId>>
 |===
 
 [#L_API_LIST]
@@ -1189,6 +1246,26 @@ Includes sub-structures representing each I/F's status.
 |PlNetworkStructInitialize
 |Initializes the specified structure.
 |<<#_PlNetworkStructInitialize>>
+
+|PlNetworkIsNeedMigration
+|Determines whether data migration is required.
+|<<#_PlNetworkIsNeedMigration>>
+
+|PlNetworkInitMigration
+|Performs initialization processing for data migration.
+|<<#_PlNetworkInitMigration>>
+
+|PlNetworkGetMigrationData
+|Retrieves configuration data in the old format.
+|<<#_PlNetworkGetMigrationData>>
+
+|PlNetworkFinMigration
+|Performs finalization processing for data migration.
+|<<#_PlNetworkFinMigration>>
+
+|PlNetworkEraseMigrationSrcData
+|Deletes configuration data in the old format.
+|<<#_PlNetworkEraseMigrationSrcData>>
 |===
 
 <<<
@@ -1590,6 +1667,64 @@ The event that occurred.
 
 **``[IN] void *private_data``**::  
 The private_data specified in PlNetworkRegisterEventHandler.
+
+[#_PlNetworkMigrationNeedParam]
+==== PlNetworkMigrationNeedParam
+Structure representing information used to determine whether data migration is required.
+
+* *Format*
+
+[source, C]
+....
+typedef struct {
+  int32_t netif_kind;
+} PlNetworkMigrationNeedParam;
+....
+
+* *Values*
+
+[#_PlNetworkMigrationNeedParamValue]
+.Description of PlNetworkMigrationNeedParam values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|int32_t netif_kind
+|Type of network interface (0: Wi-Fi, 1: Ethernet)
+|===
+
+[#_PlNetworkMigrationHandle]
+==== PlNetworkMigrationHandle
+Handle used to retrieve configuration data in the old format.
+
+* *Format*
+
+[source, C]
+....
+typedef void *PlNetworkMigrationHandle;
+....
+
+[#_PlNetworkMigrationDataId]
+==== PlNetworkMigrationDataId
+Enumeration representing the types of configuration data in the old format.
+
+* *Format*
+
+[source, C]
+....
+typedef enum {
+  kPlNetworkMigrationDataIdIPAddress = 0,
+  kPlNetworkMigrationDataIdSubnetMask,
+  kPlNetworkMigrationDataIdGateway,
+  kPlNetworkMigrationDataIdDNS,
+  kPlNetworkMigrationDataIdIPMethod,
+  kPlNetworkMigrationDataIdNetifKind,
+  kPlNetworkMigrationDataIdProxyURL,
+  kPlNetworkMigrationDataIdProxyPort,
+  kPlNetworkMigrationDataIdProxyUserName,
+  kPlNetworkMigrationDataIdProxyPassword,
+  kPlNetworkMigrationDataIdMax
+} PlNetworkMigrationDataId;
+....
 
 <<<
 
@@ -2845,6 +2980,346 @@ PlNetworkStructInitialize((void*)&config, PlNetworkStructTypeWifiConfig);
 |-
 |No impact
 |Restart the system
+|===
+<<<
+
+[#_PlNetworkIsNeedMigration]
+==== PlNetworkIsNeedMigration
+* *Function* +
+Determines whether data migration is required.
+
+* *Format* +
+
+[source, C]
+....
+PlErrCode PlNetworkIsNeedMigration(PlNetworkMigrationNeedParam *param,
+                                   bool *need_migration);
+....
+
+* *Argument Description* +
+**[IN] <<#_PlNetworkMigrationNeedParam,PlNetworkMigrationNeedParam>> *param**:: 
+Information used to determine whether data migration is required.
+
+**[OUT] bool *need_migration**:: 
+A flag indicating whether data migration is required. true: migration required, false: migration not required.
+
+* *Return Value* +
+Returns one of the PlErrCode values according to the execution result.
+
+* *Description* +
+** This API can be used after PlNetworkInitialize has been executed.  
+** For models other than T4R, returns need_migration = false.  
+** For T4R, determines the necessity of data migration by referring to *param*, and returns the result to *need_migration*.
+
+[#_PlNetworkIsNeedMigration_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Concurrent Invocation
+|Not allowed
+|Invocation from Multiple Threads
+|Not allowed
+|Invocation from Multiple Tasks
+|Not allowed
+|Blocking Inside API
+|Does not block
+|===
+
+[#_PlNetworkIsNeedMigration_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|System reboot
+|===
+
+<<<
+
+[#_PlNetworkInitMigration]
+==== PlNetworkInitMigration
+* *Function* +
+Performs initialization processing for data migration.
+
+* *Format* +
+
+[source, C]
+....
+PlErrCode PlNetworkInitMigration(PlNetworkMigrationHandle *handle);
+....
+
+* *Argument Description* +
+**[OUT] <<#_PlNetworkMigrationHandle,PlNetworkMigrationHandle>> *handle**:: 
+Pointer to the handle used to retrieve configuration data in the old format.
+
+* *Return Value* +
+Returns one of the PlErrCode values according to the execution result.
+
+* *Description* +
+** This API can be used after PlNetworkInitialize has been executed.  
+** Not supported for models other than T4R.  
+** For T4R, obtains a handle used to retrieve configuration data in the old format.
+
+[#_PlNetworkInitMigration_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Concurrent Invocation
+|Not allowed
+|Invocation from Multiple Threads
+|Not allowed
+|Invocation from Multiple Tasks
+|Not allowed
+|Blocking Inside API
+|Does not block
+|===
+
+[#_PlNetworkInitMigration_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|System reboot
+
+|kPlErrNoSupported
+|Not supported
+|-
+|No impact
+|Not required
+
+|kPlErrMemory
+|Memory allocation failure
+|-
+|No impact
+|System reboot
+|===
+
+<<<
+
+[#_PlNetworkGetMigrationData]
+==== PlNetworkGetMigrationData
+* *Function* +
+Retrieves configuration data in the old format.
+
+* *Format* +
+
+[source, C]
+....
+PlErrCode PlNetworkGetMigrationData(PlNetworkMigrationHandle handle,
+                                    PlNetworkMigrationDataId id, void *dst,
+                                    size_t dst_size);
+....
+
+* *Argument Description* +
+**[IN] <<#_PlNetworkMigrationHandle,PlNetworkMigrationHandle>> handle**:: 
+Handle used to retrieve configuration data in the old format.
+
+**[IN] <<#_PlNetworkMigrationDataId,PlNetworkMigrationDataId>> id**:: 
+Type of configuration data in the old format.
+
+**[OUT] void *dst**:: 
+Retrieval result.
+
+**[IN] size_t dst_size**:: 
+Size of *dst* [byte].
+
+* *Return Value* +
+Returns one of the PlErrCode values according to the execution result.
+
+* *Description* +
+** This API can be used after PlNetworkInitMigration has been executed.  
+** Not supported for models other than T4R.  
+** For T4R, retrieves configuration data in the old format.
+
+[#_PlNetworkGetMigrationData_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Concurrent Invocation
+|Not allowed
+|Invocation from Multiple Threads
+|Not allowed
+|Invocation from Multiple Tasks
+|Not allowed
+|Blocking Inside API
+|Does not block
+|===
+
+[#_PlNetworkGetMigrationData_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrInvalidParam
+|Invalid argument
+|-
+|No impact
+|System reboot
+
+|kPlErrNoSupported
+|Not supported
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlNetworkFinMigration]
+==== PlNetworkFinMigration
+* *Function* +
+Performs finalization processing for data migration.
+
+* *Format* +
+
+[source, C]
+....
+PlErrCode PlNetworkFinMigration(PlNetworkMigrationHandle handle);
+....
+
+* *Argument Description* +
+**[IN] <<#_PlNetworkMigrationHandle,PlNetworkMigrationHandle>> handle**:: 
+Handle used to retrieve configuration data in the old format.
+
+* *Return Value* +
+Returns one of the PlErrCode values according to the execution result.
+
+* *Description* +
+** This API can be used after PlNetworkInitialize has been executed.  
+** Not supported for models other than T4R.  
+** For T4R, releases the handle used to retrieve configuration data in the old format.
+
+[#_PlNetworkFinMigration_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Concurrent Invocation
+|Not allowed
+|Invocation from Multiple Threads
+|Not allowed
+|Invocation from Multiple Tasks
+|Not allowed
+|Blocking Inside API
+|Does not block
+|===
+
+[#_PlNetworkFinMigration_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|kPlErrCodeOk
+|Success
+|-
+|No impact
+|Not required
+
+|kPlErrNoSupported
+|Not supported
+|-
+|No impact
+|Not required
+|===
+
+<<<
+
+[#_PlNetworkEraseMigrationSrcData]
+==== PlNetworkEraseMigrationSrcData
+* *Function* +
+Deletes configuration data in the old format.
+
+* *Format* +
+
+[source, C]
+....
+void PlNetworkEraseMigrationSrcData(void);
+....
+
+* *Argument Description* +
+-
+
+* *Return Value* +
+-
+
+* *Description* +
+** This API can be used after PlNetworkInitialize has been executed.  
+** Does nothing for models other than T4R.  
+** For T4R, deletes configuration data in the old format.
+
+[#_PlNetworkEraseMigrationSrcData_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Operates in the caller’s context
+|Concurrent Invocation
+|Not allowed
+|Invocation from Multiple Threads
+|Not allowed
+|Invocation from Multiple Tasks
+|Not allowed
+|Blocking Inside API
+|Does not block
+|===
+
+[#_PlNetworkEraseMigrationSrcData_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |State of OUT Argument |System State After Error |Recovery Method
+|-
+|-
+|-
+|-
+|-
 |===
 
 <<<
@@ -4496,4 +4971,21 @@ Added PHY ID acquisition events.
 
 ** 6.3. Network Status Support Status per Camera +
 Added is_phy_id_valid.
+
+|v0.0.5
+|
+* Added component function description.
+** 3.5.11. Data Migration Function +
+
+* Added data type definitions.
+** 4.2.12. PlNetworkMigrationNeedParam +
+** 4.2.13. PlNetworkMigrationHandle +
+** 4.2.14. PlNetworkMigrationDataId +
+
+* Added API definitions.
+** 4.3.13. PlNetworkIsNeedMigration +
+** 4.3.14. PlNetworkInitMigration +
+** 4.3.15. PlNetworkGetMigrationData +
+** 4.3.16. PlNetworkFinMigration +
+** 4.3.17. PlNetworkEraseMigrationSrcData +
 |===
