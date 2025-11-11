@@ -49,9 +49,10 @@ typedef enum PlClockManagerParamType {
 
 // The maximum size of a host name or an IPv4 address for an NTP server.
 // This size includes a terminal null character (i.e., '\0').
-#define PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE (272)
+#define PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE (256)
 typedef struct PlClockManagerConnection {
   char hostname[PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } PlClockManagerConnection;
 
 typedef struct PlClockManagerCommon {
@@ -223,20 +224,23 @@ bool PlClockManagerIsNtpClientDaemonActive(void);
  * no data found
  */
 PlClockManagerReturnValue PlClockManagerGetMigrationDataImpl(void *dst,
-                                                              size_t dst_size);
+                                                             size_t dst_size);
 
 /**
  * @brief Setup migration configuration for clock management
- * 
+ *
  * This function performs the complete setup for clock management migration,
  * including the following operations:
  * 1. Adds "confdir /etc/chrony/conf.d" to the end of chrony.conf if not present
- * 2. Replaces default NTP server with Aitrios NTP server (time.aitrios.sony-semicon.com)
- * 3. Creates symbolic link from /misc/smartcamera/edc/conf.d to /etc/chrony/conf.d
- * 
+ * 2. Replaces default NTP server with Aitrios NTP server
+ * (time.aitrios.sony-semicon.com)
+ * 3. Creates symbolic link from /misc/smartcamera/edc/conf.d to
+ * /etc/chrony/conf.d
+ *
  * @return PlClockManagerReturnValue
  * @retval kPlClockManagerSuccess Success
- * @retval kPlClockManagerInternalError Failed to modify configuration or create symbolic link
+ * @retval kPlClockManagerInternalError Failed to modify configuration or create
+ * symbolic link
  */
 PlClockManagerReturnValue PlClockManagerSetupMigration(void);
 

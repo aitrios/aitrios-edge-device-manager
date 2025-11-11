@@ -282,6 +282,7 @@ typedef struct EsfNetworkManagerIPInfo {
   char subnet_mask[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
   char gateway[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
   char dns[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+  char dns2[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
 } EsfNetworkManagerIPInfo;
 
 // Wi-Fi station information structure.
@@ -397,6 +398,7 @@ typedef struct EsfNetworkManagerIPInfoMask {
   uint8_t subnet_mask : 1;
   uint8_t gateway : 1;
   uint8_t dns : 1;
+  uint8_t dns2 : 1;
 } EsfNetworkManagerIPInfoMask;
 
 // Mask structure of EsfNetworkManagerWiFiStaInfo.

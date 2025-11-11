@@ -16,9 +16,9 @@
 #include "clock_manager_internal.h"
 #include "clock_manager_setting_internal.h"
 #include "clock_manager_utility.h"
-#include "pl_clock_manager.h"
 #include "parameter_storage_manager.h"
 #include "parameter_storage_manager_common.h"
+#include "pl_clock_manager.h"
 #include "utility_log.h"
 #include "utility_log_module_id.h"
 
@@ -184,6 +184,9 @@ STATIC bool EsfClockManagerCheckParam(
 
 // """
 STATIC bool EsfClockManagerIsHostnameMaskEnabled(
+    EsfParameterStorageManagerMask mask);
+
+STATIC bool EsfClockManagerIsHostname2MaskEnabled(
     EsfParameterStorageManagerMask mask);
 
 // """Verifies whether sync_interval in common in the given mask turns on.
@@ -760,6 +763,15 @@ STATIC const EsfParameterStorageManagerMemberInfo
             .enabled = EsfClockManagerIsStableSyncNumberMaskEnabled,
             .custom = NULL,
         },
+        {
+            .id = kEsfParameterStorageManagerItemNTPServerSecondary,
+            .type = kEsfParameterStorageManagerItemTypeString,
+            .offset = offsetof(EsfClockManagerParamsForPsm, connect.hostname2),
+            .size = ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF(
+                EsfClockManagerParamsForPsm, connect.hostname2),
+            .enabled = EsfClockManagerIsHostname2MaskEnabled,
+            .custom = NULL,
+        },
 };
 
 STATIC const EsfParameterStorageManagerStructInfo kClockManagerParamStructInfo =
@@ -1067,6 +1079,7 @@ EsfClockManagerReturnValue EsfClockManagerInitSetting(void) {
   }
 
   tmp_params->connect.hostname[0] = '\0';
+  tmp_params->connect.hostname2[0] = '\0';
   tmp_params->common.raw_sync_interval.sync_interval = -1;
   tmp_params->common.raw_polling_time.polling_time = -1;
   tmp_params->skip_and_limit.raw_type.type =
@@ -1332,6 +1345,9 @@ EsfClockManagerReturnValue EsfClockManagerGetParamsInternal(
         (strnlen(g_params_in_volatile->connect.hostname,
                  ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
          (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) ||
+        (strnlen(g_params_in_volatile->connect.hostname2,
+                 ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
+         (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) ||
         g_params_in_volatile->common.raw_sync_interval.sync_interval < 0 ||
         g_params_in_volatile->common.raw_polling_time.polling_time < 0 ||
         g_params_in_volatile->skip_and_limit.raw_type.type >=
@@ -1423,7 +1439,15 @@ EsfClockManagerReturnValue EsfClockManagerGetParamsInternal(
 
 EsfClockManagerReturnValue EsfClockManagerSaveParamsInternal(void) {
   const EsfClockManagerParamsForPsmMask psm_mask = {
-      {1}, {1, 1}, {1, 1, 1, 1}, {1, 1, 1}};
+      .connect = {.hostname = 1, .hostname2 = 1},
+      .common = {.raw_sync_interval = 1, .raw_polling_time = 1},
+      .skip_and_limit = {.raw_type = 1,
+                         .raw_limit_packet_time = 1,
+                         .raw_limit_rtc_correction_value = 1,
+                         .raw_sanity_limit = 1},
+      .slew_setting = {.raw_type = 1,
+                       .raw_stable_rtc_correction_value = 1,
+                       .raw_stable_sync_number = 1}};
 
   EsfClockManagerParamsForPsm *tmp_params = calloc(1, sizeof(*tmp_params));
   if (tmp_params == NULL) {
@@ -1661,12 +1685,21 @@ STATIC bool EsfClockManagerCheckParamConnect(
   if (connect == NULL || mask_connect == NULL) {
     return false;
   }
+
   if (mask_connect->hostname) {
     if (strnlen(connect->hostname, ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
         (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) {
       return false;
     }
   }
+
+  if (mask_connect->hostname2) {
+    if (strnlen(connect->hostname2, ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
+        (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -1787,6 +1820,12 @@ STATIC bool EsfClockManagerIsHostnameMaskEnabled(
       EsfClockManagerParamsMask, connect.hostname, mask);
 }
 
+STATIC bool EsfClockManagerIsHostname2MaskEnabled(
+    EsfParameterStorageManagerMask mask) {
+  return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
+      EsfClockManagerParamsMask, connect.hostname2, mask);
+}
+
 STATIC bool EsfClockManagerIsSyncIntervalMaskEnabled(
     EsfParameterStorageManagerMask mask) {
   return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
@@ -1896,7 +1935,15 @@ EsfClockManagerOnFactoryReset(void *private_data) {
 STATIC EsfClockManagerReturnValue EsfClockManagerLoadFromPsm(
     EsfClockManagerParamsForPsm *const psm_obj, const int tag) {
   const EsfClockManagerParamsForPsmMask psm_mask = {
-      {1}, {1, 1}, {1, 1, 1, 1}, {1, 1, 1}};
+      .connect = {.hostname = 1, .hostname2 = 1},
+      .common = {.raw_sync_interval = 1, .raw_polling_time = 1},
+      .skip_and_limit = {.raw_type = 1,
+                         .raw_limit_packet_time = 1,
+                         .raw_limit_rtc_correction_value = 1,
+                         .raw_sanity_limit = 1},
+      .slew_setting = {.raw_type = 1,
+                       .raw_stable_rtc_correction_value = 1,
+                       .raw_stable_sync_number = 1}};
 
   if (psm_obj == NULL) {
     return kClockManagerParamError;
@@ -1965,7 +2012,15 @@ EsfClockManagerLoadFromPsmDirect(EsfClockManagerParamsForPsm *const psm_obj) {
   }
 
   const EsfClockManagerParamsForPsmMask psm_mask = {
-      {1}, {1, 1}, {1, 1, 1, 1}, {1, 1, 1}};
+      .connect = {.hostname = 1, .hostname2 = 1},
+      .common = {.raw_sync_interval = 1, .raw_polling_time = 1},
+      .skip_and_limit = {.raw_type = 1,
+                         .raw_limit_packet_time = 1,
+                         .raw_limit_rtc_correction_value = 1,
+                         .raw_sanity_limit = 1},
+      .slew_setting = {.raw_type = 1,
+                       .raw_stable_rtc_correction_value = 1,
+                       .raw_stable_sync_number = 1}};
 
   const EsfParameterStorageManagerStatus status =
       EsfParameterStorageManagerLoad(g_psm_handle,
@@ -1987,12 +2042,18 @@ STATIC void EsfClockManagerCheckPsmConnectThenSubstituteDefaultForIfNecessary(
     return;
   }
 
-  if (psm_obj->connect.hostname[0] == '\0' ||
-      (strnlen(&(psm_obj->connect.hostname[0]),
-               ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
-       (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE)) {
+  // clang-format off
+  if (psm_obj->connect.hostname[0] == '\0' || (strnlen(&(psm_obj->connect.hostname[0]), ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >= (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE)) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(psm_obj,
                                  kEsfParameterStorageManagerItemNTPServer);
+  }
+
+  if ((strnlen(&(psm_obj->connect.hostname2[0]),
+               ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE) >=
+       (size_t)ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE)) {
+    EsfClockManagerGetPsmDefault(
+        psm_obj, kEsfParameterStorageManagerItemNTPServerSecondary);
   }
 
   return;
@@ -2004,22 +2065,16 @@ STATIC void EsfClockManagerCheckPsmCommonThenSubstituteDefaultForIfNecessary(
     return;
   }
 
-  if ((psm_obj->common.raw_sync_interval.size == 0) ||
-      ((psm_obj->common.raw_sync_interval.size != 0) &&
-       ((psm_obj->common.raw_sync_interval.sync_interval <
-         CLOCK_MANAGER_SYNC_INTERVAL_MIN) ||
-        (psm_obj->common.raw_sync_interval.sync_interval >
-         CLOCK_MANAGER_SYNC_INTERVAL_MAX)))) {
+  // clang-format off
+  if ((psm_obj->common.raw_sync_interval.size == 0) || ((psm_obj->common.raw_sync_interval.size != 0) && ((psm_obj->common.raw_sync_interval.sync_interval < CLOCK_MANAGER_SYNC_INTERVAL_MIN) || (psm_obj->common.raw_sync_interval.sync_interval > CLOCK_MANAGER_SYNC_INTERVAL_MAX)))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(
         psm_obj, kEsfParameterStorageManagerItemNTPSyncInterval);
   }
 
-  if ((psm_obj->common.raw_polling_time.size == 0) ||
-      ((psm_obj->common.raw_polling_time.size != 0) &&
-       ((psm_obj->common.raw_polling_time.polling_time <
-         CLOCK_MANAGER_POLLING_TIME_MIN) ||
-        (psm_obj->common.raw_polling_time.polling_time >
-         CLOCK_MANAGER_POLLING_TIME_MAX)))) {
+  // clang-format off
+  if ((psm_obj->common.raw_polling_time.size == 0) || ((psm_obj->common.raw_polling_time.size != 0) && ((psm_obj->common.raw_polling_time.polling_time < CLOCK_MANAGER_POLLING_TIME_MIN) || (psm_obj->common.raw_polling_time.polling_time > CLOCK_MANAGER_POLLING_TIME_MAX)))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(psm_obj,
                                  kEsfParameterStorageManagerItemNTPPollingTime);
   }
@@ -2034,20 +2089,16 @@ EsfClockManagerCheckPsmSub1SkipAndLimitThenSubstituteDefaultForIfNecessary(
     return;
   }
 
-  if ((psm_obj->skip_and_limit.raw_type.size == 0) ||
-      ((psm_obj->skip_and_limit.raw_type.size != 0) &&
-       (psm_obj->skip_and_limit.raw_type.type >=
-        (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax))) {
+  // clang-format off
+  if ((psm_obj->skip_and_limit.raw_type.size == 0) || ((psm_obj->skip_and_limit.raw_type.size != 0) && (psm_obj->skip_and_limit.raw_type.type >= (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(
         psm_obj, kEsfParameterStorageManagerItemSkipModeSettings);
   }
 
-  if ((psm_obj->skip_and_limit.raw_limit_packet_time.size == 0) ||
-      ((psm_obj->skip_and_limit.raw_limit_packet_time.size != 0) &&
-       ((psm_obj->skip_and_limit.raw_limit_packet_time.limit_packet_time <
-         CLOCK_MANAGER_LIMIT_PACKET_TIME_MIN) ||
-        (psm_obj->skip_and_limit.raw_limit_packet_time.limit_packet_time >
-         CLOCK_MANAGER_LIMIT_PACKET_TIME_MAX)))) {
+  // clang-format off
+  if ((psm_obj->skip_and_limit.raw_limit_packet_time.size == 0) || ((psm_obj->skip_and_limit.raw_limit_packet_time.size != 0) && ((psm_obj->skip_and_limit.raw_limit_packet_time.limit_packet_time < CLOCK_MANAGER_LIMIT_PACKET_TIME_MIN) || (psm_obj->skip_and_limit.raw_limit_packet_time.limit_packet_time > CLOCK_MANAGER_LIMIT_PACKET_TIME_MAX)))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(
         psm_obj, kEsfParameterStorageManagerItemLimitPacketTime);
   }
@@ -2074,12 +2125,9 @@ EsfClockManagerCheckPsmSub2SkipAndLimitThenSubstituteDefaultForIfNecessary(
         psm_obj, kEsfParameterStorageManagerItemLimitRTCCorrectionValue);
   }
 
-  if ((psm_obj->skip_and_limit.raw_sanity_limit.size == 0) ||
-      ((psm_obj->skip_and_limit.raw_sanity_limit.size != 0) &&
-       ((psm_obj->skip_and_limit.raw_sanity_limit.sanity_limit <
-         CLOCK_MANAGER_SANITY_LIMIT_MIN) ||
-        (psm_obj->skip_and_limit.raw_sanity_limit.sanity_limit >
-         CLOCK_MANAGER_SANITY_LIMIT_MAX)))) {
+  // clang-format off
+  if ((psm_obj->skip_and_limit.raw_sanity_limit.size == 0) || ((psm_obj->skip_and_limit.raw_sanity_limit.size != 0) && ((psm_obj->skip_and_limit.raw_sanity_limit.sanity_limit < CLOCK_MANAGER_SANITY_LIMIT_MIN) || (psm_obj->skip_and_limit.raw_sanity_limit.sanity_limit > CLOCK_MANAGER_SANITY_LIMIT_MAX)))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(psm_obj,
                                  kEsfParameterStorageManagerItemSanityLimit);
   }
@@ -2109,20 +2157,16 @@ EsfClockManagerCheckPsmSlewSettingThenSubstituteDefaultForIfNecessary(
     return;
   }
 
-  if ((psm_obj->slew_setting.raw_type.size == 0) ||
-      ((psm_obj->slew_setting.raw_type.size != 0) &&
-       (psm_obj->slew_setting.raw_type.type >=
-        (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax))) {
+  // clang-format off
+  if ((psm_obj->slew_setting.raw_type.size == 0) || ((psm_obj->slew_setting.raw_type.size != 0) && (psm_obj->slew_setting.raw_type.type >= (EsfClockManagerPsmParamsType)kClockManagerParamTypeNumMax))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(
         psm_obj, kEsfParameterStorageManagerItemSlewModeSettings);
   }
 
-  if ((psm_obj->slew_setting.raw_stable_rtc_correction_value.size == 0) ||
-      ((psm_obj->slew_setting.raw_stable_rtc_correction_value.size != 0) &&
-       ((psm_obj->slew_setting.raw_stable_rtc_correction_value
-             .stable_rtc_correction_value < CLOCK_MANAGER_STABLE_RTC_MIN) ||
-        (psm_obj->slew_setting.raw_stable_rtc_correction_value
-             .stable_rtc_correction_value > CLOCK_MANAGER_STABLE_RTC_MAX)))) {
+  // clang-format off
+  if ((psm_obj->slew_setting.raw_stable_rtc_correction_value.size == 0) || ((psm_obj->slew_setting.raw_stable_rtc_correction_value.size != 0) && ((psm_obj->slew_setting.raw_stable_rtc_correction_value.stable_rtc_correction_value < CLOCK_MANAGER_STABLE_RTC_MIN) || (psm_obj->slew_setting.raw_stable_rtc_correction_value.stable_rtc_correction_value > CLOCK_MANAGER_STABLE_RTC_MAX)))) {
+    // clang-format on
     EsfClockManagerGetPsmDefault(
         psm_obj, kEsfParameterStorageManagerItemStableRTCCorrectionValue);
   }
@@ -2160,6 +2204,10 @@ STATIC void EsfClockManagerGetPsmDefault(
       snprintf(&(psm_obj->connect.hostname[0]),
                ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE, "%s",
                CLOCK_MANAGER_DEFAULT_NTP_SERVER);
+      break;
+    case kEsfParameterStorageManagerItemNTPServerSecondary:
+      psm_obj->connect.hostname2[0] =
+          '\0';  // Secondary NTP server is empty by default
       break;
     case kEsfParameterStorageManagerItemNTPSyncInterval:
       psm_obj->common.raw_sync_interval.sync_interval =
@@ -2258,9 +2306,17 @@ STATIC EsfClockManagerReturnValue EsfClockManagerSubstituteForVolatileObj(
       snprintf(g_params_in_volatile->connect.hostname,
                ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE, "%s",
                g_temporary_for_params->connect.hostname);
+    }
+    if (mask->connect.hostname2) {
+      snprintf(g_params_in_volatile->connect.hostname2,
+               ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE, "%s",
+               g_temporary_for_params->connect.hostname2);
+    }
+    if (mask->connect.hostname || mask->connect.hostname2) {
       EsfClockManagerCheckPsmConnectThenSubstituteDefaultForIfNecessary(
           g_params_in_volatile);
     }
+
     if (mask->common.sync_interval) {
       g_params_in_volatile->common.raw_sync_interval.sync_interval =
           g_temporary_for_params->common.raw_sync_interval.sync_interval;
@@ -2325,6 +2381,8 @@ EsfClockManagerParams2PsmParams(EsfClockManagerParamsForPsm *const psm_params,
 
   strncpy(&(psm_params->connect.hostname[0]), &(params->connect.hostname[0]),
           ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE);
+  strncpy(&(psm_params->connect.hostname2[0]), &(params->connect.hostname2[0]),
+          ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE);
 
   psm_params->common.raw_sync_interval.sync_interval =
       params->common.sync_interval;
@@ -2380,6 +2438,8 @@ STATIC EsfClockManagerReturnValue EsfClockManagerPsmParams2Params(
   }
 
   strncpy(&(params->connect.hostname[0]), &(psm_params->connect.hostname[0]),
+          ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE);
+  strncpy(&(params->connect.hostname2[0]), &(psm_params->connect.hostname2[0]),
           ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE);
 
   params->common.sync_interval =

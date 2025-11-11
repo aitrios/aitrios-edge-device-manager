@@ -60,6 +60,8 @@ EsfClockManagerReturnValue EsfClockManagerStartNtpClientDaemon(
     // copy parameters from ESF to PL
     memcpy(pl_params->connect.hostname, esf_param->connect.hostname,
            sizeof(pl_params->connect.hostname));
+    memcpy(pl_params->connect.hostname2, esf_param->connect.hostname2,
+           sizeof(pl_params->connect.hostname2));
 
     pl_params->common.sync_interval = esf_param->common.sync_interval;
     pl_params->common.polling_time = esf_param->common.polling_time;

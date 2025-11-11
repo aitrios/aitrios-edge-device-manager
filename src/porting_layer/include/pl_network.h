@@ -28,6 +28,12 @@
 
 #define PL_NETWORK_IFHWADDRLEN   (6)
 
+#ifdef CONFIG_NETDB_DNSSERVER_NAMESERVERS
+#define PL_NETWORK_DNS_SERVERS_MAX (CONFIG_NETDB_DNSSERVER_NAMESERVERS)
+#else
+#define PL_NETWORK_DNS_SERVERS_MAX (1)
+#endif
+
 // Sysytem info initalizer
 #define PL_NETWORK_SYSTEM_INFO_INITIALIZER {{'\0'}, kPlNetworkTypeUnkown, \
                                             false, false}
@@ -181,7 +187,8 @@ struct PlNetworkDhcpcState {
   struct in_addr serverid;
   struct in_addr ipaddr;
   struct in_addr netmask;
-  struct in_addr dnsaddr;
+  struct in_addr dnsaddr[PL_NETWORK_DNS_SERVERS_MAX];
+  uint8_t num_dnsaddr;
   struct in_addr default_router;
   uint32_t lease_time;
   uint32_t renewal_time;

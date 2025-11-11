@@ -68,6 +68,9 @@ static bool EsfNetworkManagerValidateOneParameterDevIpGateway(
 static bool EsfNetworkManagerValidateOneParameterDevIpDns(
     const EsfNetworkManagerParameterMask *mask,
     const EsfNetworkManagerParameter *parameter, bool is_connect);
+static bool EsfNetworkManagerValidateOneParameterDevIpDns2(
+    const EsfNetworkManagerParameterMask *mask,
+    const EsfNetworkManagerParameter *parameter, bool is_connect);
 static bool EsfNetworkManagerValidateOneParameterDevIpv6Ip(
     const EsfNetworkManagerParameterMask *mask,
     const EsfNetworkManagerParameter *parameter, bool is_connect);
@@ -725,6 +728,7 @@ EsfNetworkManagerResult EsfNetworkManagerGetIFInfo(
         ip_info->subnet_mask[0] = '\0';
         ip_info->gateway[0] = '\0';
         ip_info->dns[0] = '\0';
+        ip_info->dns2[0] = '\0';
       }
     }
     ESF_NETWORK_MANAGER_DBG("Network connect information.");
@@ -1531,17 +1535,70 @@ static bool EsfNetworkManagerValidateOneParameterDevIpDns(
     return false;
   }
   if (mask->normal_mode.dev_ip.dns) {
-    if (!is_connect) {
-      size_t len = strnlen(parameter->normal_mode.dev_ip.dns,
-                           sizeof(parameter->normal_mode.dev_ip.dns));
-      if (len == 0) {
-        // Delete data, OK.
-        return true;
-      }
+    (void)is_connect;
+    // Dns is optional
+    // Allow NULL character when connecting
+    size_t len = strnlen(parameter->normal_mode.dev_ip.dns,
+                          sizeof(parameter->normal_mode.dev_ip.dns));
+    if (len == 0) {
+      // Delete data, OK.
+      return true;
     }
     if (!EsfNetworkManagerValidateParameterInternalIpaddress(
             AF_INET, parameter->normal_mode.dev_ip.dns)) {
       ESF_NETWORK_MANAGER_ERR("Normal mode dev_ip dns validate error.");
+      return false;
+    }
+  }
+  ESF_NETWORK_MANAGER_TRACE("END");
+  return true;
+}
+
+// """Normal mode DevIp dns2 parameter sanity check function.
+
+// Normal mode DevIp dns2 parameter sanity check function.
+
+// Args:
+//     mask (const EsfNetworkManagerParameterMask *):
+//       This is a mask structure.
+//     parameter (const EsfNetworkManagerParameter *):
+//       A structure containing the parameters to be checked.
+//     is_connect (bool):
+//       Identification information indicating whether the data subject to
+//       checking is for connection use.
+
+// Returns:
+//     The check result is returned.
+
+// Yields:
+//     true:Check OK.
+//     false:Check NG.
+
+// Note:
+// """
+static bool EsfNetworkManagerValidateOneParameterDevIpDns2(
+    const EsfNetworkManagerParameterMask *mask,
+    const EsfNetworkManagerParameter *parameter, bool is_connect) {
+  ESF_NETWORK_MANAGER_TRACE("START mask=%p parameter=%p is_connect=%d", mask,
+                            parameter, is_connect);
+  if (mask == NULL || parameter == NULL) {
+    ESF_NETWORK_MANAGER_ERR("Parameter error. mask=%p parameter=%p", mask,
+                            parameter);
+    return false;
+  }
+  if (mask->normal_mode.dev_ip.dns2) {
+    (void)is_connect;
+    // Dns2 is optional
+    // Allow NULL character when connecting
+    size_t len = strnlen(parameter->normal_mode.dev_ip.dns2,
+                         sizeof(parameter->normal_mode.dev_ip.dns2));
+    if (len == 0) {
+      // Delete data, OK.
+      return true;
+    }
+    if (!EsfNetworkManagerValidateParameterInternalIpaddress(
+            AF_INET, parameter->normal_mode.dev_ip.dns2)) {
+      ESF_NETWORK_MANAGER_ERR("Normal mode dev_ip dns2 validate error.");
       return false;
     }
   }
@@ -2610,6 +2667,7 @@ static bool EsfNetworkManagerValidateParameterInternal(
       EsfNetworkManagerValidateOneParameterDevIpMask,
       EsfNetworkManagerValidateOneParameterDevIpGateway,
       EsfNetworkManagerValidateOneParameterDevIpDns,
+      EsfNetworkManagerValidateOneParameterDevIpDns2,
       EsfNetworkManagerValidateOneParameterDevIpv6Ip,
       EsfNetworkManagerValidateOneParameterDevIpv6Mask,
       EsfNetworkManagerValidateOneParameterDevIpv6Gateway,
@@ -2710,6 +2768,7 @@ static bool EsfNetworkManagerValidateConnectInfo(
       mask->normal_mode.dev_ip.subnet_mask = 1;
       mask->normal_mode.dev_ip.gateway = 1;
       mask->normal_mode.dev_ip.dns = 1;
+      mask->normal_mode.dev_ip.dns2 = 1;
       parameter->normal_mode.dev_ip = os_info->normal_mode.dev_ip;
     }
     if (os_info->normal_mode.netif_kind == kEsfNetworkManagerNetifKindWiFi) {
@@ -2937,6 +2996,7 @@ static EsfNetworkManagerResult EsfNetworkManagerLoadConnectInfo(
     mask->normal_mode.dev_ip.subnet_mask = 1;
     mask->normal_mode.dev_ip.gateway = 1;
     mask->normal_mode.dev_ip.dns = 1;
+    mask->normal_mode.dev_ip.dns2 = 1;
     mask->normal_mode.wifi_sta.ssid = 1;
     mask->normal_mode.wifi_sta.password = 1;
     mask->normal_mode.wifi_sta.encryption = 1;
@@ -3246,6 +3306,8 @@ static void EsfNetworkManagerShowConnectInfo(
                             os_info->normal_mode.dev_ip.gateway);
     ESF_NETWORK_MANAGER_DBG("    dev_ip.dns        :%s",
                             os_info->normal_mode.dev_ip.dns);
+    ESF_NETWORK_MANAGER_DBG("    dev_ip.dns2       :%s",
+                            os_info->normal_mode.dev_ip.dns2);
     ESF_NETWORK_MANAGER_DBG("    dev_ip_v6.ip      :%s",
                             os_info->normal_mode.dev_ip_v6.ip);
     ESF_NETWORK_MANAGER_DBG("    dev_ip_v6.subnet_mask:%s",
@@ -3305,6 +3367,10 @@ static void EsfNetworkManagerShowParameter(
   if (mask->normal_mode.dev_ip.dns) {
     ESF_NETWORK_MANAGER_DBG("    dev_ip.dns        :%s",
                             parameter->normal_mode.dev_ip.dns);
+  }
+  if (mask->normal_mode.dev_ip.dns2) {
+    ESF_NETWORK_MANAGER_DBG("    dev_ip.dns2       :%s",
+                            parameter->normal_mode.dev_ip.dns2);
   }
   if (mask->normal_mode.dev_ip_v6.ip) {
     ESF_NETWORK_MANAGER_DBG("    dev_ip_v6.ip      :%s",

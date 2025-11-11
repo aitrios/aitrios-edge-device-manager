@@ -66,7 +66,7 @@ typedef struct EsfNetworkManagerInternalIPInfo {
   struct in_addr ip;
   struct in_addr subnet_mask;
   struct in_addr gateway;
-  struct in_addr dns;
+  struct in_addr dns[PL_NETWORK_DNS_SERVERS_MAX];
 } EsfNetworkManagerInternalIPInfo;
 
 typedef struct {
@@ -76,12 +76,15 @@ typedef struct {
 
 // Invalid IP address definition.
 static const EsfNetworkManagerIPInfo kEsfNetworkManagerInvalidIp = {
-    {"0.0.0.0"}, {"0.0.0.0"}, {"0.0.0.0"}, {"0.0.0.0"}};
+    {"0.0.0.0"}, {"0.0.0.0"}, {"0.0.0.0"}, {"0.0.0.0"}, {"0.0.0.0"},
+};
 
 #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 // AP address default definition
 static const EsfNetworkManagerIPInfo kEsfNetworkManagerDefaultApIp = {
-    {"192.168.4.1"}, {"255.255.255.0"}, {"192.168.4.1"}, {"0.0.0.0"}};
+    {"192.168.4.1"}, {"255.255.255.0"}, {"192.168.4.1"},
+    {"0.0.0.0"},     {"0.0.0.0"},
+};
 #endif  // #ifndef CONFIG_EXTERNAL_NETWORK_MANAGER_WIFI_AP_MODE_DISABLE
 
 static WaitEventHandle s_if_down_pre_event_handle = {0};
@@ -219,36 +222,43 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertIpAddress(
                             string_ip, converted_ip);
     return kEsfNetworkManagerResultInternalError;
   }
-  ESF_NETWORK_MANAGER_DBG("convert ip ip=%s mask=%s gateway=%s dns=%s",
-                          string_ip->ip, string_ip->subnet_mask,
-                          string_ip->gateway, string_ip->dns);
+  ESF_NETWORK_MANAGER_DBG("convert   ip=%s", string_ip->ip);
   if (!inet_aton(string_ip->ip, &converted_ip->ip)) {
     ESF_NETWORK_MANAGER_ERR("Ip address convert error.(src=%s)", string_ip->ip);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
     return kEsfNetworkManagerResultInternalError;
   }
+  ESF_NETWORK_MANAGER_DBG("converted ip=0x%x", converted_ip->ip.s_addr);
+  ESF_NETWORK_MANAGER_DBG("convert   mask=%s", string_ip->subnet_mask);
   if (!inet_aton(string_ip->subnet_mask, &converted_ip->subnet_mask)) {
     ESF_NETWORK_MANAGER_ERR("Ip address mask convert error.(src=%s)",
                             string_ip->subnet_mask);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
     return kEsfNetworkManagerResultInternalError;
   }
+  ESF_NETWORK_MANAGER_DBG("converted mask=0x%x",
+                          converted_ip->subnet_mask.s_addr);
+  ESF_NETWORK_MANAGER_DBG("convert   gateway=%s", string_ip->gateway);
   if (!inet_aton(string_ip->gateway, &converted_ip->gateway)) {
     ESF_NETWORK_MANAGER_ERR("Ip address gateway convert error.(src=%s)",
                             string_ip->gateway);
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
     return kEsfNetworkManagerResultInternalError;
   }
-  if (!inet_aton(string_ip->dns, &converted_ip->dns)) {
-    ESF_NETWORK_MANAGER_ERR("Ip address dns convert error.(src=%s)",
-                            string_ip->dns);
-    ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
-    return kEsfNetworkManagerResultInternalError;
+  ESF_NETWORK_MANAGER_DBG("converted gateway=0x%x",
+                          converted_ip->gateway.s_addr);
+  for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+    const char *src[] = {string_ip->dns, string_ip->dns2};
+    ESF_NETWORK_MANAGER_DBG("convert   dns[%d]=%s", i, src[i]);
+    if (!inet_aton(src[i], &converted_ip->dns[i])) {
+      ESF_NETWORK_MANAGER_ERR("Ip address dns[%d] convert error.(src=%s)", i,
+                              src[i]);
+      ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
+      return kEsfNetworkManagerResultInternalError;
+    }
+    ESF_NETWORK_MANAGER_DBG("converted dns[%d]=0x%x", i,
+                            converted_ip->dns[i].s_addr);
   }
-  ESF_NETWORK_MANAGER_DBG(
-      "converted ip ip=0x%x mask=0x%x gateway=0x%x dns=0x%x",
-      converted_ip->ip.s_addr, converted_ip->subnet_mask.s_addr,
-      converted_ip->gateway.s_addr, converted_ip->dns.s_addr);
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
@@ -281,9 +291,7 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
                             src_ip, converted_string_ip);
     return kEsfNetworkManagerResultInternalError;
   }
-  ESF_NETWORK_MANAGER_DBG("convert ip ip=0x%x mask=0x%x gateway=0x%x dns=0x%x",
-                          src_ip->ip.s_addr, src_ip->subnet_mask.s_addr,
-                          src_ip->gateway.s_addr, src_ip->dns.s_addr);
+  ESF_NETWORK_MANAGER_DBG("convert   ip=0x%x", src_ip->ip.s_addr);
   const char *ret_ntop = inet_ntop(AF_INET, &src_ip->ip,
                                    converted_string_ip->ip,
                                    sizeof(converted_string_ip->ip));
@@ -293,6 +301,8 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
     return kEsfNetworkManagerResultInternalError;
   }
+  ESF_NETWORK_MANAGER_DBG("converted ip=%s", converted_string_ip->ip);
+  ESF_NETWORK_MANAGER_DBG("convert   mask=0x%x", src_ip->subnet_mask.s_addr);
   ret_ntop = inet_ntop(AF_INET, &src_ip->subnet_mask,
                        converted_string_ip->subnet_mask,
                        sizeof(converted_string_ip->subnet_mask));
@@ -302,6 +312,9 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
     return kEsfNetworkManagerResultInternalError;
   }
+  ESF_NETWORK_MANAGER_DBG("converted mask=%s",
+                          converted_string_ip->subnet_mask);
+  ESF_NETWORK_MANAGER_DBG("convert   gateway=0x%x", src_ip->gateway.s_addr);
   ret_ntop = inet_ntop(AF_INET, &src_ip->gateway, converted_string_ip->gateway,
                        sizeof(converted_string_ip->gateway));
   if (ret_ntop == NULL) {
@@ -310,18 +323,23 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpConvertToString(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
     return kEsfNetworkManagerResultInternalError;
   }
-  ret_ntop = inet_ntop(AF_INET, &src_ip->dns, converted_string_ip->dns,
-                       sizeof(converted_string_ip->dns));
-  if (ret_ntop == NULL) {
-    ESF_NETWORK_MANAGER_ERR("Ip address dns convert error. 0x%x",
-                            src_ip->dns.s_addr);
-    ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
-    return kEsfNetworkManagerResultInternalError;
+  ESF_NETWORK_MANAGER_DBG("converted gateway=%s", converted_string_ip->gateway);
+  for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+    if (src_ip->dns[i].s_addr == 0) {
+      continue;
+    }
+    ESF_NETWORK_MANAGER_DBG("convert   dns[%d]=0x%x", i, src_ip->dns[i].s_addr);
+    char *dst[] = {converted_string_ip->dns, converted_string_ip->dns2};
+    ret_ntop = inet_ntop(AF_INET, &src_ip->dns[i], dst[i],
+                         ESF_NETWORK_MANAGER_IP_ADDRESS_LEN);
+    if (ret_ntop == NULL) {
+      ESF_NETWORK_MANAGER_ERR("Ip address dns[%d] convert error. 0x%x", i,
+                              src_ip->dns[i].s_addr);
+      ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_INTERNAL_ERROR);
+      return kEsfNetworkManagerResultInternalError;
+    }
+    ESF_NETWORK_MANAGER_DBG("converted dns[%d]=%s", i, dst[i]);
   }
-  ESF_NETWORK_MANAGER_DBG(
-      "converted ip ip=%s mask=%s gateway=%s dns=%s", converted_string_ip->ip,
-      converted_string_ip->subnet_mask, converted_string_ip->gateway,
-      converted_string_ip->dns);
   ESF_NETWORK_MANAGER_TRACE("END");
   return kEsfNetworkManagerResultSuccess;
 }
@@ -358,15 +376,11 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
                             if_name, set_ip_address);
     return kEsfNetworkManagerResultInternalError;
   }
-  ESF_NETWORK_MANAGER_INFO(
-      "if_name=%s ip_address=0x%x ipv4netmask=0x%x gateway=0x%x dns=0x%x",
-      if_name, set_ip_address->ip.s_addr, set_ip_address->subnet_mask.s_addr,
-      set_ip_address->gateway.s_addr, set_ip_address->dns.s_addr);
   int ret = 0;
-  ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s ip_address=0x%x",
-                            if_name, set_ip_address->ip.s_addr);
-  ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s ipv4netmask=0x%x",
-                            if_name, set_ip_address->subnet_mask.s_addr);
+  ESF_NETWORK_MANAGER_INFO("%s", __func__);
+  ESF_NETWORK_MANAGER_INFO("if_name=%s", if_name);
+  ESF_NETWORK_MANAGER_INFO("ip=0x%x", set_ip_address->ip.s_addr);
+  ESF_NETWORK_MANAGER_INFO("mask=0x%x", set_ip_address->subnet_mask.s_addr);
   ret = PlNetworkSetIpv4Addr(if_name, &set_ip_address->ip,
                              &set_ip_address->subnet_mask);
   if (ret != 0) {
@@ -375,8 +389,7 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
     ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_IP_FAILURE);
     return kEsfNetworkManagerResultUtilityIPAddressError;
   }
-  ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s gateway=0x%x", if_name,
-                            set_ip_address->gateway.s_addr);
+  ESF_NETWORK_MANAGER_INFO("gateway=0x%x", set_ip_address->gateway.s_addr);
   ret = PlNetworkSetIpv4Gateway(if_name, &set_ip_address->gateway);
   if (ret != 0) {
     ESF_NETWORK_MANAGER_ERR("netlib_set_dripv4addr failed. ret=%d errno=%d",
@@ -389,14 +402,20 @@ static EsfNetworkManagerResult EsfNetworkManagerAccessorIpSetIpAddress(
     // Ignore the return value as an error may occur depending on CONFIG.
     ret = PlNetworkResetDnsServer();
     ESF_NETWORK_MANAGER_TRACE("dns_default_nameserver ret=%d", ret);
-    ESF_NETWORK_MANAGER_TRACE("set ipv4 address if_name=%s dns=0x%x", if_name,
-                              set_ip_address->dns.s_addr);
-    ret = PlNetworkSetIpv4Dns(if_name, &set_ip_address->dns);
-    if (ret != 0) {
-      ESF_NETWORK_MANAGER_ERR("netlib_set_ipv4dnsaddr failed. ret=%d errno=%d",
-                              ret, errno);
-      ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_IP_FAILURE);
-      return kEsfNetworkManagerResultUtilityIPAddressError;
+    for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+      if (set_ip_address->dns[i].s_addr == 0) {
+        continue;
+      }
+      ESF_NETWORK_MANAGER_INFO("dns[%d]=0x%x", i,
+                               set_ip_address->dns[i].s_addr);
+      ret = PlNetworkSetIpv4Dns(if_name, &set_ip_address->dns[i]);
+      if (ret != 0) {
+        ESF_NETWORK_MANAGER_ERR(
+            "netlib_set_ipv4dnsaddr[%d] failed. ret=%d errno=%d", i, ret,
+            errno);
+        ESF_NETWORK_MANAGER_ELOG_ERR(ESF_NETWORK_MANAGER_ELOG_IP_FAILURE);
+        return kEsfNetworkManagerResultUtilityIPAddressError;
+      }
     }
   }
   ESF_NETWORK_MANAGER_TRACE("END");
@@ -540,7 +559,9 @@ static EsfNetworkManagerResult RequestDhcp(const char *if_name,
   ip_info.ip = s_dhcp_status.ipaddr;
   ip_info.subnet_mask = s_dhcp_status.netmask;
   ip_info.gateway = s_dhcp_status.default_router;
-  ip_info.dns = s_dhcp_status.dnsaddr;
+  for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+    ip_info.dns[i] = s_dhcp_status.dnsaddr[i];
+  }
   EsfNetworkManagerResult ret;
   ret = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info, false);
   if (ret != kEsfNetworkManagerResultSuccess) {
@@ -1385,12 +1406,7 @@ static void EsfNetworkManagerAccessorWifiApDisconnectedEventOnConnected(
 
 static void RecoveryDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
   // First, set IPAddr to 0
-  EsfNetworkManagerInternalIPInfo ip_info = {
-      .ip          = {0},
-      .subnet_mask = {0},
-      .gateway     = {0},
-      .dns         = {0},
-  };
+  EsfNetworkManagerInternalIPInfo ip_info = {0};
   EsfNetworkManagerResult ret_network;
 
   ret_network = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info,
@@ -1426,12 +1442,27 @@ static void RecoveryDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
   return;
 }
 
-static int RenewDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
-  in_addr_t before_ip     = s_dhcp_status.ipaddr.s_addr;
-  in_addr_t before_dns    = s_dhcp_status.dnsaddr.s_addr;
-  in_addr_t before_mask   = s_dhcp_status.netmask.s_addr;
-  in_addr_t before_router = s_dhcp_status.default_router.s_addr;
+static bool IsIpUpdated(struct PlNetworkDhcpcState *before,
+                        struct PlNetworkDhcpcState *after) {
+  if (before->ipaddr.s_addr != after->ipaddr.s_addr) {
+    return true;
+  }
+  if (before->netmask.s_addr != after->netmask.s_addr) {
+    return true;
+  }
+  if (before->default_router.s_addr != after->default_router.s_addr) {
+    return true;
+  }
+  for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+    if (before->dnsaddr[i].s_addr != after->dnsaddr[i].s_addr) {
+      return true;
+    }
+  }
+  return false;
+}
 
+static int RenewDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
+  struct PlNetworkDhcpcState before = s_dhcp_status;
   int plret = PlNetworkDhcpcRenew(s_dhcp_handle, &s_dhcp_status);
   if (plret != 0) {
     ESF_NETWORK_MANAGER_ERR("dhcpc_renew error.(if=%s, ret=%d, errno=%d)",
@@ -1451,16 +1482,14 @@ static int RenewDhcp(const char *if_name, EsfNetworkManagerModeInfo *mode) {
                            "[s]\n",
                            s_dhcp_lease_time, s_dhcp_t1_time, s_dhcp_t2_time);
   // Ip updated
-  if ((before_ip     != s_dhcp_status.ipaddr.s_addr) ||
-      (before_mask   != s_dhcp_status.netmask.s_addr) ||
-      (before_router != s_dhcp_status.default_router.s_addr) ||
-      (before_dns    != s_dhcp_status.dnsaddr.s_addr)) {
-    EsfNetworkManagerInternalIPInfo ip_info = {
-        .ip          = s_dhcp_status.ipaddr,
-        .subnet_mask = s_dhcp_status.netmask,
-        .gateway     = s_dhcp_status.default_router,
-        .dns         = s_dhcp_status.dnsaddr,
-    };
+  if (IsIpUpdated(&before, &s_dhcp_status)) {
+    EsfNetworkManagerInternalIPInfo ip_info = {0};
+    ip_info.ip          = s_dhcp_status.ipaddr;
+    ip_info.subnet_mask = s_dhcp_status.netmask;
+    ip_info.gateway     = s_dhcp_status.default_router;
+    for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+      ip_info.dns[i] = s_dhcp_status.dnsaddr[i];
+    }
     EsfNetworkManagerResult ret;
     ret = EsfNetworkManagerAccessorIpSetIpAddress(if_name, &ip_info, false);
     if (ret != kEsfNetworkManagerResultSuccess) {
@@ -1879,10 +1908,12 @@ EsfNetworkManagerResult EsfNetworkManagerAccessorGetIFInfo(
     ESF_NETWORK_MANAGER_ERR("PlNetworkGetIpv4Gateway error.(ret=%d)", ret);
     return kEsfNetworkManagerResultUtilityIPAddressError;
   }
-  ret = PlNetworkGetIpv4Dns(if_name, &wk.dns);
-  if (ret != 0) {
-    ESF_NETWORK_MANAGER_ERR("PlNetworkGetIpv4Dns error.(ret=%d)", ret);
-    return kEsfNetworkManagerResultUtilityIPAddressError;
+  for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+    ret = PlNetworkGetIpv4Dns(if_name, &wk.dns[i]);
+    if (ret != 0) {
+      ESF_NETWORK_MANAGER_ERR("PlNetworkGetIpv4Dns error.(ret=%d)", ret);
+      return kEsfNetworkManagerResultUtilityIPAddressError;
+    }
   }
   ESF_NETWORK_MANAGER_TRACE("END");
   return EsfNetworkManagerAccessorIpConvertToString(&wk, ip_info);

@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 4
 :chapter-label:
-:revnumber: 0.0.7
+:revnumber: 0.0.8
 :toc:
 :toc-title: 目次
 :toclevels: 4
@@ -42,8 +42,9 @@ thetaの絶対値が与えられた時間以上になった場合、時刻同期
 
 === NTP情報
 時刻同期に必要なパラメータである。 +
-NTPサーバのhost nameもしくはそのIPv4アドレスとNTP時刻同期アルゴリズムへの補助入力である。
-Parameter Storage Managerで保存している。但し、Parameter Storage Managerで保存する本筋は、動作確認が取れたものに限る。
+PrimaryNTPサーバのhost nameもしくはそのIPv4アドレス、SecondaryNTPサーバのhost nameもしくはそのIPv4アドレス（オプション）、およびNTP時刻同期アルゴリズムへの補助入力で構成される。 +
+SecondaryNTPサーバは、PrimaryNTPサーバへの接続に失敗した場合や、冗長性を確保するために使用される。 +
+NTP情報はParameter Storage Managerを使用して保存される。但し、Parameter Storage Managerで保存する本筋は、動作確認が取れたものに限る。
 というのは、不揮発への保存は動作が確かに取れたものに限るという設計思想に因るためである。
 
 === NTP時刻
@@ -247,12 +248,12 @@ stateDiagram-v2
 |===
 |機能名 |概要  |節番号
 |NTP Client等のパラメータ設定
-|1. 上位モジュールからNTPサーバのhost nameもしくはそのIPv4アドレス、NTP時刻同期に必要なパラメータとClock ManagerのスレッドがNTP Client Daemonを監視する周期を取得する。 +
+|1. 上位モジュールからPrimaryNTPサーバのhost nameもしくはそのIPv4アドレス、SecondaryNTPサーバのhost nameもしくはそのIPv4アドレス（オプション）、NTP時刻同期に必要なパラメータとClock ManagerのスレッドがNTP Client Daemonを監視する周期を取得する。 +
 2. 前項1のパラメータをNTP時刻同期完了を以ってParameter Storage Managerへ保存する。
 |<<#_Function1>>
 
 |NTP Client等のパラメータ不揮発からの読み出し
-|1. Parameter Storage ManagerからNTPサーバのhost nameもしくはそのIPv4アドレス、NTP時刻同期に必要なパラメータとClock ManagerのスレッドがNTP Client Daemonを監視する周期を取得する。
+|1. Parameter Storage ManagerからPrimary及びSecondaryNTPサーバのhost nameもしくはそれらのIPv4アドレス、NTP時刻同期に必要なパラメータとClock ManagerのスレッドがNTP Client Daemonを監視する周期を取得する。
 |<<#_Function2>>
 
 |Clock Managerが有するスレッド制御
@@ -870,11 +871,13 @@ typedef struct EsfClockManagerParams {
 |メンバ名|説明|設定値の範囲|デフォルト値
 
 |`connect`
-|接続先NTPサーバのhost name、 +
-または、接続先NTPサーバのIPv4アドレス。
+|Primary及びSecondaryNTPサーバのhost name、 +
+または、それらのIPv4アドレスを含む接続情報。 +
+詳細は<<#_EsfClockManagerConnection>>を参照されたい。
 |<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
 byte 以下。
-|`"time.aitrios.sony-semicon.com"`
+|hostname: `"time.aitrios.sony-semicon.com"` +
+hostname2: `""` (空文字列)
 
 |`common`
 |<<#_EsfClockManagerCommon>>を参照されたい。
@@ -940,7 +943,8 @@ typedef struct EsfClockManagerParamsMask {
 
 [#_EsfClockManagerConnection]
 ==== EsfClockManagerConnection
-NTPサーバのhost name、または、IPv4アドレスをもつ構造体である。
+NTPサーバのhost name、または、IPv4アドレスをもつ構造体である。 +
+PrimaryNTPサーバ（hostname）とSecondaryNTPサーバ（hostname2）の2つのNTPサーバを設定できる。
 
 * *書式*
 
@@ -948,6 +952,7 @@ NTPサーバのhost name、または、IPv4アドレスをもつ構造体であ�
 ....
 typedef struct EsfClockManagerSettingConnection {
   char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } EsfClockManagerConnection;
 ....
 
@@ -957,13 +962,23 @@ typedef struct EsfClockManagerSettingConnection {
 |メンバ名  |説明 |  設定値の範囲 | デフォルト値
 
 |`hostname`
-|接続先NTPサーバのhost name、 +
-または、接続先NTPサーバのIPv4アドレス。
+|PrimaryNTPサーバのhost name、 +
+または、PrimaryNTPサーバのIPv4アドレス。
 |末尾の空文字を含んで<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
 〔B〕以下。
 |`"time.aitrios.sony-semicon.com"`
 
+|`hostname2`
+|SecondaryNTPサーバのhost name、 +
+または、SecondaryNTPサーバのIPv4アドレス。 +
+空文字列の場合、SecondaryNTPサーバは使用されない。
+|末尾の空文字を含んで<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
+〔B〕以下。
+|`""` (空文字列)
+
 |===
+
+NOTE: PrimaryNTPサーバへの接続に失敗した場合、SecondaryNTPサーバ（hostname2が設定されている場合）が使用される。
 
 [#_EsfClockManagerConnectionMask]
 ==== EsfClockManagerConnectionMask
@@ -976,6 +991,7 @@ EsfClockManagerConnection構造体のNTPサーバhost name、若しくはIPv4ア
 ....
 typedef struct EsfClockManagerSettingConnectionMask {
   uint8_t hostname : 1;
+  uint8_t hostname2 : 1;
 } EsfClockManagerConnectionMask;
 ....
 
@@ -985,7 +1001,12 @@ typedef struct EsfClockManagerSettingConnectionMask {
 |メンバ名|説明|設定値の範囲|デフォルト値
 
 |`hostname`
-|本構造体のオブジェクトと対になる構造体 `EsfClockManagerConnection` のオブジェクトに属するhostnameが設定済み／欲すのであるならば1、そうでないならば0である。
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerConnection` のオブジェクトに属するhostnameが設定済み/欲すのであるならば1、そうでないならば0である。
+|1または0
+|0
+
+|`hostname2`
+|本構造体のオブジェクトと対になる構造体 `EsfClockManagerConnection` のオブジェクトに属するhostname2が設定済み/欲すのであるならば1、そうでないならば0である。
 |1または0
 |0
 
@@ -1269,7 +1290,7 @@ Clock Manager停止時のtimeout時間を定義するマクロです。単位は
 
 [source, C]
 ....
-#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (272)
+#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (256)
 
 ....
 
@@ -1855,10 +1876,12 @@ typedef struct EsfClockManagerParamsForPsmMask {
 
 typedef struct EsfClockManagerSettingConnectionForPsm {
   char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } EsfClockManagerConnectionForPsm;
 
 typedef struct EsfClockManagerSettingConnectionForPsmMask {
   uint8_t hostname : 1;
+  uint8_t hostname2 : 1;
 } EsfClockManagerConnectionForPsmMask;
 
 typedef struct EsfClockManagerSettingCommonForPsm {
@@ -2283,4 +2306,7 @@ image::./images/ClockManager_4.png[scaledwidth="100%",align="center"]
 　・機能一覧にデータマイグレーション機能を追加 +
 　・API定義の詳細説明を追加 +
 　・状態遷移表を更新
+|v0.0.8
+|追加 +
+SecondaryNTP対応を追加
 |===

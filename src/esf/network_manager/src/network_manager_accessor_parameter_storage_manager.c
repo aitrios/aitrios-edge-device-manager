@@ -107,6 +107,25 @@ static bool
 EsfNetworkManagerParameterStorageManagerAccessorMaskEnabledNetworkNormalDns(
     EsfParameterStorageManagerMask mask);
 
+// """Determine if enrollment mask "normal_mode.dev_ip.dns2" is valid.
+
+// Returns true if the enrollment mask "normal_mode.dev_ip.dns2" is valid,
+// otherwise returns false.
+
+// Args:
+//     [IN] mask (EsfParameterStorageManagerMask):
+//       EsfParameterStorageManagerMask.
+
+// Returns:
+//     bool: Returns true if the enrollment mask "normal_mode.dev_ip.dns2" is
+//     valid, otherwise returns false.
+
+// Note:
+// """
+static bool
+EsfNetworkManagerParameterStorageManagerAccessorMaskEnabledNetworkNormalDns2(
+    EsfParameterStorageManagerMask mask);
+
 // """Determine if enrollment mask "normal_mode.dev_ip_v6.ip" is valid.
 
 // Returns true if the enrollment mask "normal_mode.dev_ip_v6.ip" is valid,
@@ -615,6 +634,17 @@ static const EsfParameterStorageManagerMemberInfo kEsfNetworkManagerParameterSto
         .custom = NULL,
     },
     {
+        .id = kEsfParameterStorageManagerItemDNSSecondary,
+        .type = kEsfParameterStorageManagerItemTypeString,
+        .offset = offsetof(EsfNetworkManagerParameterInternal,
+                           param.normal_mode.dev_ip.dns2),
+        .size = ESF_PARAMETER_STORAGE_MANAGER_STRING_SIZEOF(
+            EsfNetworkManagerParameterInternal, param.normal_mode.dev_ip.dns2),
+        .enabled =
+            EsfNetworkManagerParameterStorageManagerAccessorMaskEnabledNetworkNormalDns2,
+        .custom = NULL,
+    },
+    {
         .id = kEsfParameterStorageManagerItemIPv6IPAddress,
         .type = kEsfParameterStorageManagerItemTypeString,
         .offset = offsetof(EsfNetworkManagerParameterInternal,
@@ -889,6 +919,11 @@ static const EsfNetworkManagerParameterMemberMap kExternalStructMapping[] = {
         .convert = kEsfNetworkManagerConvertTypeNoConvert,
     },
     {
+        .offset = offsetof(EsfNetworkManagerParameter, normal_mode.dev_ip.dns2),
+        .shift = 0,
+        .convert = kEsfNetworkManagerConvertTypeNoConvert,
+    },
+    {
         .offset =
             offsetof(EsfNetworkManagerParameter, normal_mode.dev_ip_v6.ip),
         .shift = 0,
@@ -1036,6 +1071,13 @@ EsfNetworkManagerParameterStorageManagerAccessorMaskEnabledNetworkNormalDns(
     EsfParameterStorageManagerMask mask) {
   return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
       EsfNetworkManagerParameterMask, normal_mode.dev_ip.dns, mask);
+}
+
+static bool
+EsfNetworkManagerParameterStorageManagerAccessorMaskEnabledNetworkNormalDns2(
+    EsfParameterStorageManagerMask mask) {
+  return ESF_PARAMETER_STORAGE_MANAGER_MASK_IS_ENABLED(
+      EsfNetworkManagerParameterMask, normal_mode.dev_ip.dns2, mask);
 }
 
 static bool
@@ -1308,6 +1350,10 @@ EsfNetworkManagerParameterStorageManagerAccessorShowInternalParameter(
   if (mask->normal_mode.dev_ip.dns) {
     ESF_NETWORK_MANAGER_DBG("    dev_ip.dns        :%s",
                             parameter->param.normal_mode.dev_ip.dns);
+  }
+  if (mask->normal_mode.dev_ip.dns2) {
+    ESF_NETWORK_MANAGER_DBG("    dev_ip.dns2       :%s",
+                            parameter->param.normal_mode.dev_ip.dns2);
   }
   if (mask->normal_mode.dev_ip_v6.ip) {
     ESF_NETWORK_MANAGER_DBG("    dev_ip_v6.ip      :%s",

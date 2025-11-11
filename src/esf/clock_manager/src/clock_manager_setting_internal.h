@@ -35,6 +35,7 @@ typedef uint32_t EsfClockManagerPsmParamsType;
 // In case IPv4 address; "192.168.1.100".
 typedef struct EsfClockManagerSettingConnectionForPsm {
   char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } EsfClockManagerConnectionForPsm;
 
 // This structure is for Parameter Storage Manager's functions.
@@ -44,6 +45,7 @@ typedef struct EsfClockManagerSettingConnectionForPsm {
 // zero implies that it turns off.
 typedef struct EsfClockManagerSettingConnectionForPsmMask {
   uint8_t hostname : 1;
+  uint8_t hostname2 : 1;
 } EsfClockManagerConnectionForPsmMask;
 
 // This is a structure for Parameter Storage Manager to handle the variable

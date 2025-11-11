@@ -83,7 +83,7 @@ extern "C" {
 
 // The maximum size of a host name or an IPv4 address for an NTP server.
 // This size includes a terminal null character (i.e., '\0').
-#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (272)
+#define ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE (256)
 
 /**
  * Definitions of enumerations
@@ -107,6 +107,7 @@ typedef enum EsfClockManagerParamType {
 // In case IPv4 address; "192.168.1.100".
 typedef struct EsfClockManagerSettingConnection {
   char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } EsfClockManagerConnection;
 
 // This structure represents which members in object of struct
@@ -115,6 +116,7 @@ typedef struct EsfClockManagerSettingConnection {
 // zero implies that it turns off.
 typedef struct EsfClockManagerSettingConnectionMask {
   uint8_t hostname : 1;
+  uint8_t hostname2 : 1;
 } EsfClockManagerConnectionMask;
 
 // This structure represents a period which the NTP client sends a message to

@@ -705,6 +705,7 @@ int PlNetworkSetIpv4GatewayOsImpl(const char *if_name,
 
 // -----------------------------------------------------------------------------
 int PlNetworkSetIpv4DnsOsImpl(const char *if_name, const struct in_addr *addr) {
+  // Only primary DNS is supported
   NMClient *client = nm_client_new(NULL, NULL);
   if (!client) {
     DLOGE("Failed to initialize NMClient");
@@ -788,6 +789,7 @@ int PlNetworkGetIpv4GatewayOsImpl(const char *if_name, struct in_addr *addr) {
 
 // -----------------------------------------------------------------------------
 int PlNetworkGetIpv4DnsOsImpl(const char *if_name, struct in_addr *addr) {
+  // Only primary DNS is supported
   NMClient *client = nm_client_new(NULL, NULL);
   if (!client) {
     DLOGE("Failed to initialize NMClient");
@@ -828,7 +830,9 @@ int PlNetworkDhcpcRequestOsImpl(void *handle,
   state->serverid.s_addr = 0;
   state->ipaddr.s_addr = 0;
   state->netmask.s_addr = 0;
-  state->dnsaddr.s_addr = 0;
+  for (int i = 0; i < PL_NETWORK_DNS_SERVERS_MAX; i++) {
+    state->dnsaddr[i].s_addr = 0;
+  }
   state->default_router.s_addr = 0;
   state->lease_time = UINT32_MAX;
   state->renewal_time = UINT32_MAX;

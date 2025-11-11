@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.15
+:revnumber: 0.1.16
 :toc:
 :toc-title: 目次
 :toclevels: 3
@@ -1557,6 +1557,7 @@ typedef struct EsfNetworkManagerIPInfo {
     char subnet_mask[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
     char gateway[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
     char dns[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+    char dns2[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
 } EsfNetworkManagerIPInfo;
 ....
 
@@ -1580,7 +1581,11 @@ IPアドレス形式で指定してください。
 IPアドレス形式で指定してください。
 
 |dns
-|DNSです。 +
+|プライマリDNSです。 +
+IPアドレス形式で指定してください。
+
+|dns2
+|セカンダリDNSです。 +
 IPアドレス形式で指定してください。
 |===
 
@@ -1898,6 +1903,7 @@ typedef struct EsfNetworkManagerIPInfoMask {
     uint8_t subnet_mask : 1;
     uint8_t gateway : 1;
     uint8_t dns : 1;
+    uint8_t dns2 : 1;
 } EsfNetworkManagerIPInfoMask;
 ....
 
@@ -2336,7 +2342,7 @@ Network Managerのハンドルです。 +
     APIが成功した場合、Parameter Storage Managerから取得した情報はNetwork Manager内部に保存します。 +
 *** start_typeが**``kEsfNetworkManagerStartTypeLastStartSuccessParameter``**の場合、Network Manager内部に保存している情報で接続を行います。 +
 *** PLを使用して接続モードに該当するI/Fのイベントハンドラ登録を行います。 +
-    IPアドレス、ネットマスク、Gateway、DNSを設定します。 +
+    IPアドレス、ネットマスク、Gateway、プライマリDNS、セカンダリDNSを設定します。 +
     以下に固定IP、DHCPでのIPアドレス設定操作を記載します。 +
 *** **``kEsfNetworkManagerStop``**で接続停止した直後に**``kEsfNetworkManagerStart``**を実行すると**``kEsfNetworkManagerResultStatusAlreadyRunning``**を応答する場合があります。 +
 その場合、しばらく待ってからリトライしてください。
@@ -2348,17 +2354,17 @@ Network Managerのハンドルです。 +
 |分類 |設定操作 |備考
 |Normalモード +
 固定IP
-|対象I/FにIPアドレス、ネットマスク、Gateway、DNSを設定します。
+|対象I/FにIPアドレス、ネットマスク、Gateway、プライマリDNS、セカンダリDNSを設定します。
 |PLへのネットワーク接続開始前に実行します。
 
 |Normalモード +
 DHCP
-|対象I/Fに無効(0.0.0.0)IPアドレス、ネットマスク、Gateway、DNSを設定します。 +
+|対象I/Fに無効(0.0.0.0)IPアドレス、ネットマスク、Gatewayを設定します。 +
 |PLへのネットワーク接続開始前に実行します。
 
 |Normalモード +
 DHCP
-|DHCPCを使用してIPアドレスを取得し、対象I/Fに取得したIPアドレス、ネットマスク、Gateway、DNSを設定します。 +
+|DHCPCを使用してIPアドレスを取得し、対象I/Fに取得したIPアドレス、ネットマスク、Gateway、プライマリDNS、セカンダリDNSを設定します。 +
 |ネットワーク接続開始し、IFUP後に実行します。
 
 |AccessPointモード
@@ -3567,14 +3573,15 @@ NULLを指定してはいけません。 +
 **** IPAddress: IPアドレス +
 **** SubnetMask: サブネットマスク +
 **** Gateway: ゲートウェイ +
-**** DNS: DNS +
+**** DNS: プライマリDNS +
 **** IPMethod: DHCP使用の選択(dhcp / static) +
 **** NetifKind: ネットワークIF種別の選択(WiFi / Eth) +
 **** ProxyURL: プロキシURL +
 **** ProxyPort: プロキシポート +
 **** ProxyUserName: プロキシユーザ名 +
 **** ProxyPassword: プロキシパスワード
-*** 旧型式の設定データから「IPAddress」が取得できない場合、新形式では「IPAddress、SubnetMask、Gateway、DNS」を設定しないで、「IPMethod」をdhcpに設定します。 +
+*** セカンダリDNSは移行対象外です。 +
+*** 旧型式の設定データから「IPAddress」が取得できない場合、新形式では「IPAddress、SubnetMask、Gateway、プライマリDNS」を設定しないで、「IPMethod」をdhcpに設定します。 +
 *** 旧型式の設定データから「ProxyURL」が取得できない場合、新形式では「ProxyURL、ProxyPort、ProxyUserName、ProxyPassword」を設定しません。 +
 *** 旧型式の設定データが読めない場合、旧型式の設定データが不正な値の場合は、新形式では「IPMethod」をdhcpに設定します。
 ** 備考
@@ -3971,9 +3978,29 @@ sequenceDiagram
 [width="100%", options="header"]
 |===
 |項目 |チェック内容(Save時)|チェック内容(接続時)|備考
-|normal_mode.dev_ip.*
+|normal_mode.dev_ip.ip
 |空文字もしくはinet_ptonで扱えるIPv4形式であること
 |inet_ptonで扱えるIPv4形式であること
+|
+
+|normal_mode.dev_ip.subnet_mask
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|inet_ptonで扱えるIPv4形式であること
+|
+
+|normal_mode.dev_ip.gateway
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|inet_ptonで扱えるIPv4形式であること
+|
+
+|normal_mode.dev_ip.dns
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|
+
+|normal_mode.dev_ip.dns2
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
+|空文字もしくはinet_ptonで扱えるIPv4形式であること
 |
 
 |normal_mode.dev_ip_v6.*
@@ -4422,6 +4449,19 @@ netutilsをDHCP操作、IP情報設定・取得に使用
   ** 以下APIを追加
     *** EsfNetworkManagerExecMigration
     *** EsfNetworkManagerEraseMigrationSrcData
+
+|v0.1.16
+|セカンダリDNS対応
+
+* データ型定義
+  ** 以下データ型にセカンダリDNSを追加
+    *** EsfNetworkManagerIPInfo
+    *** EsfNetworkManagerIPInfoMask
+
+* API定義
+  ** 以下APIにセカンダリDNSについての記載を追加
+    *** EsfNetworkManagerStart
+    *** EsfNetworkManagerExecMigration
 
 |===
 
