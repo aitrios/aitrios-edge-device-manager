@@ -288,7 +288,7 @@ EsfParameterStorageManagerStatus EsfParameterStorageManagerBufferFree(
       break;
     }
     if (buffer->size == 0) {
-      ESF_PARAMETER_STORAGE_MANAGER_DEBUG(
+      ESF_PARAMETER_STORAGE_MANAGER_TRACE(
           "Buffer size is 0, skipping release. buffer=%p", (void*)buffer);
       break;
     }

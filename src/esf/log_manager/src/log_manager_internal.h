@@ -202,6 +202,10 @@ void EsfLogManagerInternalErrorOutput(uint16_t level, const char *func,
   EsfLogManagerInternalErrorOutput(ESF_LOG_MANAGER_INTERNAL_LEVEL_ERROR, \
                                    __FILE_NAME__, __LINE__, fmt,         \
                                    ##__VA_ARGS__)
+#define ESF_LOG_MANAGER_WARN(fmt, ...)                                  \
+  EsfLogManagerInternalErrorOutput(ESF_LOG_MANAGER_INTERNAL_LEVEL_WARNING, \
+                                   __FILE_NAME__, __LINE__, fmt,         \
+                                   ##__VA_ARGS__)
 #define ESF_LOG_MANAGER_INFO(fmt, ...)                                  \
   EsfLogManagerInternalErrorOutput(ESF_LOG_MANAGER_INTERNAL_LEVEL_INFO, \
                                    __FILE_NAME__, __LINE__, fmt,        \

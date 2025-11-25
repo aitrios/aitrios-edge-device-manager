@@ -235,7 +235,7 @@ EsfLogManagerStatus EsfLogManagerSendElog(
 
   ret = EsfLogManagerInternalSendElog(message);
   if (ret != kEsfLogManagerStatusOk) {
-    ESF_LOG_MANAGER_ERROR("SendElog failed=%d\n", ret);
+    ESF_LOG_MANAGER_WARN("SendElog failed=%d\n", ret);
     return kEsfLogManagerStatusFailed;
   }
 

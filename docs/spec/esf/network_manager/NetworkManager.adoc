@@ -2581,11 +2581,16 @@ Returns one of the values of <<#_TableReturnValueResult, EsfNetworkManagerResult
 
 * *Description* +
 ** Detailed Behavior +
-*** Retrieves network information for the connection mode of the handle. +
+*** Retrieves current network information for the connection mode of the handle. +
 *** If a connection has been established, retrieves the information used during connection start. +
 *** If connection information is stored internally in Network Manager, retrieves that stored information. +
 *** If no connection information is stored internally, returns ``**kEsfNetworkManagerResultNoConnectInfo**``. +
 *** If an IP address was assigned via DHCP, the actual IP address in use is retrieved. +
+*** If called before DHCP processing is complete, the IP address will return a NULL character. +
+*** To retrieve the IP address after DHCP completion, the method varies depending on the OS: +
+**** NuttX: Call EsfNetworkManagerGetIFInfo after receiving the kEsfNetworkManagerNotifyInfoConnected event via EsfNetworkManagerRegisterCallback. +
+**** Linux: Timing is indeterminate. (Event retrieval API not yet implemented) +
+
 
 ** Notes +
 *** Can be called concurrently. +

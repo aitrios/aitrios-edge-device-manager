@@ -1568,10 +1568,8 @@ static void EsfNetworkManagerAccessorLeaseEvent(
     s_dhcp_update_time = 0;
     s_t1_fail_time = 0;
     s_t2_fail_time = 0;
-  } else if ((ret == ETIMEDOUT) || (ret == EAGAIN) || (ret == EINTR)) {
-    *fail_time = abstime.tv_sec;
   } else {
-    // Do DHCPC renew after 1 second.
+    *fail_time = abstime.tv_sec;
   }
 
   return;
