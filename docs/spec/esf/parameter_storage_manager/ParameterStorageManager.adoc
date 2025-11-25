@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.3.3
+:revnumber: 0.3.5
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
@@ -1105,10 +1105,14 @@ typedef enum EsfParameterStorageManagerItemID {
   kEsfParameterStorageManagerItemExceptionFactor,
   kEsfParameterStorageManagerItemExceptionInfo,
   kEsfParameterStorageManagerItemEvpExceptionFactor,
+  kEsfParameterStorageManagerItemMigrationDone,
+  kEsfParameterStorageManagerItemDNSSecondary,
+  kEsfParameterStorageManagerItemNTPServerSecondary,
   kEsfParameterStorageManagerItemCustom,
   kEsfParameterStorageManagerItemMax
 } EsfParameterStorageManagerItemID;
 ....
+
 
 * *Values* +
 +
@@ -1454,6 +1458,12 @@ typedef enum EsfParameterStorageManagerItemID {
 |Exception information.
 |kEsfParameterStorageManagerItemEvpExceptionFactor
 |Exception cause due to EVP.
+|kEsfParameterStorageManagerItemMigrationDone
+|Indicates whether firmware migration has been performed.
+|kEsfParameterStorageManagerItemDNSSecondary
+|Specifies the secondary DNS setting.
+|kEsfParameterStorageManagerItemNTPServerSecondary
+|Specifies the URL of the secondary NTP server.
 |kEsfParameterStorageManagerItemCustom
 |Identifier for custom operation.
 |kEsfParameterStorageManagerItemMax
@@ -6913,6 +6923,31 @@ For detailed definitions, refer to <<#_References, PlStorage Specification>>. +
 |Reset
 |×
 
+
+|kEsfParameterStorageManagerItemMigrationDone
+|PlStorageDataMigrationDone
+|/camera_data_norm/MigrationDone
+|Read/Write
+|×
+|Do Not Reset
+|×
+
+|kEsfParameterStorageManagerItemDNSSecondary
+|PlStorageDataDNSSecondary
+|/camera_data_encr/DNSSecondary
+|Read/Write
+|×
+|Reset
+|×
+
+|kEsfParameterStorageManagerItemNTPServerSecondary
+|PlStorageDataNTPServerSecondary
+|/camera_data_encr/NTPServerSecondary
+|Read/Write
+|×
+|Reset
+|×
+
 |kEsfParameterStorageManagerItemCustom
 |PlStorageDataCustom
 |
@@ -7186,5 +7221,20 @@ a|Support for ESF PowerManager exception info output
     ** ``**kEsfParameterStorageManagerItemExceptionFactor**``
     ** ``**kEsfParameterStorageManagerItemExceptionInfo**``
     ** ``**kEsfParameterStorageManagerItemEvpExceptionFactor**``
+
+|v0.3.4
+a|Added support for migration information output.
+
+Added ItemID:
+
+* * ``**kEsfParameterStorageManagerItemMigrationDone**``
+
+|v0.3.5
+a|Added support for secondary DNS and NTP.
+
+Added Item IDs:
+
+* ``**kEsfParameterStorageManagerItemDNSSecondary**``
+* ``**kEsfParameterStorageManagerItemNTPServerSecondary**``
 
 |===

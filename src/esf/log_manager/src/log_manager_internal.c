@@ -3244,7 +3244,7 @@ STATIC void *EsfLogWriteElogThread(void *p __attribute__((unused))) {
                 "Failed to send cmd force to Elog thread. ret=%d\n", ret);
           }
         } else {
-          ESF_LOG_MANAGER_ERROR("Waiting connect to Hub\n");
+          ESF_LOG_MANAGER_INFO("Waiting connect to Hub\n");
           struct MessagePassingElogObjT wait_obj = {
               .m_cmd = kCmdIsWait,
               .m_len_of_data = (size_t)(sizeof(struct MessagePassingElogObjT))};
@@ -3505,7 +3505,7 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalSendCmdToElogThread(
   if (s_elog_queue_cnt < LOG_MANAGER_INTERNAL_ELOG_QUEUE_NUM) {
     s_elog_queue_cnt++;
   } else {
-    ESF_LOG_MANAGER_ERROR("Elog Message queue is full.\n");
+    ESF_LOG_MANAGER_WARN("Elog Message queue is full.\n");
     (void)pthread_mutex_unlock(&sp_elog_mutex);
     return kEsfLogManagerStatusFailed;
   }
@@ -3627,7 +3627,7 @@ EsfLogManagerStatus EsfLogManagerInternalSendElog(
 
   ret = EsfLogManagerInternalSendCmdToElogThread(&msg_obj);
   if (ret != kEsfLogManagerStatusOk) {
-    ESF_LOG_MANAGER_ERROR("InternalSendElog:%d\n", ret);
+    ESF_LOG_MANAGER_WARN("InternalSendElog:%d\n", ret);
     free(pstr);
     return kEsfLogManagerStatusFailed;
   }
@@ -3798,8 +3798,6 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalLoadElog(char **pstr) {
       s_elog_save_message[i - 1] = s_elog_save_message[i];
     }
     s_elog_save_message_cnt--;
-  } else {
-    ESF_LOG_MANAGER_ERROR("No Elog messages to load\n");
   }
 
 unlock:

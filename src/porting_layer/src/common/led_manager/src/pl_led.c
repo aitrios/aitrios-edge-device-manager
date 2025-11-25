@@ -27,6 +27,10 @@
   WRITE_DLOG_DEBUG(MODULE_ID_SYSTEM, "%s-%d:" \
                    format, __FILE__, __LINE__, ##__VA_ARGS__);
 
+#define LOG_T(format, ...) \
+  WRITE_DLOG_TRACE(MODULE_ID_SYSTEM, "%s-%d:" \
+                   format, __FILE__, __LINE__, ##__VA_ARGS__);
+
 #define MAX(a, b) (a < b) ? b : a
 #define MIN(a, b) (a < b) ? a : b
 // typedef --------------------------------------------------------------------
@@ -151,12 +155,12 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x07, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret:%u", ret);
+  LOG_T("[OUT] ret:%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
 PlErrCode PlLedStop(uint32_t led_id) {
-  LOG_D("[IN] led_id:%u", led_id);
+  LOG_T("[IN] led_id:%u", led_id);
   int ret_os = pthread_mutex_lock(&s_mutex_api);
   if (ret_os) {
     LOG_E(0x08, "pthread_mutex_lock() fail:%d", ret_os);
@@ -198,7 +202,7 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x0D, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret:%u", ret);
+  LOG_T("[OUT] ret:%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
@@ -288,7 +292,7 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x17, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret:%u", ret);
+  LOG_T("[OUT] ret:%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
@@ -336,7 +340,7 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x1E, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret:%u", ret);
+  LOG_T("[OUT] ret:%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
@@ -384,7 +388,7 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x25, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret:%u", ret);
+  LOG_T("[OUT] ret:%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
@@ -436,12 +440,12 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x2D, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret:%u", ret);
+  LOG_T("[OUT] ret:%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
 PlErrCode PlLedGetInfo(PlLedInfo *dev_info) {
-  LOG_D("[IN]");
+  LOG_T("[IN]");
   int ret_os = pthread_mutex_lock(&s_mutex_api);
   if (ret_os) {
     LOG_E(0x2E, "pthread_mutex_lock() fail:%d", ret_os);
@@ -466,12 +470,12 @@ unlock:
   if (ret_os) {
     LOG_E(0x31, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret=%u", ret);
+  LOG_T("[OUT] ret=%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
 PlErrCode PlLedInitialize(void) {
-  LOG_D("[IN]");
+  LOG_T("[IN]");
   int ret_os = pthread_mutex_lock(&s_mutex_api);
   if (ret_os) {
     LOG_E(0x32, "pthread_mutex_lock() fail:%d", ret_os);
@@ -538,12 +542,12 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x3B, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret=%u", ret);
+  LOG_T("[OUT] ret=%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
 PlErrCode PlLedFinalize(void) {
-  LOG_D("[IN]");
+  LOG_T("[IN]");
   int ret_os = pthread_mutex_lock(&s_mutex_api);
   if (ret_os) {
     LOG_E(0x3C, "pthread_mutex_lock() fail:%d", ret_os);
@@ -611,7 +615,7 @@ unlock_api:
   if (ret_os) {
     LOG_E(0x44, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret=%u", ret);
+  LOG_T("[OUT] ret=%u", ret);
   return ret;
 }
 // -----------------------------------------------------------------------------
@@ -936,14 +940,14 @@ static PlErrCode RegisterSeq(uint32_t led_id,
   for (uint32_t i = 0; i < seq_len; i++) {
     s_ctrl_info[led_id].seq[i].color_id = seq[i].color_id;
     s_ctrl_info[led_id].seq[i].interval = seq[i].interval;
-    LOG_D("[IN] seq[%u].color:%u", i, seq[i].color_id);
+    LOG_T("[IN] seq[%u].color:%u", i, seq[i].color_id);
   }
   ExecuteSeq(&s_ctrl_info[led_id], led_id, 0);
   return kPlErrCodeOk;
 }
 // -----------------------------------------------------------------------------
 static PlErrCode RegisterOnSeq(uint32_t led_id, uint32_t color_id) {
-  LOG_D("[IN] seq_len=1, led_id:%u color:%u", led_id, color_id);
+  LOG_T("[IN] seq_len=1, led_id:%u color:%u", led_id, color_id);
   struct timespec interval = {0};
   PlLedSequence seq = {
     .color_id = color_id,
@@ -956,7 +960,7 @@ static PlErrCode RegisterOnOffSeq(uint32_t led_id,
                                   uint32_t color_id,
                                   const struct timespec *interval_on,
                                   const struct timespec *interval_off) {
-  LOG_D("[IN] seq_len=2, led_id:%u seq[0].color:%u, seq[1].color:%d",
+  LOG_T("[IN] seq_len=2, led_id:%u seq[0].color:%u, seq[1].color:%d",
               led_id, color_id, CONFIG_PL_LED_COLOR_OFF_ID);
   PlLedSequence seq[2] = {
     {

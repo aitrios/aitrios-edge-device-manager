@@ -1115,7 +1115,7 @@ EsfMemoryManagerDiscardMemoryInfo(EsfMemoryManagerHandle handle) {
         WRITE_DLOG_ERROR(
             MODULE_ID_SYSTEM,
             "%s-%d:[%s] operation error - memory still mapped or file open, "
-            "handle=0x%08x, map_address=0x%016lx, fd=%d",
+            "handle=0x%08x, map_address=0x%016" PRIx64 ", fd=%d",
             __FILE__, __LINE__, __func__, handle, entry->map_address,
             entry->file_descriptor);
         ret = kEsfMemoryManagerResultOperationError;
@@ -2341,7 +2341,8 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoFwriteFreadExec(
       (param == (EsfMemoryManagerFileIoAccessParam *)NULL) ||
       (seek_position == (off_t *)NULL)) {
     WRITE_DLOG_ERROR(MODULE_ID_SYSTEM,
-                     "%s-%d:[%s] parameter error - address=0x%016lx, fd=%d, "
+                     "%s-%d:[%s] parameter error - address=0x%016" PRIx64
+                     ", fd=%d, "
                      "operation=%d, param=%p, seek_position=%p",
                      __FILE__, __LINE__, __func__, allocate_address,
                      file_descriptor, operation, param, seek_position);
@@ -2585,7 +2586,7 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerFileIoPwritePread(
       WRITE_DLOG_ERROR(
           MODULE_ID_SYSTEM,
           "%s-%d:[%s] Parameter size check failed - seek_position=%ld, "
-          "access_param->size=%u, allocate_size=%d",
+          "access_param->size=%zu, allocate_size=%d",
           __FILE__, __LINE__, __func__, seek_position, access_param->size,
           allocate_size);
       ret = kEsfMemoryManagerResultParamError;
@@ -2703,14 +2704,14 @@ STATIC EsfMemoryManagerResult EsfMemoryManagerSetHandleInfo(
   struct EsfMemoryManagerHandleInternal *entry =
       (struct EsfMemoryManagerHandleInternal *)NULL;
   bool handle_exist = EsfMemoryManagerIsHandleExist(handle, &entry);
-  WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:[%s] handle=0x%08x, handle_exist=%s",
+  WRITE_DLOG_DEBUG(MODULE_ID_SYSTEM, "%s-%d:[%s] handle=0x%08x, handle_exist=%s",
                   __FILE__, __LINE__, __func__, handle,
                   handle_exist ? "true" : "false");
   // If "handle does not exist", return an error.
   if (!handle_exist) {
     // Anything not under the handle management of the memory manager is
     // considered to be "other area."
-    WRITE_DLOG_INFO(MODULE_ID_SYSTEM,
+    WRITE_DLOG_DEBUG(MODULE_ID_SYSTEM,
                     "%s-%d:[%s] handle does not exist, staying with OtherHeap",
                     __FILE__, __LINE__, __func__);
     ret = kEsfMemoryManagerResultSuccess;
@@ -3475,7 +3476,7 @@ EsfMemoryManagerResult EsfMemoryManagerGetHandleInfo(
   info->allocate_size = 0;
 
   // Log handle information for debugging
-  WRITE_DLOG_INFO(
+  WRITE_DLOG_DEBUG(
       MODULE_ID_SYSTEM,
       "%s-%d:[%s] handle=0x%08x, handle_id=%d, handle_offset=0x%08x", __FILE__,
       __LINE__, __func__, handle,

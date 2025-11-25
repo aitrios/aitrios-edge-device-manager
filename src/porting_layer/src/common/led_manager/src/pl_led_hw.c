@@ -26,6 +26,10 @@
 #define LOG_D(format, ...) \
   WRITE_DLOG_DEBUG(MODULE_ID_SYSTEM, "%s-%d:" \
                    format, __FILE__, __LINE__, ##__VA_ARGS__);
+                   
+#define LOG_T(format, ...) \
+  WRITE_DLOG_TRACE(MODULE_ID_SYSTEM, "%s-%d:" \
+                   format, __FILE__, __LINE__, ##__VA_ARGS__);
 
 // typedef --------------------------------------------------------------------
 typedef enum {
@@ -141,7 +145,7 @@ static PlErrCode HalErrToPlErr(HalErrCode ret_hal);
 
 // Functions -------------------------------------------------------------------
 PlErrCode PlLedHwOn(uint32_t led_id, uint32_t color_id) {
-  LOG_D("[IN] led_id:%u, color_id:%u", led_id, color_id);
+  LOG_T("[IN] led_id:%u, color_id:%u", led_id, color_id);
   uint32_t led_idx = FindIndexOfLedId(led_id);
   if ((led_idx == INVALID_VALUE) || (led_idx >= CONFIG_PL_LED_LEDS_NUM)) {
     LOG_E(0x00, "Invalid led_id:%u", led_id);
@@ -188,7 +192,7 @@ PlErrCode PlLedHwOn(uint32_t led_id, uint32_t color_id) {
     ctrl_info->color_id = color_id;
   }
 
-  LOG_D("[OUT] ret=%u", HalErrToPlErr(ret_hal));
+  LOG_T("[OUT] ret=%u", HalErrToPlErr(ret_hal));
   return HalErrToPlErr(ret_hal);
 }
 
@@ -200,7 +204,7 @@ PlErrCode PlLedHwOff(uint32_t led_id) {
     return kPlErrInvalidParam;
   }
   struct LedHwCtrlInfo *ctrl_info = &s_led_ctrl[led_idx];
-  LOG_D("[IN] led_id:%u, led_idx:%u, color_id:%u",
+  LOG_T("[IN] led_id:%u, led_idx:%u, color_id:%u",
         led_id, led_idx, ctrl_info->color_id);
 
   HalIoexpHandle handle_array[IOEXP_HANDLE_NUM] = {
@@ -210,13 +214,13 @@ PlErrCode PlLedHwOff(uint32_t led_id) {
   HalErrCode ret_hal = HalIoexpWriteMulti(handle_array, IOEXP_HANDLE_NUM,
                                           value_array, IOEXP_VALUE_NUM);
 
-  LOG_D("[OUT] ret=%u", HalErrToPlErr(ret_hal));
+  LOG_T("[OUT] ret=%u", HalErrToPlErr(ret_hal));
   return HalErrToPlErr(ret_hal);
 }
 
 // -----------------------------------------------------------------------------
 PlErrCode PlLedHwGetInfo(PlLedHwInfo *dev_info) {
-  LOG_D("[IN]");
+  LOG_T("[IN]");
   int ret_os = pthread_mutex_lock(&s_mutex);
   if (ret_os) {
     LOG_E(0x03, "pthread_mutex_lock() fail:%d", ret_os);
@@ -242,13 +246,13 @@ exit_to_unlock_mutex:
   if (ret_os) {
     LOG_E(0x06, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret=%u", ret);
+  LOG_T("[OUT] ret=%u", ret);
   return ret;
 }
 
 // -----------------------------------------------------------------------------
 PlErrCode PlLedHwInitialize(void) {
-  LOG_D("[IN]");
+  LOG_T("[IN]");
   int ret_os = pthread_mutex_lock(&s_mutex);
   if (ret_os) {
     LOG_E(0x07, "pthread_mutex_lock() fail:%d", ret_os);
@@ -309,13 +313,13 @@ exit_to_unlock_mutex:
   if (ret_os) {
     LOG_E(0x0C, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret=%u", ret);
+  LOG_T("[OUT] ret=%u", ret);
   return ret;
 }
 
 // -----------------------------------------------------------------------------
 PlErrCode PlLedHwFinalize(void) {
-  LOG_D("[IN]");
+  LOG_T("[IN]");
   int ret_os = pthread_mutex_lock(&s_mutex);
   if (ret_os) {
     LOG_E(0x0D, "pthread_mutex_lock() fail:%d", ret_os);
@@ -352,7 +356,7 @@ exit_to_unlock_mutex:
   if (ret_os) {
     LOG_E(0x10, "pthread_mutex_unlock() fail:%d", ret_os);
   }
-  LOG_D("[OUT] ret=%u", ret);
+  LOG_T("[OUT] ret=%u", ret);
   return ret;
 }
 

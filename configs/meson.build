@@ -9,7 +9,7 @@ subdir(get_option('target'))
 # enable config for test if test option is on
 if get_option('test_build')
   message('test_build option is enabled')
-  subdir('test')
+  subdir('test_' + get_option('target'))
 else
   message('test_build option is disabled')
 endif

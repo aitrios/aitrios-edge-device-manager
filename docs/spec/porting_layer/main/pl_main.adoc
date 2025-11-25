@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.0.1
+:revnumber: 0.0.2
 :toc: left
 :toc-title: Table of Contents
 :toclevels: 3
@@ -95,6 +95,11 @@ The list of functions is shown in <<#_TableFunction>>.
 |Feature Support Check
 |Determines whether the specified feature is available.
 |<<#_Function3>>
+
+|Data Migration Function
+|To maintain compatibility with previous versions, this function migrates legacy-format configuration data to the new format.
+|<<#_Function4>>
+
 |===
 
 === Component Function Descriptions
@@ -165,6 +170,30 @@ Behavior on Error / Recovery::
 If an error occurs, check the input parameters and retry.
 
 Considerations::  
+None
+
+[#_Function4]
+==== Data Migration Function
+Function Overview::
+To maintain compatibility with previous versions, legacy-format configuration data is migrated to the new format.
+Prerequisites::
+None
+Function Details::
+Determines whether data migration is available. +
+See <<#_PlMainIsMigrationSupported, PlMainIsMigrationSupported>> for details. +
+Executes the data migration process. +
+See <<#_PlMainExecMigration, PlMainExecMigration>> for details. +
+Deletes the legacy configuration data. +
+See <<#_PlMainEraseMigrationSrcData, PlMainEraseMigrationSrcData>> for details. +
+Detailed Behavior::
+See <<#_PlMainIsMigrationSupported, PlMainIsMigrationSupported>> for details. +
+See <<#_PlMainExecMigration, PlMainExecMigration>> for details. +
+See <<#_PlMainEraseMigrationSrcData, PlMainEraseMigrationSrcData>> for details. +
+Behavior in Error Cases and Recovery Procedures::
+See <<#_PlMainIsMigrationSupported, PlMainIsMigrationSupported>> for details. +
+See <<#_PlMainExecMigration, PlMainExecMigration>> for details. +
+See <<#_PlMainEraseMigrationSrcData, PlMainEraseMigrationSrcData>> for details. +
+Considerations::
 None
 
 === Non-Functional Requirements of the Component
@@ -301,6 +330,19 @@ The list of public APIs is shown in <<#_TablePublicAPI>>.
 |PlMainIsFeatureSupported
 |Determines whether the specified feature is supported.
 |<<#_PlMainIsFeatureSupported>>
+
+|PlMainIsMigrationSupported
+|Determines whether data migration is available.
+|<<#_PlMainIsMigrationSupported>>
+
+|PlMainExecMigration
+|Executes the data migration process.
+|<<#_PlMainExecMigration>>
+
+|PlMainEraseMigrationSrcData
+|Deletes the legacy configuration data.
+|<<#_PlMainEraseMigrationSrcData>>
+
 |===
 
 === Data Type Definitions
@@ -884,8 +926,172 @@ All features are supported.
 |None required
 |===
 
-== Example Usage of API
+[#_PlMainIsMigrationSupported]
+==== PlMainIsMigrationSupported
 
+* *Function* +
+Determines whether data migration is available.
+
+* *Format* +
+[source, C]
+....
+bool PlMainIsMigrationSupported(void)
+....
+
+* *Arguments* +
+-
+
+* *Return value* +
+Returns one of the bool values depending on the execution result.
+
+* *Description* +
+For non-T4R devices, returns ``**false**``. +
+For T4R devices, returns ``**true**``. +
+
+[#_PlMainIsMigrationSupported_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Concurrent Calls
+|Not allowed
+|Calls from Multiple Threads
+|Not allowed
+|Calls from Multiple Tasks
+|Not allowed
+|Blocking inside API
+|Does not block.
+|===
+
+[#_PlMainIsMigrationSupported_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+|-
+|-
+|-
+|-
+|-
+|===
+
+[#_PlMainExecMigration]
+==== PlMainExecMigration
+
+* *Function* +
+Executes the data migration process.
+
+* *Format* +
+[source, C]
+....
+PlErrCode PlMainExecMigration(void)
+....
+
+* *Arguments* +
+-
+
+* *Return value* +
+Returns one of the PlErrCode values depending on the execution result.
+
+* *Description* +
+** For non-T4R devices +  
+  Not supported and returns ``**kPlErrCodeOk**``. +
+** For T4R devices +  
+  Returns ``**kPlErrCodeOk**`` if successful. +  
+  Returns ``**kPlErrInternal**`` if failed.
+
+[#_PlMainExecMigration_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Concurrent Calls
+|Not allowed
+|Calls from Multiple Threads
+|Not allowed
+|Calls from Multiple Tasks
+|Not allowed
+|Blocking inside API
+|Does not block.
+|===
+
+[#_PlMainExecMigration_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+
+|kPlErrInternal
+|Internal error
+|-
+|No impact
+|Not required
+|===
+
+[#_PlMainEraseMigrationSrcData]
+==== PlMainEraseMigrationSrcData
+
+* *Function* +
+Deletes the legacy configuration data.
+
+* *Format* +
+[source, C]
+....
+void PlMainEraseMigrationSrcData(void)
+....
+
+* *Arguments* +
+-
+
+* *Return value* +
+-
+
+* *Description* +
+** For non-T4R devices +  
+  Not supported and performs no action. +
+** For T4R devices +  
+  Deletes the legacy configuration data. +
+
+[#_PlMainEraseMigrationSrcData_desc]
+.API Details
+[width="100%", cols="30%,70%",options="header"]
+|===
+|API Details  |Description
+|API Type
+|Synchronous API
+|Execution Context
+|Runs in the caller's context
+|Concurrent Calls
+|Not allowed
+|Calls from Multiple Threads
+|Not allowed
+|Calls from Multiple Tasks
+|Not allowed
+|Blocking inside API
+|Does not block.
+|===
+
+[#_PlMainEraseMigrationSrcData_error]
+.Error Information
+[options="header"]
+|===
+|Error Code |Cause |OUT Parameters |System State After Error |Recovery
+|
+|
+|
+|
+|
+|===
+
+== Example Usage of API
 There are no initialization or termination APIs. +
 
 [#_main_seq]
@@ -918,4 +1124,15 @@ None
 |Version |Changes
 |0.0.1
 |Initial version
+
+|0.0.2
+|
+* Added component function descriptions
+** 3.5.4 Data Migration Function
+
+* Added API definitions
+** 4.4.8 PlMainIsMigrationSupported
+** 4.4.9 PlMainExecMigration
+** 4.4.10 PlMainEraseMigrationSrcData
+
 |===

@@ -2681,11 +2681,15 @@ NULLを指定してはいけません。 +
 
 * *説明* +
 ** 動作詳細 +
-*** ハンドル操作対象の接続モードのネットワーク情報を取得します。 +
+*** ハンドル操作対象の接続モードの現在のネットワーク情報を取得します。 +
 *** ネットワーク接続開始済の場合、接続開始時に使用した情報を取得します。 +
 *** Network Manager内部に接続情報が保存されている場合、保存情報を取得します。 +
 *** Network Manager内部に接続情報が保存されていない場合、``**kEsfNetworkManagerResultNoConnectInfo**``を応答します。 +
 *** IPアドレス情報はDHCP指定で払い出しアドレス使用中の場合は、使用しているIPアドレスを取得します。 +
+*** DHCP処理が未完了のタイミングで呼ばれた場合は、IPアドレスはNULL文字を返します。 +
+*** DHCP完了後のIPアドレスを取得したい場合は、OSによって異なるため以下の方法で取得します。 +
+**** Nuttx：EsfNetworkManagerRegisterCallback で kEsfNetworkManagerNotifyInfoConnected のイベントを受け取ってからEsfNetworkManagerGetIFInfo をコールすること。 +
+**** Linux：タイミングは不定。（イベント取得のAPI未実装） +
 ** 備考
 *** 同時に呼び出し可能。
 *** 複数のスレッドからの呼び出し可能。
