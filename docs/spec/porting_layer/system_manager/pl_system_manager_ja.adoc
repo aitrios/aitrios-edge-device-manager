@@ -1,0 +1,1102 @@
+= PL SystemManager 機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.0
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOSのPorting Layer (PL) SystemManagerを定義します。
+PL SystemManagerは、ハードウェア情報の管理、システム再起動要因の判定、およびデータマイグレーション機能を提供します。
+
+<<<
+
+== 用語
+
+[#_words]
+.用語一覧
+[options="header"]
+|===
+|用語 |説明 
+
+|PL
+|Porting Layer. カメラ/OS差分を吸収する層
+
+|I/F
+|Interface
+
+|HwInfo
+|Hardware Information. デバイスのハードウェア情報
+
+|ESF
+|Edge Software Framework
+
+|===
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+PL SystemManagerは、ハードウェア情報の管理、システム再起動判定、およびマイグレーションデータの管理機能を提供します。
+
+<<<
+
+=== コンポーネントの詳細説明
+PL SystemManagerは、ESF SystemManagerから呼び出され、以下の機能を提供します：
+
+* ハードウェア情報のサイズ取得とパース
+* ハードウェア情報サポート状態の確認
+* デバイスマニフェストからのシリアル番号要否判定
+* システム再起動の必要性判定
+* マイグレーションデータの取得と削除
+
+.コンポーネント図
+[{mermaid_block}]
+....
+graph TB;
+direction LR
+
+SystemManager --> |HwInfo管理/再起動判定/マイグレーション| PlSystemManager
+PlSystemManager --> |OS依存実装| PlSystemManagerOsImpl
+PlSystemManagerOsImpl --> |カメラ依存実装| PlSystemManagerCamImpl
+....
+
+<<<
+
+=== 状態遷移
+PL SystemManagerは状態を持ちません。全てのAPIは独立して呼び出し可能です。
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|ハードウェア情報管理機能
+|デバイスのハードウェア情報のサイズ取得、パース、サポート状態確認を行う機能です。
+|<<#_HwInfoManagementFunction>>
+
+|システム再起動判定機能
+|リセット要因に基づいてシステム再起動の必要性を判定する機能です。
+|<<#_RebootJudgmentFunction>>
+
+|マイグレーションデータ管理機能
+|旧バージョンとの互換性を保つため、マイグレーションデータの取得と削除を行う機能です。
+|<<#_MigrationDataManagementFunction>>
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_HwInfoManagementFunction]
+==== ハードウェア情報管理機能
+* 機能概要
+    ** デバイスのハードウェア情報のサイズ取得、パース、およびサポート状態の確認を行う機能です。
+* 前提条件
+    ** 特になし。
+* 機能詳細
+    ** 詳細挙動
+        *** ``PlSystemManagerGetHwInfoSize()`` でハードウェア情報のサイズを取得します。
+        *** ``PlSystemManagerParseHwInfo()`` でハードウェア情報文字列をパースし、構造体に格納します。
+        *** ``PlSystemManagerIsHwInfoSupported()`` でハードウェア情報がサポートされているかを確認します。
+        *** ``PlSystemManagerRequiresSerialNumberFromDeviceManifest()`` でデバイスマニフェストからシリアル番号を取得する必要があるかを確認します。
+    ** エラー時の挙動、復帰方法
+        *** パース処理に失敗した場合はエラーコードを返します。
+        *** 呼び出し元で適切なエラー処理を行う必要があります。
+
+[#_RebootJudgmentFunction]
+==== システム再起動判定機能
+* 機能概要
+    ** リセット要因に基づいてシステム再起動の必要性を判定する機能です。
+* 前提条件
+    ** 特になし。
+* 機能詳細
+    ** 詳細挙動
+        *** ``PlSystemManagerIsNeedReboot()`` でリセット要因を受け取り、再起動が必要かどうかを判定します。
+        *** 判定結果はbooleanフラグで返されます。
+    ** エラー時の挙動、復帰方法
+        *** パラメータが無効な場合はエラーコードを返します。
+        *** 呼び出し元で適切なエラー処理を行う必要があります。
+
+[#_MigrationDataManagementFunction]
+==== マイグレーションデータ管理機能
+* 機能概要
+    ** 旧バージョンとの互換性を保つため、マイグレーションデータの取得と削除を行う機能です。
+* 前提条件
+    ** 特になし。
+* 機能詳細
+    ** 詳細挙動
+        *** ``PlSystemManagerGetMigrationData()`` で指定されたIDのマイグレーションデータを取得します。
+        *** ``PlSystemManagerEraseMigrationData()`` で指定されたIDのマイグレーションデータを削除します。
+        *** 以下のマイグレーションデータタイプをサポートします：
+            **** RootAuth: Root証明書データ
+            **** DeviceManifest: デバイスマニフェストデータ
+            **** HwInfo: ハードウェア情報データ
+            **** EvpSetupInfo: EVP設定情報
+    ** エラー時の挙動、復帰方法
+        *** データの取得・削除に失敗した場合はエラーコードを返します。
+        *** 呼び出し元で適切なエラー処理を行う必要があります。
+
+<<<
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|連続処理実行時間
+|最大でかかる処理時間です。
+|<<#_ContinuousProcessingTime>>
+
+|スタックメモリ使用量
+|最大で使用するスタックメモリ量です。
+|<<#_StackMemoryUsage>>
+
+|ヒープメモリ使用量
+|最大で使用するヒープメモリ量です。
+|<<#_HeapMemoryUsage>>
+
+|静的メモリ使用量
+|使用する静的メモリ量です。
+|<<#_StaticMemoryUsage>>
+
+|スレッド使用数
+|使用するスレッド数です。
+|<<#_NumberofThreadsUsed>>
+
+|===
+
+<<<
+
+[#_DescriptionofNonFunctionalRequirementsoftheComponent]
+=== コンポーネントの非機能要件説明
+[#_ContinuousProcessingTime]
+==== 連続処理実行時間
+本コンポーネントの処理時間は最大10msです。 +
+OS依存層の処理時間は上記処理時間から除きます。
+
+[#_StackMemoryUsage]
+==== スタックメモリ使用量
+最大で512Byteです。
+
+[#_HeapMemoryUsage]
+==== ヒープメモリ使用量
+ヒープメモリを使用しません。
+
+[#_StaticMemoryUsage]
+==== 静的メモリ使用量
+静的メモリを使用しません。
+
+[#_NumberofThreadsUsed]
+==== スレッド使用数
+スレッドを使用しません。
+
+<<<
+
+== API仕様
+=== 定義一覧
+
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|PlSystemManagerHwInfo
+|デバイスのハードウェア情報を格納する構造体です。
+|<<#_PlSystemManagerHwInfo>>
+
+|PlSystemManagerResetCause
+|システムリセット要因を定義する列挙型です。
+|<<#_PlSystemManagerResetCause>>
+
+|PlSystemManagerMigrationDataId
+|マイグレーションデータのIDを定義する列挙型です。
+|<<#_PlSystemManagerMigrationDataId>>
+
+|PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+|HwInfo Model Nameの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+|HwInfo Manufacturer Nameの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+|HwInfo Product Serial Numberの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+|HwInfo Serial Numberの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+|HwInfo AIISP Chip IDの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+|HwInfo Sensor IDの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE
+|HwInfo Application Processor Typeの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+|HwInfo Sensor Model Nameの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+|HwInfo Device Nameの最大サイズを定義するマクロです。
+|<<#_PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE>>
+
+|===
+
+[#_APIList]
+==== API一覧
+APIの一覧を示します。
+
+.API一覧
+[width="100%",options="header"]
+|===
+|API名 |概要 |節番号
+|PlSystemManagerGetHwInfoSize
+|ハードウェア情報のサイズを取得します。
+|<<#_PlSystemManagerGetHwInfoSize>>
+
+|PlSystemManagerParseHwInfo
+|ハードウェア情報文字列をパースして構造体に格納します。
+|<<#_PlSystemManagerParseHwInfo>>
+
+|PlSystemManagerIsHwInfoSupported
+|ハードウェア情報がサポートされているかを確認します。
+|<<#_PlSystemManagerIsHwInfoSupported>>
+
+|PlSystemManagerRequiresSerialNumberFromDeviceManifest
+|デバイスマニフェストからシリアル番号を取得する必要があるかを確認します。
+|<<#_PlSystemManagerRequiresSerialNumberFromDeviceManifest>>
+
+|PlSystemManagerIsNeedReboot
+|リセット要因に基づいてシステム再起動の必要性を判定します。
+|<<#_PlSystemManagerIsNeedReboot>>
+
+|PlSystemManagerGetMigrationData
+|指定されたIDのマイグレーションデータを取得します。
+|<<#_PlSystemManagerGetMigrationData>>
+
+|PlSystemManagerEraseMigrationData
+|指定されたIDのマイグレーションデータを削除します。
+|<<#_PlSystemManagerEraseMigrationData>>
+
+|===
+
+<<<
+
+=== データ型定義
+
+[#_PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+HwInfo Model Nameの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE (33)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+HwInfo Manufacturer Nameの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE (33)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+HwInfo Product Serial Numberの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE (33)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+HwInfo Serial Numberの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE (64)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+HwInfo AIISP Chip IDの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE (37)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+HwInfo Sensor IDの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE (37)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE
+HwInfo Application Processor Typeの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE (64)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+HwInfo Sensor Model Nameの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+HwInfo Device Nameの最大サイズを定義するマクロです。
+
+* *書式*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE (33)
+....
+
+[#_PlSystemManagerHwInfo]
+==== PlSystemManagerHwInfo
+デバイスのハードウェア情報を格納する構造体です。
+
+* *書式*
+
+[source, C]
+....
+typedef struct PlSystemManagerHwInfo {
+  char model_name[PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE];
+  char manufacturer_name[PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE];
+  char product_serial_number[PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE];
+  char serial_number[PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE];
+  char aiisp_chip_id[PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE];
+  char sensor_id[PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE];
+  char app_processor_type[PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE];
+  char sensor_model_name[PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];
+  char device_name[PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE];
+} PlSystemManagerHwInfo;
+....
+
+* *メンバ*
+
+[#_TablePlSystemManagerHwInfo]
+.PlSystemManagerHwInfoのメンバ説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|model_name
+|モデル名
+
+|manufacturer_name
+|製造者名
+
+|product_serial_number
+|製品シリアル番号
+
+|serial_number
+|シリアル番号
+
+|aiisp_chip_id
+|AIISPチップID
+
+|sensor_id
+|センサーID
+
+|app_processor_type
+|アプリケーションプロセッサタイプ
+
+|sensor_model_name
+|センサーモデル名
+
+|device_name
+|デバイス名
+
+|===
+
+[#_PlSystemManagerResetCause]
+==== PlSystemManagerResetCause
+システムリセット要因を定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kPlSystemManagerResetCauseUnknown = -1,
+  kPlSystemManagerResetCauseSysChipPowerOnReset = 0,
+  kPlSystemManagerResetCauseSysBrownOut,
+  kPlSystemManagerResetCauseCoreSoft,
+  kPlSystemManagerResetCauseCoreDeepSleep,
+  kPlSystemManagerResetCauseWDT,
+  kPlSystemManagerResetCauseDefault,
+  kPlSystemManagerResetCauseClear,
+  kPlSystemManagerResetCauseMax
+} PlSystemManagerResetCause;
+....
+
+* *値* 
+
+[#_TablePlSystemManagerResetCause]
+.PlSystemManagerResetCauseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlSystemManagerResetCauseUnknown
+|不明なリセット要因
+
+|kPlSystemManagerResetCauseSysChipPowerOnReset
+|電源投入によるシステムリセット
+
+|kPlSystemManagerResetCauseSysBrownOut
+|電圧低下によるシステムリセット
+
+|kPlSystemManagerResetCauseCoreSoft
+|ソフトウェアリセット
+
+|kPlSystemManagerResetCauseCoreDeepSleep
+|ディープスリープからの復帰
+
+|kPlSystemManagerResetCauseWDT
+|ウォッチドッグタイマーによるリセット
+
+|kPlSystemManagerResetCauseDefault
+|デフォルトのリセット要因
+
+|kPlSystemManagerResetCauseClear
+|リセット要因クリア
+
+|kPlSystemManagerResetCauseMax
+|リセット要因の最大値（範囲チェック用）
+
+|===
+
+[#_PlSystemManagerMigrationDataId]
+==== PlSystemManagerMigrationDataId
+マイグレーションデータのIDを定義する列挙型です。
+
+* *書式*
+
+[source, C]
+....
+typedef enum {
+  kPlSystemManagerMigrationDataIdRootAuth = 0,
+  kPlSystemManagerMigrationDataIdDeviceManifest = 1,
+  kPlSystemManagerMigrationDataIdHwInfo = 2,
+  kPlSystemManagerMigrationDataIdEvpSetupInfo = 3,
+} PlSystemManagerMigrationDataId;
+....
+
+* *値* 
+
+[#_TablePlSystemManagerMigrationDataId]
+.PlSystemManagerMigrationDataIdの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlSystemManagerMigrationDataIdRootAuth
+|Root証明書データ
+
+|kPlSystemManagerMigrationDataIdDeviceManifest
+|デバイスマニフェストデータ
+
+|kPlSystemManagerMigrationDataIdHwInfo
+|ハードウェア情報データ
+
+|kPlSystemManagerMigrationDataIdEvpSetupInfo
+|EVP設定情報データ
+
+|===
+
+<<<
+
+=== API仕様
+
+[#_PlSystemManagerGetHwInfoSize]
+==== PlSystemManagerGetHwInfoSize
+ハードウェア情報のサイズを取得します。
+
+* *書式*
+
+[source, C]
+....
+size_t PlSystemManagerGetHwInfoSize(void);
+....
+
+* *引数*
+
+なし
+
+* *戻り値*
+
+[#_TablePlSystemManagerGetHwInfoSizeReturn]
+.PlSystemManagerGetHwInfoSizeの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|size_t
+|ハードウェア情報のバイトサイズ。0の場合はハードウェア情報がサポートされていません。
+
+|===
+
+* *説明*
+
+本APIは、デバイスのハードウェア情報のサイズを取得します。
+返されたサイズは、ハードウェア情報を格納するためのバッファサイズとして使用できます。
+
+* *ブロッキング*
+
+ノンブロッキング
+
+* *備考*
+
+本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+[#_PlSystemManagerParseHwInfo]
+==== PlSystemManagerParseHwInfo
+ハードウェア情報文字列をパースして構造体に格納します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
+                                     PlSystemManagerHwInfo *data);
+....
+
+* *引数*
+
+[#_TablePlSystemManagerParseHwInfoArgs]
+.PlSystemManagerParseHwInfoの引数
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|引数名 |入出力 |説明
+|hw_info
+|入力
+|パース対象のハードウェア情報文字列
+
+|data
+|出力
+|パース結果を格納する構造体へのポインタ
+
+|===
+
+* *戻り値*
+
+[#_TablePlSystemManagerParseHwInfoReturn]
+.PlSystemManagerParseHwInfoの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|kPlErrCodeOk
+|処理に成功しました。
+
+|kPlErrInvalidParam
+|引数が無効な値です。
+
+|kPlErrNotFound
+|指定されたIDのデータが見つかりません。
+
+|kPlErrCodeError
+|パース処理に失敗しました。
+
+|===
+
+* *説明*
+
+本APIは、ハードウェア情報を表す文字列をパースし、``PlSystemManagerHwInfo``構造体に格納します。
+文字列フォーマットの詳細はOS依存層の実装に依存します。
+
+* *ブロッキング*
+
+ノンブロッキング
+
+* *備考*
+
+* hw_infoがNULLまたはdataがNULLの場合、``kPlErrInvalidParam``を返します。
+* 本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+[#_PlSystemManagerIsHwInfoSupported]
+==== PlSystemManagerIsHwInfoSupported
+ハードウェア情報がサポートされているかを確認します。
+
+* *書式*
+
+[source, C]
+....
+bool PlSystemManagerIsHwInfoSupported(void);
+....
+
+* *引数*
+
+なし
+
+* *戻り値*
+
+[#_TablePlSystemManagerIsHwInfoSupportedReturn]
+.PlSystemManagerIsHwInfoSupportedの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|true
+|ハードウェア情報がサポートされています。
+
+|false
+|ハードウェア情報がサポートされていません。
+
+|===
+
+* *説明*
+
+本APIは、現在のプラットフォームでハードウェア情報がサポートされているかを確認します。
+サポートされていない場合、ハードウェア情報の取得やパース機能は使用できません。
+
+* *ブロッキング*
+
+ノンブロッキング
+
+* *備考*
+
+本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+[#_PlSystemManagerRequiresSerialNumberFromDeviceManifest]
+==== PlSystemManagerRequiresSerialNumberFromDeviceManifest
+デバイスマニフェストからシリアル番号を取得する必要があるかを確認します。
+
+* *書式*
+
+[source, C]
+....
+bool PlSystemManagerRequiresSerialNumberFromDeviceManifest(void);
+....
+
+* *引数*
+
+なし
+
+* *戻り値*
+
+[#_TablePlSystemManagerRequiresSerialNumberFromDeviceManifestReturn]
+.PlSystemManagerRequiresSerialNumberFromDeviceManifestの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|true
+|デバイスマニフェストからシリアル番号を取得する必要があります。
+
+|false
+|ハードウェア情報からシリアル番号を取得できます。
+
+|===
+
+* *説明*
+
+本APIは、デバイスのシリアル番号をデバイスマニフェストから取得する必要があるかを判定します。
+プラットフォームによっては、ハードウェア情報にシリアル番号が含まれていない場合があります。
+
+* *ブロッキング*
+
+ノンブロッキング
+
+* *備考*
+
+本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+[#_PlSystemManagerIsNeedReboot]
+==== PlSystemManagerIsNeedReboot
+リセット要因に基づいてシステム再起動の必要性を判定します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
+                                      bool *reset_flag);
+....
+
+* *引数*
+
+[#_TablePlSystemManagerIsNeedRebootArgs]
+.PlSystemManagerIsNeedRebootの引数
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|引数名 |入出力 |説明
+|reset_cause
+|入力
+|リセット要因
+
+|reset_flag
+|出力
+|再起動の必要性を示すフラグへのポインタ。trueの場合は再起動が必要、falseの場合は不要。
+
+|===
+
+* *戻り値*
+
+[#_TablePlSystemManagerIsNeedRebootReturn]
+.PlSystemManagerIsNeedRebootの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|kPlErrCodeOk
+|処理に成功しました。
+
+|kPlErrInvalidParam
+|引数が無効な値です。
+
+|===
+
+* *説明*
+
+本APIは、指定されたリセット要因に基づいてシステム再起動が必要かどうかを判定します。
+判定結果は``reset_flag``に格納されます。
+
+* *ブロッキング*
+
+ノンブロッキング
+
+* *備考*
+
+* reset_flagがNULLの場合、``kPlErrInvalidParam``を返します。
+* 本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+[#_PlSystemManagerGetMigrationData]
+==== PlSystemManagerGetMigrationData
+指定されたIDのマイグレーションデータを取得します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode PlSystemManagerGetMigrationData(PlSystemManagerMigrationDataId id,
+                                          void *dst, size_t dst_size);
+....
+
+* *引数*
+
+[#_TablePlSystemManagerGetMigrationDataArgs]
+.PlSystemManagerGetMigrationDataの引数
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|引数名 |入出力 |説明
+|id
+|入力
+|取得するマイグレーションデータのID
+
+|dst
+|出力
+|データを格納するバッファへのポインタ
+
+|dst_size
+|入力
+|バッファのサイズ（バイト単位）
+
+|===
+
+* *戻り値*
+
+[#_TablePlSystemManagerGetMigrationDataReturn]
+.PlSystemManagerGetMigrationDataの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|kPlErrCodeOk
+|処理に成功しました。
+
+|kPlErrInvalidParam
+|引数が無効な値です。
+
+|kPlErrInternal
+|データの取得に失敗しました。
+
+|===
+
+* *説明*
+
+本APIは、旧バージョンから移行するために保存されているマイグレーションデータを取得します。
+指定されたIDに対応するデータが存在する場合、``dst``バッファにコピーされます。
+
+* *ブロッキング*
+
+ブロッキング（ストレージアクセスを伴うため）
+
+* *備考*
+
+* dstがNULLまたはdst_sizeが0の場合、``kPlErrInvalidParam``を返します。
+* 本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+[#_PlSystemManagerEraseMigrationData]
+==== PlSystemManagerEraseMigrationData
+指定されたIDのマイグレーションデータを削除します。
+
+* *書式*
+
+[source, C]
+....
+PlErrCode PlSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id);
+....
+
+* *引数*
+
+[#_TablePlSystemManagerEraseMigrationDataArgs]
+.PlSystemManagerEraseMigrationDataの引数
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|引数名 |入出力 |説明
+|id
+|入力
+|削除するマイグレーションデータのID
+
+|===
+
+* *戻り値*
+
+[#_TablePlSystemManagerEraseMigrationDataReturn]
+.PlSystemManagerEraseMigrationDataの戻り値
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値 |説明
+|kPlErrCodeOk
+|処理に成功しました。
+
+|kPlErrInvalidParam
+|引数が無効な値です。
+
+|kPlErrInternal
+|データの削除に失敗しました。
+
+|===
+
+* *説明*
+
+本APIは、旧バージョンから移行するために保存されているマイグレーションデータを削除します。
+データの移行が完了した後に呼び出すことで、不要なデータを削除できます。
+
+* *ブロッキング*
+
+ブロッキング（ストレージアクセスを伴うため）
+
+* *備考*
+
+* データが存在しない場合でも、``kPlErrCodeOk``を返す場合があります（実装依存）。
+* 本APIは内部でOS依存の実装を呼び出します。
+
+<<<
+
+== シーケンス図
+
+=== ハードウェア情報取得シーケンス
+
+.ハードウェア情報取得シーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant ESF as SystemManager
+    participant PL as PlSystemManager
+    participant OS as PlSystemManagerOsImpl
+    
+    ESF ->> +PL : PlSystemManagerIsHwInfoSupported()
+    PL ->> +OS : PlSystemManagerIsHwInfoSupportedOsImpl()
+    OS -->> -PL : true/false
+    PL -->> -ESF : true/false
+    
+    alt HwInfoがサポートされている場合
+        ESF ->> +PL : PlSystemManagerGetHwInfoSize()
+        PL ->> +OS : PlSystemManagerGetHwInfoSizeOsImpl()
+        OS -->> -PL : size
+        PL -->> -ESF : size
+        
+        ESF ->> ESF : バッファを確保
+        
+        Note over ESF: HwInfo文字列を取得<br>(PSM経由など)
+        
+        ESF ->> +PL : PlSystemManagerParseHwInfo(hw_info, data)
+        PL ->> +OS : PlSystemManagerParseHwInfoOsImpl(hw_info, data)
+        OS ->> OS : 文字列をパース
+        OS -->> -PL : kPlErrCodeOk
+        PL -->> -ESF : kPlErrCodeOk
+        
+        ESF ->> +PL : PlSystemManagerRequiresSerialNumberFromDeviceManifest()
+        PL ->> +OS : PlSystemManagerRequiresSerialNumberFromDeviceManifestOsImpl()
+        OS -->> -PL : true/false
+        PL -->> -ESF : true/false
+        
+        alt シリアル番号がデバイスマニフェストから必要な場合
+            Note over ESF: デバイスマニフェストから<br>シリアル番号を取得
+        end
+    end
+....
+
+<<<
+
+=== システム再起動判定シーケンス
+
+.システム再起動判定シーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant Main as EsfMain
+    participant ESF as SystemManager
+    participant PL as PlSystemManager
+    participant OS as PlSystemManagerOsImpl
+    
+    Main ->> +ESF : EsfSystemManagerIsNeedReboot()
+    
+    Note over ESF: リセット要因を取得<br>(PowerManager経由)
+    
+    ESF ->> +PL : PlSystemManagerIsNeedReboot(reset_cause, &reset_flag)
+    PL ->> +OS : PlSystemManagerIsNeedRebootOsImpl(reset_cause, &reset_flag)
+    OS ->> OS : リセット要因を判定
+    OS -->> -PL : kPlErrCodeOk
+    PL -->> -ESF : kPlErrCodeOk
+    
+    ESF -->> -Main : reset_flag(true/false)
+    
+    alt reset_flag == true
+        Main ->> Main : システム再起動
+        Note over Main: システム起動処理に戻る
+    end
+....
+
+<<<
+
+=== マイグレーションデータ管理シーケンス
+
+.マイグレーションデータ取得シーケンス図
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant ESF as SystemManager
+    participant PL as PlSystemManager
+    participant OS as PlSystemManagerOsImpl
+    
+    alt マイグレーションデータが存在する場合
+        ESF ->> +PL : PlSystemManagerGetMigrationData(id, dst, dst_size)
+        PL ->> +OS : PlSystemManagerGetMigrationDataOsImpl(id, dst, dst_size)
+        OS ->> OS : ストレージからデータ読み込み
+        OS -->> -PL : kPlErrCodeOk
+        PL -->> -ESF : kPlErrCodeOk
+        
+        Note over ESF: データを新形式に変換して保存
+        
+        ESF ->> +PL : PlSystemManagerEraseMigrationData(id)
+        PL ->> +OS : PlSystemManagerEraseMigrationDataOsImpl(id)
+        OS ->> OS : ストレージからデータ削除
+        OS -->> -PL : kPlErrCodeOk
+        PL -->> -ESF : kPlErrCodeOk
+    else マイグレーションデータが存在しない場合
+        ESF ->> +PL : PlSystemManagerGetMigrationData(id, dst, dst_size)
+        PL ->> +OS : PlSystemManagerGetMigrationDataOsImpl(id, dst, dst_size)
+        OS -->> -PL : kPlErrInternal
+        PL -->> -ESF : kPlErrInternal
+        Note over ESF: 移行不要として処理継続
+    end
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+特にありません。
+
+<<<
+
+== 使用しているOSSの一覧
+OSSは使用しません。
+
+<<<
+
+== 参考文献
+
+* SystemManager 機能仕様書
+** link:../../../spec/esf/system_manager/SystemManager_ja.adoc[SystemManager_ja.adoc]
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|初版リリース
+|===

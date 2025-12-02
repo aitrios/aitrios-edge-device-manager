@@ -1,0 +1,1370 @@
+= PL Clock Manager機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOS PLレイヤーの一つである、PL Clock Managerの仕様について記載します。 +
+PL Clock Managerの目的は、NTPクライアントとの連携を通じてシステムクロックの時刻同期を管理することです。 +
+本モジュールは、NTPクライアントデーモンの起動・停止・監視、時刻同期状態の判定、設定ファイルの管理などの機能を提供します。
+
+<<<
+
+== 用語
+本書中で使用する用語の一覧を示します。
+
+=== NTP
+Network Time Protocol。ネットワーク上のコンピュータの時刻を同期するためのプロトコルです。
+
+=== NTPクライアント
+NTPサーバから時刻情報を取得し、システムクロックを同期するクライアントソフトウェアです。
+
+=== PL
+Porting Layer。カメラ差分を吸収する層です。
+
+=== ESF
+Edge Software Framework。上位レイヤのフレームワークです。
+
+=== 時刻同期
+NTPサーバとの通信により、システムクロックを正確な時刻に合わせる処理です。
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+PL Clock Managerは、ESF Clock ManagerとNTPクライアントデーモンの間のインターフェース層として機能するコンポーネントです。 +
+PL Clock Managerは、プラットフォーム依存のNTPクライアント実装（Linux: chrony、NuttX: ntpclient等）を抽象化し、 +
+統一されたAPIインターフェースを上位のESF Clock Managerに提供します。
+
+本コンポーネントは以下の特徴を持ちます：
+
+* **状態管理なし**: PL層では内部的な状態管理は行わず、NTPクライアントデーモンの状態に依存します
+* **プラットフォーム抽象化**: 異なるOS/NTPクライアントの差異を吸収し、統一されたAPIを提供します
+* **直接操作**: NTPクライアントデーモンに対する設定、起動、停止、状態取得などの操作を直接実行します
+
+.概要図
+[{mermaid_block}]
+....
+graph TB
+    esf["ESF Clock Manager"]
+    plcm["PL Clock Manager"]
+    style plcm fill:#3cb371,stroke:#333
+    
+    subgraph OS["OS Layer"]
+        ntpc["NTP Client Daemon"]
+        clock["System Clock"]
+    end
+    
+    server[(NTP Server)]
+    
+    esf -->|"NTPクライアント制御"| plcm
+    plcm -->|"デーモン起動・停止<br>状態取得"| ntpc
+    ntpc -->|"時刻同期"| server
+    ntpc -->|"時刻設定"| clock
+    plcm -->|"同期状態"| esf
+....
+
+.データフロー図
+[{mermaid_block}]
+....
+graph TB
+    esf["ESF Clock Manager"]
+    plcm["PL Clock Manager"]
+    style plcm fill:#3cb371,stroke:#333
+    ntpc["NTP Client Daemon"]
+    conf["設定ファイル"]
+    
+    esf -->|"API呼び出し"| plcm
+    plcm -->|"戻り値・状態情報"| esf
+    plcm -->|"設定ファイル生成"| conf
+    plcm -->|"起動・停止・再起動"| ntpc
+    plcm -->|"状態取得"| ntpc
+    ntpc -->|"設定読み込み"| conf
+    
+    note1[["PL Clock Managerは<br>状態管理を行わず<br>インターフェース機能<br>のみ提供"]]
+    style note1 fill:#ffffcc,stroke:#333
+....
+
+.アーキテクチャ図
+[{mermaid_block}]
+....
+graph TB
+    subgraph "ESF Layer"
+        esf["ESF Clock Manager<br>(状態管理・監視機能)"]
+    end
+    
+    subgraph "PL Layer"
+        plcm["PL Clock Manager<br>(インターフェース層)"]
+    end
+    
+    subgraph "OS/Platform Layer"
+        linux["Linux: chrony"]
+        nuttx["NuttX: ntpclient"]
+    end
+    
+    esf -->|"統一API"| plcm
+    plcm -->|"Platform固有API"| linux
+    plcm -->|"Platform固有API"| nuttx
+    
+    style plcm fill:#3cb371,stroke:#333
+    style esf fill:#87ceeb,stroke:#333
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+PL Clock Managerコンポーネントと他モジュールとの関係を、以下のようにコンポーネント図で表しています。 +
+各矢印はデータの流れ、入出力を示しています。
+
+.コンポーネント図
+[{mermaid_block}]
+....
+flowchart TB
+    subgraph master
+        direction LR
+        subgraph upper
+            esf["ESF Clock Manager"]
+        end
+        style upper color:#fff, fill:#fff, stroke:#fff
+        
+        subgraph center
+            direction TB
+            subgraph plcm["PL Clock Manager"]
+                plcm_api[API Functions]
+                plcm_daemon[Daemon Control]
+                plcm_status[Status Monitor]
+                plcm_config[Config Manager]
+            end
+            style plcm fill:#f9f
+        end
+        style center color:#fff, fill:#fff, stroke:#fff
+        
+        subgraph lower
+            subgraph os["OS/NTP Client"]
+                ntpc[NTP Client Daemon]
+                ntpc_conf[Configuration Files]
+            end
+        end
+        style lower color:#fff, fill:#fff, stroke:#fff
+    end
+    style master color:#fff, fill:#fff, stroke:#fff
+    
+    esf -->|"PlClockManagerStartNtpClientDaemon<br>PlClockManagerRestartNtpClientDaemon"| plcm_api
+    esf -->|"PlClockManagerGetNtpStatus<br>PlClockManagerJudgeNtpTimeSyncComplete"| plcm_api
+    esf -->|"PlClockManagerDeleteConfFiles"| plcm_api
+    plcm_api -->|"デーモン制御"| plcm_daemon
+    plcm_api -->|"状態監視"| plcm_status
+    plcm_api -->|"設定管理"| plcm_config
+    plcm_daemon -->|"起動・停止・再起動"| ntpc
+    plcm_status -->|"状態取得"| ntpc
+    plcm_config -->|"設定ファイル生成・削除"| ntpc_conf
+    ntpc -->|"設定読み込み"| ntpc_conf
+....
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|ESF Clock Manager
+|上位レイヤからのNTP制御要求を受け付け、PL Clock Managerを呼び出します。
+|
+
+|NTP Client Daemon
+|実際の時刻同期処理を行うデーモンプロセスです。
+|OS依存の実装
+
+|Configuration Files
+|NTPクライアントの設定を保存するファイルです。
+|/etc/chrony/conf.d等
+
+|===
+
+<<<
+
+=== NTPクライアントデーモンとの連携
+PL Clock Managerは内部的な状態管理を行わず、NTPクライアントデーモンとの直接的なインターフェースを提供します。 +
+PL Clock ManagerはNTPクライアントデーモンの状態に依存して動作し、以降に示すAPI一覧(<<#_TableAPI>>)に従って各機能を提供します。
+
+
+<<<
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|NTPクライアントデーモン起動
+|NTPクライアントデーモンを指定されたパラメータで起動します。
+|<<#_StartNtpClientDaemon>>
+
+|NTPクライアントデーモン再起動
+|NTPクライアントデーモンを再起動します。
+|<<#_RestartNtpClientDaemon>>
+
+|NTPクライアントデーモン終了待機
+|NTPクライアントデーモンの終了を待機します。
+|<<#_WaitForTerminatingDaemon>>
+
+|NTP状態取得
+|現在のNTP同期状態を取得します。
+|<<#_GetNtpStatus>>
+
+|NTP時刻同期完了判定
+|NTP時刻同期が完了したかを判定します。
+|<<#_JudgeNtpTimeSyncComplete>>
+
+|NTPクライアントデーモン稼働確認
+|NTPクライアントデーモンが稼働中かを確認します。
+|<<#_IsNtpClientDaemonActive>>
+
+|設定ファイル削除
+|NTPクライアントの設定ファイルを削除します。
+|<<#_DeleteConfFiles>>
+
+|マイグレーションデータ取得
+|システム設定からマイグレーションデータを取得します。
+|<<#_GetMigrationData>>
+
+|マイグレーション設定
+|ClockManagerのマイグレーション設定を実施します。
+|<<#_SetupMigration>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_StartNtpClientDaemon]
+==== NTPクライアントデーモン起動
+* 機能概要
+    ** NTPクライアントデーモンを指定されたパラメータで起動します。
+    
+* 前提条件
+    ** NTPクライアントデーモンが停止していること。
+    ** 有効なNTPパラメータが提供されること。
+
+* 機能詳細
+    ** 指定されたパラメータに基づいてNTPクライアントの設定ファイルを生成します。
+    ** NTPクライアントデーモンを起動します。
+    ** 起動に失敗した場合はエラーを返します。
+
+[#_RestartNtpClientDaemon]
+==== NTPクライアントデーモン再起動
+* 機能概要
+    ** NTPクライアントデーモンを再起動します。
+    
+* 前提条件
+    ** NTPクライアントデーモンが起動していること。
+
+* 機能詳細
+    ** 現在のNTPクライアントデーモンを停止します。
+    ** 既存の設定ファイルを使用してNTPクライアントデーモンを再起動します。
+    ** 再起動に失敗した場合はエラーを返します。
+
+[#_WaitForTerminatingDaemon]
+==== NTPクライアントデーモン終了待機
+* 機能概要
+    ** NTPクライアントデーモンの終了を待機します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** NTPクライアントデーモンが終了するまで待機します。
+    ** デーモンが正常に終了すれば成功を返します。
+
+[#_GetNtpStatus]
+==== NTP状態取得
+* 機能概要
+    ** 現在のNTP同期状態を取得します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** NTPクライアントの追跡状態を問い合わせます。
+    ** 状態情報を格納するメモリを動的に割り当てます。
+    ** 呼び出し元は返されたポインタを解放する責任があります。
+    ** 失敗した場合はNULLを返します。
+
+[#_JudgeNtpTimeSyncComplete]
+==== NTP時刻同期完了判定
+* 機能概要
+    ** NTP時刻同期が完了したかを判定します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** PlClockManagerGetNtpStatusから取得したNTP状態データを検査します。
+    ** 同期完了、未完了、または失敗のいずれかの状態を返します。
+    ** statusパラメータがNULLの場合は未完了を返します。
+
+[#_IsNtpClientDaemonActive]
+==== NTPクライアントデーモン稼働確認
+* 機能概要
+    ** NTPクライアントデーモンが稼働中かを確認します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** NTPクライアントデーモンの動作状態を確認します。
+    ** デーモンが稼働中の場合はtrueを返します。
+    ** デーモンが停止中の場合はfalseを返します。
+
+[#_DeleteConfFiles]
+==== 設定ファイル削除
+* 機能概要
+    ** NTPクライアントの設定ファイルを削除します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** Clock Managerによって作成されたすべてのNTPクライアント設定ファイルを削除します。
+    ** 削除に失敗した場合はエラーを返します。
+
+[#_GetMigrationData]
+==== マイグレーションデータ取得
+* 機能概要
+    ** システム設定からマイグレーションデータを取得します。
+    
+* 前提条件
+    ** T4Rカメラであること。
+    ** 有効な宛先バッファが提供されること。
+
+* 機能詳細
+    ** システム設定ファイルからマイグレーションデータを読み出します。
+    ** 現在は/etc/chrony.confからNTPサーバ情報を読み出します。
+    ** 取得に失敗した場合はエラーを返します。
+
+[#_SetupMigration]
+==== マイグレーション設定
+* 機能概要
+    ** ClockManagerのマイグレーション設定を実施します。
+    
+* 前提条件
+    ** T4Rカメラであること。
+    ** 設定ファイルへのアクセス権限があること。
+
+* 機能詳細
+    ** chrony.confに"confdir /etc/chrony/conf.d"が存在しない場合は末尾に追加します。
+    ** デフォルトのNTPサーバをAitrios NTPサーバ(time.aitrios.sony-semicon.com)に置き換えます。
+    ** /misc/smartcamera/edc/conf.dから/etc/chrony/conf.dへのシンボリックリンクを作成します。
+    ** 設定に失敗した場合はエラーを返します。
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|T.B.D.
+|<<#_Maximum_Stack_Usage>>
+
+|ヒープメモリ使用量
+|T.B.D.
+|<<#_HeapMemoryUsage>>
+
+|最大処理時間
+|T.B.D.
+|<<#_Maximum_Processing_Time>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+
+[#_Maximum_Stack_Usage]
+==== Stack最大使用量
+設計時点での目標値は T.B.D.
+
+[#_HeapMemoryUsage]
+==== ヒープメモリ使用量
+設計時点での目標値は T.B.D.
+
+[#_Maximum_Processing_Time]
+==== 最大処理時間
+設計時点での目標値は T.B.D.
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|PlClockManagerReturnValue
+|Clock Manager APIの実行結果を定義する列挙型です。
+|<<#_PlClockManagerReturnValue>>
+
+|PlClockManagerNtpTimeSyncStatus
+|NTP時刻同期の状態を定義する列挙型です。
+|<<#_PlClockManagerNtpTimeSyncStatus>>
+
+|PlClockManagerParamType
+|NTPパラメータのタイプを定義する列挙型です。
+|<<#_PlClockManagerParamType>>
+
+|PlClockManagerConnection
+|NTPサーバの接続情報を定義する構造体です。
+|<<#_PlClockManagerConnection>>
+
+|PlClockManagerCommon
+|NTPクライアントの共通パラメータを定義する構造体です。
+|<<#_PlClockManagerCommon>>
+
+|PlClockManagerSkipAndLimit
+|パケットスキップとリミット設定を定義する構造体です。
+|<<#_PlClockManagerSkipAndLimit>>
+
+|PlClockManagerSlewParam
+|Slewモードのパラメータを定義する構造体です。
+|<<#_PlClockManagerSlewParam>>
+
+|PlClockManagerParams
+|NTPクライアントの全パラメータを定義する構造体です。
+|<<#_PlClockManagerParams>>
+
+|PlClockManagerNtpStatus
+|NTP状態データを格納する不透明型です。
+|<<#_PlClockManagerNtpStatus>>
+
+|PlClockManagerMutexBase
+|ミューテックスの基本構造体です。
+|<<#_PlClockManagerMutexBase>>
+
+|PlClockManagerCondBase
+|条件変数の基本構造体です。
+|<<#_PlClockManagerCondBase>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|PlClockManagerStartNtpClientDaemon
+|指定されたパラメータでNTPクライアントデーモンを起動します。
+|<<#_PlClockManagerStartNtpClientDaemon>>
+
+|PlClockManagerRestartNtpClientDaemon
+|NTPクライアントデーモンを再起動します。
+|<<#_PlClockManagerRestartNtpClientDaemon>>
+
+|PlClockManagerWaitForTerminatingDaemon
+|NTPクライアントデーモンの終了を待機します。
+|<<#_PlClockManagerWaitForTerminatingDaemon>>
+
+|PlClockManagerGetNtpStatus
+|現在のNTP同期状態を取得します。
+|<<#_PlClockManagerGetNtpStatus>>
+
+|PlClockManagerJudgeNtpTimeSyncComplete
+|NTP時刻同期が完了したかを判定します。
+|<<#_PlClockManagerJudgeNtpTimeSyncComplete>>
+
+|PlClockManagerIsNtpClientDaemonActive
+|NTPクライアントデーモンが稼働中かを確認します。
+|<<#_PlClockManagerIsNtpClientDaemonActive>>
+
+|PlClockManagerDeleteConfFiles
+|NTPクライアントの設定ファイルを削除します。
+|<<#_PlClockManagerDeleteConfFiles>>
+
+|PlClockManagerGetMigrationDataImpl
+|システム設定からマイグレーションデータを取得します。
+|<<#_PlClockManagerGetMigrationDataImpl>>
+
+|PlClockManagerSetupMigration
+|ClockManagerのマイグレーション設定を実施します。
+|<<#_PlClockManagerSetupMigration>>
+
+|===
+
+<<<
+
+=== データ型定義
+[#_PlClockManagerReturnValue]
+==== PlClockManagerReturnValue
+Clock Manager APIの実行結果を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum {
+  kPlClockManagerSuccess,
+  kPlClockManagerParamError,
+  kPlClockManagerInternalError,
+  kPlClockManagerStateTransitionError,
+  kPlClockManagerNotifierHasAlreadyFinished,
+  kPlClockManagerMonitorHasAlreadyFinished,
+  kPlClockManagerDaemonHasAlreadyFinished
+} PlClockManagerReturnValue;
+....
+
+* *値* 
++
+[#_PlClockManagerReturnValueValues]
+.PlClockManagerReturnValueの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerParamError
+|パラメータエラー
+
+|kPlClockManagerInternalError
+|内部エラー
+
+|kPlClockManagerStateTransitionError
+|NTPクライアントデーモンの操作に失敗（起動失敗、停止失敗、再起動失敗等）
+
+|kPlClockManagerNotifierHasAlreadyFinished
+|通知スレッドが既に終了している
+
+|kPlClockManagerMonitorHasAlreadyFinished
+|監視スレッドが既に終了している
+
+|kPlClockManagerDaemonHasAlreadyFinished
+|デーモンが既に終了している
+|===
+
+[#_PlClockManagerNtpTimeSyncStatus]
+==== PlClockManagerNtpTimeSyncStatus
+NTP時刻同期の状態を定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum PlClockManagerNtpTimeSyncStatus {
+  kPlClockManagerNtpTimeSyncFailure,
+  kPlClockManagerNtpTimeSyncSuccess,
+  kPlClockManagerHasNotCompletedYet
+} PlClockManagerNtpTimeSyncStatus;
+....
+
+* *値* 
++
+[#_PlClockManagerNtpTimeSyncStatusValues]
+.PlClockManagerNtpTimeSyncStatusの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlClockManagerNtpTimeSyncFailure
+|時刻同期失敗
+
+|kPlClockManagerNtpTimeSyncSuccess
+|時刻同期成功
+
+|kPlClockManagerHasNotCompletedYet
+|同期未完了またはstatusがNULL
+|===
+
+[#_PlClockManagerParamType]
+==== PlClockManagerParamType
+NTPパラメータのタイプを定義する列挙型です。
+
+* *書式*
++
+[source, C]
+....
+typedef enum PlClockManagerParamType {
+  kPlClockManagerParamTypeOff,
+  kPlClockManagerParamTypeDefault,
+  kPlClockManagerParamTypeCustom,
+  kPlClockManagerParamTypeNumMax
+} PlClockManagerParamType;
+....
+
+* *値* 
++
+[#_PlClockManagerParamTypeValues]
+.PlClockManagerParamTypeの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|kPlClockManagerParamTypeOff
+|パラメータ無効
+
+|kPlClockManagerParamTypeDefault
+|デフォルトパラメータ使用
+
+|kPlClockManagerParamTypeCustom
+|カスタムパラメータ使用
+
+|kPlClockManagerParamTypeNumMax
+|要素数(最大値)
+|===
+
+[#_PlClockManagerMutexBase]
+==== PlClockManagerMutexBase
+ミューテックスの基本構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct PlClockManagerMutexBase {
+  pthread_mutex_t m_mutex;
+} PlClockManagerMutexBase;
+....
+
+* *値* 
++
+[#_PlClockManagerMutexBaseValues]
+.PlClockManagerMutexBaseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|m_mutex
+|POSIXミューテックス
+|===
+
+[#_PlClockManagerCondBase]
+==== PlClockManagerCondBase
+条件変数の基本構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct PlClockManagerCondBase {
+  pthread_mutex_t m_mutex;
+  pthread_cond_t m_cond;
+} PlClockManagerCondBase;
+....
+
+* *値* 
++
+[#_PlClockManagerCondBaseValues]
+.PlClockManagerCondBaseの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|m_mutex
+|POSIXミューテックス
+
+|m_cond
+|POSIX条件変数
+|===
+
+[#_PlClockManagerConnection]
+==== PlClockManagerConnection
+NTPサーバの接続情報を定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+#define PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE (256)
+typedef struct PlClockManagerConnection {
+  char hostname[PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+} PlClockManagerConnection;
+....
+
+* *値* 
++
+[#_PlClockManagerConnectionValues]
+.PlClockManagerConnectionの値の説明
+[width="100%", cols="30%,50%,20%",options="header"]
+|===
+|メンバ名  |説明 |サイズ
+|hostname
+|NTPサーバのホスト名またはIPv4アドレス。 +
+終端のヌル文字を含む。
+|272バイト
+|===
+
+[#_PlClockManagerCommon]
+==== PlClockManagerCommon
+NTPクライアントの共通パラメータを定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct PlClockManagerCommon {
+  int sync_interval;
+  int polling_time;
+} PlClockManagerCommon;
+....
+
+* *値* 
++
+[#_PlClockManagerCommonValues]
+.PlClockManagerCommonの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|sync_interval
+|NTPクライアントの同期間隔(秒)
+
+|polling_time
+|Clock Managerスレッドのポーリング周期(秒)
+|===
+
+[#_PlClockManagerSkipAndLimit]
+==== PlClockManagerSkipAndLimit
+パケットスキップとリミット設定を定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct PlClockManagerSettingSkipAndLimit {
+  PlClockManagerParamType type;
+  int limit_packet_time;
+  int limit_rtc_correction_value;
+  int sanity_limit;
+} PlClockManagerSkipAndLimit;
+....
+
+* *値* 
++
+[#_PlClockManagerSkipAndLimitValues]
+.PlClockManagerSkipAndLimitの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|type
+|パラメータのタイプ
+
+|limit_packet_time
+|パケット時間のリミット値
+
+|limit_rtc_correction_value
+|RTC補正値のリミット
+
+|sanity_limit
+|健全性チェックのリミット値
+|===
+
+[#_PlClockManagerSlewParam]
+==== PlClockManagerSlewParam
+Slewモードのパラメータを定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct PlClockManagerSettingSlewParam {
+  PlClockManagerParamType type;
+  int stable_rtc_correction_value;
+  int stable_sync_number;
+} PlClockManagerSlewParam;
+....
+
+* *値* 
++
+[#_PlClockManagerSlewParamValues]
+.PlClockManagerSlewParamの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|type
+|パラメータのタイプ
+
+|stable_rtc_correction_value
+|安定したRTC補正値
+
+|stable_sync_number
+|安定同期回数
+|===
+
+[#_PlClockManagerParams]
+==== PlClockManagerParams
+NTPクライアントの全パラメータを定義する構造体です。
+
+* *書式*
++
+[source, C]
+....
+typedef struct PlClockManagerParams {
+  PlClockManagerConnection connect;
+  PlClockManagerCommon common;
+  PlClockManagerSkipAndLimit skip_and_limit;
+  PlClockManagerSlewParam slew_setting;
+} PlClockManagerParams;
+....
+
+* *値* 
++
+[#_PlClockManagerParamsValues]
+.PlClockManagerParamsの値の説明
+[width="100%", cols="30%,70%",options="header"]
+|===
+|メンバ名  |説明
+|connect
+|NTPサーバの接続情報
+
+|common
+|共通パラメータ
+
+|skip_and_limit
+|スキップとリミット設定
+
+|slew_setting
+|Slewモード設定
+|===
+
+[#_PlClockManagerNtpStatus]
+==== PlClockManagerNtpStatus
+NTP状態データを格納する不透明型です。
+
+* *書式*
++
+[source, C]
+....
+typedef void *PlClockManagerNtpStatus;
+....
+
+* *説明* +
+NTPクライアントの状態情報を保持する不透明なポインタ型です。 +
+PlClockManagerGetNtpStatusによって割り当てられ、PlClockManagerJudgeNtpTimeSyncCompleteで使用されます。 +
+呼び出し元は使用後にこのポインタを解放する責任があります。
+
+<<<
+
+=== API定義
+
+[#_PlClockManagerStartNtpClientDaemon]
+==== PlClockManagerStartNtpClientDaemon
+* *機能* 
++
+指定されたパラメータでNTPクライアントデーモンを起動します。
+
+* *書式* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerStartNtpClientDaemon(const PlClockManagerParams *param)
+----
+
+* *引数の説明* +
++
+**``[IN] const PlClockManagerParams *param``**:: 
+NTPクライアントのパラメータを含む構造体へのポインタ。 +
+- connect: NTPサーバの接続設定 +
+- common: 同期間隔とポーリング間隔 +
+- skip_and_limit: パケットフィルタリングと健全性リミット設定 +
+- slew_setting: Slewモード設定
+
+* *戻り値* +
++
+[#_PlClockManagerStartNtpClientDaemonReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerParamError
+|パラメータ検証に失敗
+
+|kPlClockManagerInternalError
+|設定セットアップに失敗
+
+|kPlClockManagerStateTransitionError
+|デーモン起動に失敗
+|===
+
+* *説明* +
+この関数は、NTPクライアントデーモンを設定して起動します。 +
+提供されたパラメータに基づいて、サーバ設定、同期間隔、フィルタリングルールを設定し、その後デーモンを起動します。
+
+[#_PlClockManagerRestartNtpClientDaemon]
+==== PlClockManagerRestartNtpClientDaemon
+* *機能* 
++
+NTPクライアントデーモンを再起動します。
+
+* *書式* +
++
+`PlClockManagerReturnValue PlClockManagerRestartNtpClientDaemon(void)`
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+[#_PlClockManagerRestartNtpClientDaemonReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerInternalError
+|設定セットアップに失敗
+
+|kPlClockManagerStateTransitionError
+|デーモン再起動に失敗
+|===
+
+* *説明* +
+この関数は、NTPクライアントデーモンを再起動して、設定変更を適用したりエラーから回復したりします。
+
+[#_PlClockManagerWaitForTerminatingDaemon]
+==== PlClockManagerWaitForTerminatingDaemon
+* *機能* 
++
+NTPクライアントデーモンの終了を待機します。
+
+* *書式* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerWaitForTerminatingDaemon(void)
+----
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+[#_PlClockManagerWaitForTerminatingDaemonReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerStateTransitionError
+|デーモン終了処理に失敗
+
+|===
+
+* *説明* +
+この関数は、NTPクライアントデーモンが終了するまで待機します。
+
+[#_PlClockManagerGetNtpStatus]
+==== PlClockManagerGetNtpStatus
+* *機能* 
++
+現在のNTP同期状態を取得します。
+
+* *書式* +
++
+[source,c]
+----
+PlClockManagerNtpStatus PlClockManagerGetNtpStatus(void)
+----
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+NTP状態データへのポインタ、または失敗時にNULL。 +
+状態は、NTPクライアントが正常に追跡しているかどうかを示します。
+
+* *説明* +
+この関数は、状態値用にメモリを割り当て、NTPクライアントの追跡状態を問い合わせます。 +
+返された状態ポインタは、PlClockManagerJudgeNtpTimeSyncCompleteで同期完了を判定するために使用できます。 +
+呼び出し元は返されたポインタを解放する責任があります。
+
+[#_PlClockManagerJudgeNtpTimeSyncComplete]
+==== PlClockManagerJudgeNtpTimeSyncComplete
+* *機能* 
++
+NTP時刻同期が完了したかを判定します。
+
+* *書式* +
++
+`PlClockManagerNtpTimeSyncStatus PlClockManagerJudgeNtpTimeSyncComplete(PlClockManagerNtpStatus status)`
+
+* *引数の説明* +
++
+**``[IN] PlClockManagerNtpStatus status``**:: 
+PlClockManagerGetNtpStatusから取得したNTP状態データへのポインタ。 +
+NULLも指定可能です。
+
+* *戻り値* +
++
+[#_PlClockManagerJudgeNtpTimeSyncCompleteReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerNtpTimeSyncSuccess
+|時刻同期が正常に完了
+
+|kPlClockManagerNtpTimeSyncFailure
+|時刻同期が失敗(現在未使用)
+
+|kPlClockManagerHasNotCompletedYet
+|同期未完了またはstatusがNULL
+|===
+
+* *説明* +
+この関数は、PlClockManagerGetNtpStatusから取得したNTP状態データを検査し、同期状態を判定します。 +
+statusパラメータはPlClockManagerGetNtpStatusによって返されたポインタである必要があります。
+
+[#_PlClockManagerIsNtpClientDaemonActive]
+==== PlClockManagerIsNtpClientDaemonActive
+* *機能* 
++
+NTPクライアントデーモンが稼働中かを確認します。
+
+* *書式* +
++
+`bool PlClockManagerIsNtpClientDaemonActive(void)`
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+デーモンが稼働中の場合はtrue、それ以外の場合はfalse。
+
+* *説明* +
+この関数は、NTPクライアントデーモンが現在動作中で稼働しているかを確認します。
+
+[#_PlClockManagerDeleteConfFiles]
+==== PlClockManagerDeleteConfFiles
+* *機能* 
++
+NTPクライアントの設定ファイルを削除します。
+
+* *書式* +
++
+[source,c]
+PlClockManagerReturnValue PlClockManagerDeleteConfFiles(void)
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+[#_PlClockManagerDeleteConfFilesReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerInternalError
+|削除に失敗
+|===
+
+* *説明* +
+この関数は、Clock Managerによって作成されたすべてのNTPクライアント設定ファイルを削除します。
+
+[#_PlClockManagerGetMigrationDataImpl]
+==== PlClockManagerGetMigrationDataImpl
+* *機能* 
++
+システム設定からマイグレーションデータを取得します。
+
+* *書式* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerGetMigrationDataImpl(void *dst, size_t dst_size)
+----
+
+* *引数の説明* +
++
+**``[OUT] void *dst``**:: 
+マイグレーションデータを格納する宛先バッファ。
+
+**``[IN] size_t dst_size``**:: 
+宛先バッファのサイズ。
+
+* *戻り値* +
++
+[#_PlClockManagerGetMigrationDataImplReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerParamError
+|無効なパラメータ
+
+|kPlClockManagerInternalError
+|設定ファイルへのアクセスに失敗またはデータが見つからない
+|===
+
+* *説明* +
+この関数は、システム設定ファイルからマイグレーションデータを取得します。 +
+現在の実装では、/etc/chrony.confからNTPサーバ情報を読み出します。
+
+[#_PlClockManagerSetupMigration]
+==== PlClockManagerSetupMigration
+* *機能* 
++
+ClockManagerのマイグレーション設定を実施します。
+
+* *書式* +
++
+`PlClockManagerReturnValue PlClockManagerSetupMigration(void)`
+
+* *引数の説明* +
++
+引数なし
+
+* *戻り値* +
++
+[#_PlClockManagerSetupMigrationReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|戻り値  |説明
+|kPlClockManagerSuccess
+|正常終了
+
+|kPlClockManagerInternalError
+|設定の変更またはシンボリックリンクの作成に失敗
+|===
+
+* *説明* +
+この関数は、ClockManagerのマイグレーションのための完全な設定を実施します。 +
+以下の操作を含みます： +
+1. chrony.confに"confdir /etc/chrony/conf.d"が存在しない場合、末尾に追加 +
+2. デフォルトのNTPサーバをAITRIOS NTPサーバ(time.aitrios.sony-semicon.com)に置き換え +
+3. /misc/smartcamera/edc/conf.dから/etc/chrony/conf.dへのシンボリックリンクを作成
+
+<<<
+
+== API使用時の呼び出し例
+
+NTPクライアント起動と時刻同期確認のシーケンスを以下に示します。
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant NTP as NTP Client Daemon
+    participant Server as NTP Server
+    
+    note over ESF,Server : NTPクライアントデーモン起動
+    ESF ->> PL : PlClockManagerStartNtpClientDaemon(param)
+    note over PL : パラメータ検証<br>設定ファイル生成
+    PL ->> NTP : デーモン起動（OS固有API）
+    alt デーモン起動成功
+        NTP -->> PL : 起動完了
+        PL -->> ESF : kPlClockManagerSuccess
+    else デーモン起動失敗
+        NTP -->> PL : 起動失敗
+        PL -->> ESF : kPlClockManagerStateTransitionError
+    end
+    
+    note over ESF,Server : 時刻同期処理（PL層は関与せず）
+    NTP ->> Server : 時刻同期要求
+    Server -->> NTP : 時刻情報
+    NTP ->> NTP : システムクロック更新
+    
+    note over ESF,Server : 同期状態確認
+    ESF ->> PL : PlClockManagerGetNtpStatus()
+    PL ->> NTP : 状態取得（OS固有API）
+    NTP -->> PL : デーモン状態情報
+    note over PL : メモリ割り当て<br>状態データ格納
+    PL -->> ESF : PlClockManagerNtpStatus
+    
+    ESF ->> PL : PlClockManagerJudgeNtpTimeSyncComplete(status)
+    note over PL : デーモン状態解析<br>同期完了判定
+    alt 同期完了
+        PL -->> ESF : kPlClockManagerNtpTimeSyncSuccess
+    else 同期未完了
+        PL -->> ESF : kPlClockManagerHasNotCompletedYet
+    else 同期失敗
+        PL -->> ESF : kPlClockManagerNtpTimeSyncFailure
+    end
+    
+    note over ESF : メモリ解放(status)
+....
+
+NTPクライアントデーモン再起動のシーケンスを以下に示します。
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant NTP as NTP Client Daemon
+    
+    note over ESF,NTP : デーモン再起動
+    ESF ->> +PL : PlClockManagerRestartNtpClientDaemon()
+    PL ->> +NTP : デーモン停止（OS固有API）
+    NTP -->> -PL : 停止完了
+    PL ->> +NTP : デーモン再起動（OS固有API）
+    alt 再起動成功
+        NTP -->> PL : 起動完了
+        PL -->> ESF : kPlClockManagerSuccess
+    else 再起動失敗
+        NTP -->> PL : 起動失敗
+        PL -->> ESF : kPlClockManagerStateTransitionError
+    end
+....
+
+設定ファイル削除のシーケンスを以下に示します。
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant FS as File System
+    
+    note over ESF,FS : 設定ファイル削除
+    ESF ->> +PL : PlClockManagerDeleteConfFiles()
+    PL ->> +FS : 設定ファイル削除（OS固有操作）
+    alt 削除成功
+        FS -->> PL : 成功
+        PL -->> ESF : kPlClockManagerSuccess
+    else 削除失敗
+        FS -->> PL : 失敗
+        PL -->> ESF : kPlClockManagerInternalError
+    end
+    deactivate FS
+    deactivate PL
+....
+
+マイグレーション処理のシーケンスを以下に示します。
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant FS as File System
+    
+    note over ESF,FS : マイグレーションデータ取得
+    ESF ->> +PL : PlClockManagerGetMigrationDataImpl(dst, dst_size)
+    PL ->> +FS : 設定ファイル読み込み（OS固有操作）
+    alt 読み込み成功
+        FS -->> PL : 設定データ
+        note over PL : データ抽出・変換
+        PL -->> ESF : kPlClockManagerSuccess + データ
+    else 読み込み失敗
+        FS -->> PL : 失敗
+        PL -->> ESF : kPlClockManagerInternalError
+    end
+    
+    note over ESF,FS : マイグレーション設定
+    ESF ->> +PL : PlClockManagerSetupMigration()
+    PL ->> +FS : 設定ファイル更新（OS固有操作）
+    alt 設定成功
+        FS -->> PL : 更新完了
+        PL -->> ESF : kPlClockManagerSuccess
+    else 設定失敗
+        FS -->> PL : 更新失敗
+        PL -->> ESF : kPlClockManagerInternalError
+    end
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+* NTPクライアントデーモンの実装に依存 +
+本モジュールは、OS上で動作するNTPクライアントデーモン(chronyなど)に依存します。 +
+使用するNTPクライアントの種類や動作は、OSおよび設定に依存します。
+
+* 状態管理の制約 +
+PL Clock Managerは内部的な状態管理を行いません。 +
+すべての状態情報はNTPクライアントデーモンに依存するため、デーモンの異常終了などによる +
+状態の整合性管理は上位のESF Clock Managerが担います。
+
+* マルチスレッドセーフティ +
+本モジュールの各APIは、スレッドセーフではありません。 +
+複数のスレッドから同時に呼び出す場合は、呼び出し元で排他制御を実施してください。
+
+* メモリ管理 +
+PlClockManagerGetNtpStatusによって割り当てられたメモリは、呼び出し元が解放する必要があります。 +
+メモリリークを防ぐため、使用後は必ずfreeを呼び出してください。
+
+* プラットフォーム固有の制約 +
+Linux版（chrony使用）とNuttX版（ntpclient使用）では、一部のAPIの動作が異なる場合があります。 +
+実装の詳細については、各プラットフォーム固有のソースコードを参照してください。
+
+=== 本モジュールで使用する設定
+* NTPクライアント設定ファイル +
+本モジュールは、以下の設定ファイルを使用します：
+** /etc/chrony.conf
+** /etc/chrony/conf.d/
+
+* NTPサーバ設定 +
+デフォルトのNTPサーバ： time.aitrios.sony-semicon.com
+
+=== 参考情報
+* NTPクライアント(chrony)の詳細については、chronyのドキュメントを参照してください。
+* 時刻同期の仕組みについては、NTPプロトコルの仕様(RFC 5905)を参照してください。
+
+<<<
+
+== 使用しているOSSの一覧
+
+* chrony +
+ネットワーク時刻同期を行うNTPクライアント/サーバ実装です。
+
+<<<
+
+== 参考文献
+* ClockManager 機能仕様書
+** link:../../../spec/esf/clock_manager/ClockManager_ja.adoc[ClockManager_ja.adoc]
+
+
+<<<
+
+== 更新履歴
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|初版リリース
+|===

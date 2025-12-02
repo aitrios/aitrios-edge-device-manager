@@ -1,0 +1,1372 @@
+= PL Clock Manager  Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document describes the specifications of the PL Clock Manager, one of the AITRIOS PL layer components. +
+The purpose of the PL Clock Manager is to manage system clock synchronization through interaction with the NTP client. +
+This module provides functions such as starting, stopping, and monitoring the NTP client daemon, determining the time synchronization state, and managing configuration files.
+
+<<<
+
+== Terminology
+This section lists the terms used in this document.
+
+=== NTP
+Network Time Protocol. A protocol used to synchronize the time of computers over a network.
+
+=== NTP Client
+Client software that obtains time information from an NTP server and synchronizes the system clock.
+
+=== PL
+Porting Layer. A layer that abstracts differences between cameras.
+
+=== ESF
+Edge Software Framework. The upper-layer framework.
+
+=== Time Synchronization
+The process of adjusting the system clock to the correct time through communication with an NTP server.
+
+<<<
+
+== Component Description
+=== Component Overview
+The PL Clock Manager functions as an interface layer between the ESF Clock Manager and the NTP client daemon. +
+It abstracts platform-dependent NTP client implementations (e.g., Linux: chrony, NuttX: ntpclient) and provides a unified API interface to the upper ESF Clock Manager.
+
+This component has the following characteristics:
+
+* **No internal state management**: The PL layer does not manage internal states; it depends on the state of the NTP client daemon.  
+* **Platform abstraction**: It absorbs differences among various OS/NTP client implementations and provides a unified API.  
+* **Direct control**: It directly performs operations such as configuration, startup, shutdown, and status retrieval for the NTP client daemon.
+
+.Overview Diagram
+[{mermaid_block}]
+....
+graph TB
+    esf["ESF Clock Manager"]
+    plcm["PL Clock Manager"]
+    style plcm fill:#3cb371,stroke:#333
+    
+    subgraph OS["OS Layer"]
+        ntpc["NTP Client Daemon"]
+        clock["System Clock"]
+    end
+    
+    server[(NTP Server)]
+    
+    esf -->|"NTP client control"| plcm
+    plcm -->|"Daemon start/stop<br>Status retrieval"| ntpc
+    ntpc -->|"Time synchronization"| server
+    ntpc -->|"Clock adjustment"| clock
+    plcm -->|"Sync status"| esf
+....
+
+.Data Flow Diagram
+[{mermaid_block}]
+....
+graph TB
+    esf["ESF Clock Manager"]
+    plcm["PL Clock Manager"]
+    style plcm fill:#3cb371,stroke:#333
+    ntpc["NTP Client Daemon"]
+    conf["Configuration File"]
+    
+    esf -->|"API call"| plcm
+    plcm -->|"Return value / status information"| esf
+    plcm -->|"Generate configuration file"| conf
+    plcm -->|"Start / Stop / Restart"| ntpc
+    plcm -->|"Retrieve status"| ntpc
+    ntpc -->|"Load configuration"| conf
+    
+    note1[["PL Clock Manager<br>does not perform state management<br>and only provides an interface function."]]
+    style note1 fill:#ffffcc,stroke:#333
+....
+
+.Architecture Diagram
+[{mermaid_block}]
+....
+graph TB
+    subgraph "ESF Layer"
+        esf["ESF Clock Manager<br>(State management and monitoring)"]
+    end
+    
+    subgraph "PL Layer"
+        plcm["PL Clock Manager<br>(Interface layer)"]
+    end
+    
+    subgraph "OS/Platform Layer"
+        linux["Linux: chrony"]
+        nuttx["NuttX: ntpclient"]
+    end
+    
+    esf -->|"Unified API"| plcm
+    plcm -->|"Platform-specific API"| linux
+    plcm -->|"Platform-specific API"| nuttx
+    
+    style plcm fill:#3cb371,stroke:#333
+    style esf fill:#87ceeb,stroke:#333
+....
+
+<<<
+
+=== Detailed Component Description
+The relationships between the PL Clock Manager component and other modules are illustrated in the component diagram below. +
+Each arrow represents data flow, indicating input and output directions.
+
+.Component Diagram
+[{mermaid_block}]
+....
+flowchart TB
+    subgraph master
+        direction LR
+        subgraph upper
+            esf["ESF Clock Manager"]
+        end
+        style upper color:#fff, fill:#fff, stroke:#fff
+        
+        subgraph center
+            direction TB
+            subgraph plcm["PL Clock Manager"]
+                plcm_api[API Functions]
+                plcm_daemon[Daemon Control]
+                plcm_status[Status Monitor]
+                plcm_config[Config Manager]
+            end
+            style plcm fill:#f9f
+        end
+        style center color:#fff, fill:#fff, stroke:#fff
+        
+        subgraph lower
+            subgraph os["OS/NTP Client"]
+                ntpc[NTP Client Daemon]
+                ntpc_conf[Configuration Files]
+            end
+        end
+        style lower color:#fff, fill:#fff, stroke:#fff
+    end
+    style master color:#fff, fill:#fff, stroke:#fff
+    
+    esf -->|"PlClockManagerStartNtpClientDaemon<br>PlClockManagerRestartNtpClientDaemon"| plcm_api
+    esf -->|"PlClockManagerGetNtpStatus<br>PlClockManagerJudgeNtpTimeSyncComplete"| plcm_api
+    esf -->|"PlClockManagerDeleteConfFiles"| plcm_api
+    plcm_api -->|"Daemon Control"| plcm_daemon
+    plcm_api -->|"Status Monitoring"| plcm_status
+    plcm_api -->|"Configuration Management"| plcm_config
+    plcm_daemon -->|"Start / Stop / Restart"| ntpc
+    plcm_status -->|"Status Retrieval"| ntpc
+    plcm_config -->|"Generate / Delete Config Files"| ntpc_conf
+    ntpc -->|"Load Configuration"| ntpc_conf
+....
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Purpose |Comment
+
+|ESF Clock Manager
+|Receives NTP control requests from the upper layer and calls the PL Clock Manager.
+|
+
+|NTP Client Daemon
+|Daemon process that performs the actual time synchronization.
+|OS-dependent implementation.
+
+|Configuration Files
+|Files used to store NTP client configuration.
+|For example, /etc/chrony/conf.d.
+|===
+
+<<<
+
+=== Interaction with the NTP Client Daemon
+The PL Clock Manager does not perform any internal state management but provides a direct interface to the NTP client daemon. +
+It operates depending on the state of the NTP client daemon and provides each function according to the API list shown in <<#_TableAPI>>.
+
+<<<
+
+=== List of Component Functions
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description  |Section Number
+|Start NTP Client Daemon
+|Starts the NTP client daemon with the specified parameters.
+|<<#_StartNtpClientDaemon>>
+
+|Restart NTP Client Daemon
+|Restarts the NTP client daemon.
+|<<#_RestartNtpClientDaemon>>
+
+|Wait for Terminating Daemon
+|Waits for the termination of the NTP client daemon.
+|<<#_WaitForTerminatingDaemon>>
+
+|Get NTP Status
+|Retrieves the current NTP synchronization status.
+|<<#_GetNtpStatus>>
+
+|Judge NTP Time Sync Completion
+|Determines whether NTP time synchronization has been completed.
+|<<#_JudgeNtpTimeSyncComplete>>
+
+|Check NTP Client Daemon Activity
+|Checks whether the NTP client daemon is currently active.
+|<<#_IsNtpClientDaemonActive>>
+
+|Delete Configuration Files
+|Deletes the configuration files of the NTP client.
+|<<#_DeleteConfFiles>>
+
+|Get Migration Data
+|Retrieves migration data from system settings.
+|<<#_GetMigrationData>>
+
+|Setup Migration
+|Executes the migration setup for the Clock Manager.
+|<<#_SetupMigration>>
+
+|===
+
+<<<
+
+=== Component Function Descriptions
+[#_StartNtpClientDaemon]
+==== Start NTP Client Daemon
+* Overview  
+    ** Starts the NTP client daemon with the specified parameters.
+    
+* Preconditions  
+    ** The NTP client daemon must be stopped.  
+    ** Valid NTP parameters must be provided.
+
+* Details  
+    ** Generates the NTP client configuration file based on the specified parameters.  
+    ** Starts the NTP client daemon.  
+    ** Returns an error if the startup fails.
+
+[#_RestartNtpClientDaemon]
+==== Restart NTP Client Daemon
+* Overview  
+    ** Restarts the NTP client daemon.
+    
+* Preconditions  
+    ** The NTP client daemon must be running.
+
+* Details  
+    ** Stops the currently running NTP client daemon.  
+    ** Restarts the daemon using the existing configuration file.  
+    ** Returns an error if the restart fails.
+
+[#_WaitForTerminatingDaemon]
+==== Wait for Terminating Daemon
+* Overview  
+    ** Waits for the termination of the NTP client daemon.
+    
+* Preconditions  
+    ** None.
+
+* Details  
+    ** Waits until the NTP client daemon terminates.  
+    ** Returns success when the daemon exits normally.
+
+[#_GetNtpStatus]
+==== Get NTP Status
+* Overview  
+    ** Retrieves the current NTP synchronization status.
+    
+* Preconditions  
+    ** None.
+
+* Details  
+    ** Queries the NTP client for its tracking status.  
+    ** Dynamically allocates memory to store the status information.  
+    ** The caller is responsible for freeing the returned pointer.  
+    ** Returns NULL on failure.
+
+[#_JudgeNtpTimeSyncComplete]
+==== Judge NTP Time Sync Completion
+* Overview  
+    ** Determines whether NTP time synchronization has been completed.
+    
+* Preconditions  
+    ** None.
+
+* Details  
+    ** Examines the NTP status data obtained from `PlClockManagerGetNtpStatus`.  
+    ** Returns one of the following states: synchronized, unsynchronized, or failed.  
+    ** Returns “unsynchronized” if the status parameter is NULL.
+
+[#_IsNtpClientDaemonActive]
+==== Check NTP Client Daemon Activity
+* Overview  
+    ** Checks whether the NTP client daemon is currently active.
+    
+* Preconditions  
+    ** None.
+
+* Details  
+    ** Verifies the operational state of the NTP client daemon.  
+    ** Returns true if the daemon is running.  
+    ** Returns false if the daemon is stopped.
+
+[#_DeleteConfFiles]
+==== Delete Configuration Files
+* Overview  
+    ** Deletes the configuration files of the NTP client.
+    
+* Preconditions  
+    ** None.
+
+* Details  
+    ** Deletes all NTP client configuration files created by the Clock Manager.  
+    ** Returns an error if the deletion fails.
+
+[#_GetMigrationData]
+==== Get Migration Data
+* Overview  
+    ** Retrieves migration data from the system settings.
+    
+* Preconditions  
+    ** The device must be a T4R camera.  
+    ** A valid destination buffer must be provided.
+
+* Details  
+    ** Reads migration data from the system configuration file.  
+    ** Currently reads NTP server information from `/etc/chrony.conf`.  
+    ** Returns an error if retrieval fails.
+
+[#_SetupMigration]
+==== Setup Migration
+* Overview  
+    ** Performs the migration setup for the Clock Manager.
+    
+* Preconditions  
+    ** The device must be a T4R camera.  
+    ** The user must have write access to the configuration files.
+
+* Details  
+    ** Adds `"confdir /etc/chrony/conf.d"` to `chrony.conf` if it does not already exist.  
+    ** Replaces the default NTP server with the Aitrios NTP server (`time.aitrios.sony-semicon.com`).  
+    ** Creates a symbolic link from `/misc/smartcamera/edc/conf.d` to `/etc/chrony/conf.d`.  
+    ** Returns an error if the configuration fails.
+
+=== List of Non-Functional Requirements
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Description  |Section Number
+|Maximum Stack Usage
+|T.B.D.
+|<<#_Maximum_Stack_Usage>>
+
+|Heap Memory Usage
+|T.B.D.
+|<<#_HeapMemoryUsage>>
+
+|Maximum Processing Time
+|T.B.D.
+|<<#_Maximum_Processing_Time>>
+|===
+
+<<<
+
+=== Description of Non-Functional Requirements
+
+[#_Maximum_Stack_Usage]
+==== Maximum Stack Usage
+The target value at the design stage is T.B.D.
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+The target value at the design stage is T.B.D.
+
+[#_Maximum_Processing_Time]
+==== Maximum Processing Time
+The target value at the design stage is T.B.D.
+
+<<<
+
+== API Specification
+=== Definition List
+==== Data Type List
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.Data Type List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description  |Section Number
+|PlClockManagerReturnValue
+|Enumeration type defining the return values of the Clock Manager APIs.
+|<<#_PlClockManagerReturnValue>>
+
+|PlClockManagerNtpTimeSyncStatus
+|Enumeration type defining the NTP time synchronization status.
+|<<#_PlClockManagerNtpTimeSyncStatus>>
+
+|PlClockManagerParamType
+|Enumeration type defining the types of NTP parameters.
+|<<#_PlClockManagerParamType>>
+
+|PlClockManagerConnection
+|Structure defining NTP server connection information.
+|<<#_PlClockManagerConnection>>
+
+|PlClockManagerCommon
+|Structure defining common parameters for the NTP client.
+|<<#_PlClockManagerCommon>>
+
+|PlClockManagerSkipAndLimit
+|Structure defining packet skip and limit settings.
+|<<#_PlClockManagerSkipAndLimit>>
+
+|PlClockManagerSlewParam
+|Structure defining parameters for the slew mode.
+|<<#_PlClockManagerSlewParam>>
+
+|PlClockManagerParams
+|Structure defining all NTP client parameters.
+|<<#_PlClockManagerParams>>
+
+|PlClockManagerNtpStatus
+|Opaque type used to store NTP status data.
+|<<#_PlClockManagerNtpStatus>>
+
+|PlClockManagerMutexBase
+|Basic structure defining a mutex.
+|<<#_PlClockManagerMutexBase>>
+
+|PlClockManagerCondBase
+|Basic structure defining a condition variable.
+|<<#_PlClockManagerCondBase>>
+
+|===
+
+<<<
+
+==== API List
+The list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.API List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description  |Section Number
+|PlClockManagerStartNtpClientDaemon
+|Starts the NTP client daemon with the specified parameters.
+|<<#_PlClockManagerStartNtpClientDaemon>>
+
+|PlClockManagerRestartNtpClientDaemon
+|Restarts the NTP client daemon.
+|<<#_PlClockManagerRestartNtpClientDaemon>>
+
+|PlClockManagerWaitForTerminatingDaemon
+|Waits for the NTP client daemon to terminate.
+|<<#_PlClockManagerWaitForTerminatingDaemon>>
+
+|PlClockManagerGetNtpStatus
+|Retrieves the current NTP synchronization status.
+|<<#_PlClockManagerGetNtpStatus>>
+
+|PlClockManagerJudgeNtpTimeSyncComplete
+|Determines whether NTP time synchronization has been completed.
+|<<#_PlClockManagerJudgeNtpTimeSyncComplete>>
+
+|PlClockManagerIsNtpClientDaemonActive
+|Checks whether the NTP client daemon is currently active.
+|<<#_PlClockManagerIsNtpClientDaemonActive>>
+
+|PlClockManagerDeleteConfFiles
+|Deletes the NTP client configuration files.
+|<<#_PlClockManagerDeleteConfFiles>>
+
+|PlClockManagerGetMigrationDataImpl
+|Retrieves migration data from system configuration.
+|<<#_PlClockManagerGetMigrationDataImpl>>
+
+|PlClockManagerSetupMigration
+|Performs migration setup for the Clock Manager.
+|<<#_PlClockManagerSetupMigration>>
+
+|===
+
+<<<
+
+=== Data Type Definition
+[#_PlClockManagerReturnValue]
+==== PlClockManagerReturnValue
+An enumeration type that defines the execution results of the Clock Manager APIs.
+
+* *Definition*
++
+[source, C]
+....
+typedef enum {
+  kPlClockManagerSuccess,
+  kPlClockManagerParamError,
+  kPlClockManagerInternalError,
+  kPlClockManagerStateTransitionError,
+  kPlClockManagerNotifierHasAlreadyFinished,
+  kPlClockManagerMonitorHasAlreadyFinished,
+  kPlClockManagerDaemonHasAlreadyFinished
+} PlClockManagerReturnValue;
+....
+
+* *Values*
++
+[#_PlClockManagerReturnValueValues]
+.Description of PlClockManagerReturnValue Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerParamError
+|Parameter error.
+
+|kPlClockManagerInternalError
+|Internal error.
+
+|kPlClockManagerStateTransitionError
+|Failed to control the NTP client daemon (e.g., failed to start, stop, or restart).
+
+|kPlClockManagerNotifierHasAlreadyFinished
+|The notification thread has already terminated.
+
+|kPlClockManagerMonitorHasAlreadyFinished
+|The monitoring thread has already terminated.
+
+|kPlClockManagerDaemonHasAlreadyFinished
+|The daemon has already terminated.
+|===
+
+[#_PlClockManagerNtpTimeSyncStatus]
+==== PlClockManagerNtpTimeSyncStatus
+An enumeration type that defines the NTP time synchronization status.
+
+* *Definition*
++
+[source, C]
+....
+typedef enum PlClockManagerNtpTimeSyncStatus {
+  kPlClockManagerNtpTimeSyncFailure,
+  kPlClockManagerNtpTimeSyncSuccess,
+  kPlClockManagerHasNotCompletedYet
+} PlClockManagerNtpTimeSyncStatus;
+....
+
+* *Values* 
++
+[#_PlClockManagerNtpTimeSyncStatusValues]
+.Description of PlClockManagerNtpTimeSyncStatus Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|kPlClockManagerNtpTimeSyncFailure
+|Time synchronization failed.
+
+|kPlClockManagerNtpTimeSyncSuccess
+|Time synchronization succeeded.
+
+|kPlClockManagerHasNotCompletedYet
+|Synchronization not yet completed, or the status is NULL.
+|===
+
+[#_PlClockManagerParamType]
+==== PlClockManagerParamType
+An enumeration type that defines the types of NTP parameters.
+
+* *Definition*
++
+[source, C]
+....
+typedef enum PlClockManagerParamType {
+  kPlClockManagerParamTypeOff,
+  kPlClockManagerParamTypeDefault,
+  kPlClockManagerParamTypeCustom,
+  kPlClockManagerParamTypeNumMax
+} PlClockManagerParamType;
+....
+
+* *Values* 
++
+[#_PlClockManagerParamTypeValues]
+.Description of PlClockManagerParamType Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|kPlClockManagerParamTypeOff
+|Parameter disabled.
+
+|kPlClockManagerParamTypeDefault
+|Use default parameters.
+
+|kPlClockManagerParamTypeCustom
+|Use custom parameters.
+
+|kPlClockManagerParamTypeNumMax
+|Number of elements (maximum value).
+|===
+
+[#_PlClockManagerMutexBase]
+==== PlClockManagerMutexBase
+A basic structure defining a mutex.
+
+* *Definition*
++
+[source, C]
+....
+typedef struct PlClockManagerMutexBase {
+  pthread_mutex_t m_mutex;
+} PlClockManagerMutexBase;
+....
+
+* *Members* 
++
+[#_PlClockManagerMutexBaseValues]
+.Description of PlClockManagerMutexBase Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|m_mutex
+|POSIX mutex.
+|===
+
+[#_PlClockManagerCondBase]
+==== PlClockManagerCondBase
+A basic structure defining a condition variable.
+
+* *Definition*
++
+[source, C]
+....
+typedef struct PlClockManagerCondBase {
+  pthread_mutex_t m_mutex;
+  pthread_cond_t m_cond;
+} PlClockManagerCondBase;
+....
+
+* *Members* 
++
+[#_PlClockManagerCondBaseValues]
+.Description of PlClockManagerCondBase Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|m_mutex
+|POSIX mutex.
+
+|m_cond
+|POSIX condition variable.
+|===
+
+[#_PlClockManagerConnection]
+==== PlClockManagerConnection
+A structure that defines the connection information of the NTP server.
+
+* *Definition*
++
+[source, C]
+....
+#define PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE (272)
+typedef struct PlClockManagerConnection {
+  char hostname[PL_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+} PlClockManagerConnection;
+....
+
+* *Members* 
++
+[#_PlClockManagerConnectionValues]
+.Description of PlClockManagerConnection Members
+[width="100%", cols="30%,50%,20%",options="header"]
+|===
+|Member Name  |Description |Size
+|hostname
+|Hostname or IPv4 address of the NTP server. +
+Includes the terminating null character.
+|272 bytes
+|===
+
+[#_PlClockManagerCommon]
+==== PlClockManagerCommon
+A structure that defines common parameters for the NTP client.
+
+* *Definition*
++
+[source, C]
+....
+typedef struct PlClockManagerCommon {
+  int sync_interval;
+  int polling_time;
+} PlClockManagerCommon;
+....
+
+* *Members* 
++
+[#_PlClockManagerCommonValues]
+.Description of PlClockManagerCommon Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|sync_interval
+|Synchronization interval (in seconds) for the NTP client.
+
+|polling_time
+|Polling interval (in seconds) for the Clock Manager thread.
+|===
+
+[#_PlClockManagerSkipAndLimit]
+==== PlClockManagerSkipAndLimit
+A structure that defines packet skip and limit settings.
+
+* *Definition*
++
+[source, C]
+....
+typedef struct PlClockManagerSettingSkipAndLimit {
+  PlClockManagerParamType type;
+  int limit_packet_time;
+  int limit_rtc_correction_value;
+  int sanity_limit;
+} PlClockManagerSkipAndLimit;
+....
+
+* *Members* 
++
+[#_PlClockManagerSkipAndLimitValues]
+.Description of PlClockManagerSkipAndLimit Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|type
+|Type of parameter.
+
+|limit_packet_time
+|Limit value for packet time.
+
+|limit_rtc_correction_value
+|Limit value for RTC correction.
+
+|sanity_limit
+|Limit value for sanity check.
+|===
+
+[#_PlClockManagerSlewParam]
+==== PlClockManagerSlewParam
+A structure that defines parameters for the slew mode.
+
+* *Definition*
++
+[source, C]
+....
+typedef struct PlClockManagerSettingSlewParam {
+  PlClockManagerParamType type;
+  int stable_rtc_correction_value;
+  int stable_sync_number;
+} PlClockManagerSlewParam;
+....
+
+* *Members* 
++
+[#_PlClockManagerSlewParamValues]
+.Description of PlClockManagerSlewParam Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|type
+|Type of parameter.
+
+|stable_rtc_correction_value
+|Stable RTC correction value.
+
+|stable_sync_number
+|Number of stable synchronizations.
+|===
+
+[#_PlClockManagerParams]
+==== PlClockManagerParams
+A structure that defines all parameters for the NTP client.
+
+* *Definition*
++
+[source, C]
+....
+typedef struct PlClockManagerParams {
+  PlClockManagerConnection connect;
+  PlClockManagerCommon common;
+  PlClockManagerSkipAndLimit skip_and_limit;
+  PlClockManagerSlewParam slew_setting;
+} PlClockManagerParams;
+....
+
+* *Members* 
++
+[#_PlClockManagerParamsValues]
+.Description of PlClockManagerParams Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name  |Description
+|connect
+|Connection information of the NTP server.
+
+|common
+|Common parameters.
+
+|skip_and_limit
+|Skip and limit settings.
+
+|slew_setting
+|Slew mode settings.
+|===
+
+[#_PlClockManagerNtpStatus]
+==== PlClockManagerNtpStatus
+An opaque type used to store NTP status data.
+
+* *Definition*
++
+[source, C]
+....
+typedef void *PlClockManagerNtpStatus;
+....
+
+* *Description* +
+An opaque pointer type used to hold NTP client status information. +
+It is allocated by `PlClockManagerGetNtpStatus` and used by `PlClockManagerJudgeNtpTimeSyncComplete`. +
+The caller is responsible for freeing this pointer after use.
+
+<<<
+
+=== API Definition
+
+[#_PlClockManagerStartNtpClientDaemon]
+==== PlClockManagerStartNtpClientDaemon
+* *Function* 
++
+Starts the NTP client daemon with the specified parameters.
+
+* *Definition* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerStartNtpClientDaemon(const PlClockManagerParams *param)
+----
+
+* *Parameter Description* +
++
+**``[IN] const PlClockManagerParams *param``**:: 
+Pointer to a structure that contains the parameters of the NTP client. +
+- connect: NTP server connection settings +
+- common: synchronization interval and polling interval +
+- skip_and_limit: packet filtering and sanity limit settings +
+- slew_setting: slew mode settings
+
+* *Return Values* +
++
+[#_PlClockManagerStartNtpClientDaemonReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerParamError
+|Parameter validation failed.
+
+|kPlClockManagerInternalError
+|Failed to set up configuration.
+
+|kPlClockManagerStateTransitionError
+|Failed to start the daemon.
+|===
+
+* *Description* +
+This function configures and starts the NTP client daemon. +
+Based on the provided parameters, it sets the server configuration, synchronization interval, and filtering rules, and then starts the daemon.
+
+[#_PlClockManagerRestartNtpClientDaemon]
+==== PlClockManagerRestartNtpClientDaemon
+* *Function* 
++
+Restarts the NTP client daemon.
+
+* *Definition* +
++
+`PlClockManagerReturnValue PlClockManagerRestartNtpClientDaemon(void)`
+
+* *Parameters* +
++
+None.
+
+* *Return Values* +
++
+[#_PlClockManagerRestartNtpClientDaemonReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerInternalError
+|Failed to set up configuration.
+
+|kPlClockManagerStateTransitionError
+|Failed to restart the daemon.
+|===
+
+* *Description* +
+This function restarts the NTP client daemon to apply configuration changes or recover from errors.
+
+[#_PlClockManagerWaitForTerminatingDaemon]
+==== PlClockManagerWaitForTerminatingDaemon
+* *Function* 
++
+Waits for the NTP client daemon to terminate.
+
+* *Definition* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerWaitForTerminatingDaemon(void)
+----
+
+* *Parameters* +
++
+None.
+
+* *Return Values* +
++
+[#_PlClockManagerWaitForTerminatingDaemonReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerStateTransitionError
+|Failed to terminate the daemon process.
+|===
+
+* *Description* +
+This function waits until the NTP client daemon has terminated.
+
+[#_PlClockManagerGetNtpStatus]
+==== PlClockManagerGetNtpStatus
+* *Function* 
++
+Retrieves the current NTP synchronization status.
+
+* *Definition* +
++
+[source,c]
+----
+PlClockManagerNtpStatus PlClockManagerGetNtpStatus(void)
+----
+
+* *Parameters* +
++
+None.
+
+* *Return Values* +
++
+Pointer to NTP status data, or NULL on failure. +
+The status indicates whether the NTP client is currently tracking properly.
+
+* *Description* +
+This function allocates memory for the status data and queries the NTP client tracking state. +
+The returned status pointer can be used with `PlClockManagerJudgeNtpTimeSyncComplete` to determine whether synchronization has been completed. +
+The caller is responsible for freeing the returned pointer.
+
+[#_PlClockManagerJudgeNtpTimeSyncComplete]
+==== PlClockManagerJudgeNtpTimeSyncComplete
+* *Function* 
++
+Determines whether NTP time synchronization has been completed.
+
+* *Definition* +
++
+`PlClockManagerNtpTimeSyncStatus PlClockManagerJudgeNtpTimeSyncComplete(PlClockManagerNtpStatus status)`
+
+* *Parameters* +
++
+**``[IN] PlClockManagerNtpStatus status``**:: 
+Pointer to NTP status data obtained from `PlClockManagerGetNtpStatus`. +
+NULL can also be specified.
+
+* *Return Values* +
++
+[#_PlClockManagerJudgeNtpTimeSyncCompleteReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerNtpTimeSyncSuccess
+|Time synchronization completed successfully.
+
+|kPlClockManagerNtpTimeSyncFailure
+|Time synchronization failed (currently unused).
+
+|kPlClockManagerHasNotCompletedYet
+|Synchronization not completed or `status` is NULL.
+|===
+
+* *Description* +
+This function examines the NTP status data obtained from `PlClockManagerGetNtpStatus` to determine the synchronization state. +
+The `status` parameter must be the pointer returned by `PlClockManagerGetNtpStatus`.
+
+[#_PlClockManagerIsNtpClientDaemonActive]
+==== PlClockManagerIsNtpClientDaemonActive
+* *Function* 
++
+Checks whether the NTP client daemon is currently running.
+
+* *Definition* +
++
+`bool PlClockManagerIsNtpClientDaemonActive(void)`
+
+* *Parameters* +
++
+None.
+
+* *Return Value* +
++
+Returns `true` if the daemon is active; otherwise, returns `false`.
+
+* *Description* +
+This function verifies whether the NTP client daemon is currently operational and running.
+
+[#_PlClockManagerDeleteConfFiles]
+==== PlClockManagerDeleteConfFiles
+* *Function* 
++
+Deletes configuration files of the NTP client.
+
+* *Definition* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerDeleteConfFiles(void)
+----
+
+* *Parameters* +
++
+None.
+
+* *Return Values* +
++
+[#_PlClockManagerDeleteConfFilesReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerInternalError
+|Failed to delete files.
+|===
+
+* *Description* +
+This function deletes all NTP client configuration files created by the Clock Manager.
+
+[#_PlClockManagerGetMigrationDataImpl]
+==== PlClockManagerGetMigrationDataImpl
+* *Function* 
++
+Retrieves migration data from the system configuration.
+
+* *Definition* +
++
+[source,c]
+----
+PlClockManagerReturnValue PlClockManagerGetMigrationDataImpl(void *dst, size_t dst_size)
+----
+
+* *Parameters* +
++
+**``[OUT] void *dst``**::  
+Destination buffer to store the migration data.
+
+**``[IN] size_t dst_size``**::  
+Size of the destination buffer.
+
+* *Return Values* +
++
+[#_PlClockManagerGetMigrationDataImplReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerParamError
+|Invalid parameter.
+
+|kPlClockManagerInternalError
+|Failed to access configuration file or data not found.
+|===
+
+* *Description* +
+This function retrieves migration data from the system configuration file. +
+In the current implementation, NTP server information is read from `/etc/chrony.conf`.
+
+[#_PlClockManagerSetupMigration]
+==== PlClockManagerSetupMigration
+* *Function* 
++
+Performs Clock Manager migration setup.
+
+* *Definition* +
++
+`PlClockManagerReturnValue PlClockManagerSetupMigration(void)`
+
+* *Parameters* +
++
+None.
+
+* *Return Values* +
++
+[#_PlClockManagerSetupMigrationReturnValues]
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value  |Description
+|kPlClockManagerSuccess
+|Normal completion.
+
+|kPlClockManagerInternalError
+|Failed to modify configuration or create symbolic link.
+|===
+
+* *Description* +
+This function performs the complete setup required for Clock Manager migration. +
+The operations include: +
+1. Appending `"confdir /etc/chrony/conf.d"` to `chrony.conf` if not already present. +
+2. Replacing the default NTP server with the AITRIOS NTP server (`time.aitrios.sony-semicon.com`). +
+3. Creating a symbolic link from `/misc/smartcamera/edc/conf.d` to `/etc/chrony/conf.d`.
+
+<<<
+
+== Example Usage of APIs
+
+The following shows the sequence for starting the NTP client and checking time synchronization.
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant NTP as NTP Client Daemon
+    participant Server as NTP Server
+    
+    note over ESF,Server : Start NTP client daemon
+    ESF ->> PL : PlClockManagerStartNtpClientDaemon(param)
+    note over PL : Parameter validation<br>Generate configuration file
+    PL ->> NTP : Start daemon (OS-specific API)
+    alt Daemon start succeeded
+        NTP -->> PL : Startup completed
+        PL -->> ESF : kPlClockManagerSuccess
+    else Daemon start failed
+        NTP -->> PL : Startup failed
+        PL -->> ESF : kPlClockManagerStateTransitionError
+    end
+    
+    note over ESF,Server : Time synchronization process (PL layer not involved)
+    NTP ->> Server : Time sync request
+    Server -->> NTP : Time information
+    NTP ->> NTP : Update system clock
+    
+    note over ESF,Server : Check synchronization status
+    ESF ->> PL : PlClockManagerGetNtpStatus()
+    PL ->> NTP : Retrieve status (OS-specific API)
+    NTP -->> PL : Daemon status information
+    note over PL : Allocate memory<br>Store status data
+    PL -->> ESF : PlClockManagerNtpStatus
+    
+    ESF ->> PL : PlClockManagerJudgeNtpTimeSyncComplete(status)
+    note over PL : Analyze daemon status<br>Determine sync completion
+    alt Synchronized
+        PL -->> ESF : kPlClockManagerNtpTimeSyncSuccess
+    else Not yet synchronized
+        PL -->> ESF : kPlClockManagerHasNotCompletedYet
+    else Synchronization failed
+        PL -->> ESF : kPlClockManagerNtpTimeSyncFailure
+    end
+    
+    note over ESF : Free memory (status)
+....
+
+The following shows the sequence for restarting the NTP client daemon.
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant NTP as NTP Client Daemon
+    
+    note over ESF,NTP : Restart daemon
+    ESF ->> +PL : PlClockManagerRestartNtpClientDaemon()
+    PL ->> +NTP : Stop daemon (OS-specific API)
+    NTP -->> -PL : Stop completed
+    PL ->> +NTP : Restart daemon (OS-specific API)
+    alt Restart succeeded
+        NTP -->> PL : Startup completed
+        PL -->> ESF : kPlClockManagerSuccess
+    else Restart failed
+        NTP -->> PL : Startup failed
+        PL -->> ESF : kPlClockManagerStateTransitionError
+    end
+....
+
+The following shows the sequence for deleting configuration files.
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant FS as File System
+    
+    note over ESF,FS : Delete configuration files
+    ESF ->> +PL : PlClockManagerDeleteConfFiles()
+    PL ->> +FS : Delete configuration files (OS-specific operation)
+    alt Deletion succeeded
+        FS -->> PL : Success
+        PL -->> ESF : kPlClockManagerSuccess
+    else Deletion failed
+        FS -->> PL : Failure
+        PL -->> ESF : kPlClockManagerInternalError
+    end
+    deactivate FS
+    deactivate PL
+....
+
+The following shows the sequence for migration processing.
+
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF Clock Manager
+    participant PL as PL Clock Manager
+    participant FS as File System
+    
+    note over ESF,FS : Retrieve migration data
+    ESF ->> +PL : PlClockManagerGetMigrationDataImpl(dst, dst_size)
+    PL ->> +FS : Read configuration file (OS-specific operation)
+    alt Read succeeded
+        FS -->> PL : Configuration data
+        note over PL : Extract and convert data
+        PL -->> ESF : kPlClockManagerSuccess + data
+    else Read failed
+        FS -->> PL : Failure
+        PL -->> ESF : kPlClockManagerInternalError
+    end
+    
+    note over ESF,FS : Migration setup
+    ESF ->> +PL : PlClockManagerSetupMigration()
+    PL ->> +FS : Update configuration file (OS-specific operation)
+    alt Setup succeeded
+        FS -->> PL : Update completed
+        PL -->> ESF : kPlClockManagerSuccess
+    else Setup failed
+        FS -->> PL : Update failed
+        PL -->> ESF : kPlClockManagerInternalError
+    end
+....
+
+<<<
+
+== Special Notes and Component-Specific Information
+
+=== Constraints
+
+* **Dependency on NTP client daemon implementation** +
+  This module depends on an NTP client daemon running on the OS (such as chrony). +
+  The behavior and specifications depend on the OS and the NTP client being used.
+
+* **State management limitations** +
+  PL Clock Manager does not maintain any internal state. +
+  All state information relies on the NTP client daemon, and any consistency management—such as handling daemon abnormal termination—must be handled by the upper ESF Clock Manager layer.
+
+* **Multithread safety** +
+  The APIs provided by this module are **not thread-safe**. +
+  When calling APIs from multiple threads, the caller must ensure proper mutual exclusion.
+
+* **Memory management** +
+  Memory allocated by `PlClockManagerGetNtpStatus` must be freed by the caller. +
+  To prevent memory leaks, ensure that `free` is always called after use.
+
+* **Platform-specific constraints** +
+  The behavior of certain APIs may differ between Linux (chrony) and NuttX (ntpclient). +
+  For implementation details, refer to the platform-specific source code.
+
+=== Configuration Used in This Module
+
+* **NTP client configuration files** +
+  This module uses the following configuration files:
+  ** /etc/chrony.conf  
+  ** /etc/chrony/conf.d/
+
+* **NTP server configuration** +
+  Default NTP server: `time.aitrios.sony-semicon.com`
+
+=== Additional References
+
+* For details on the chrony NTP client, refer to the chrony documentation.  
+* For information on the time synchronization mechanism, refer to the NTP protocol specification (RFC 5905).
+
+<<<
+
+== List of OSS Used
+
+* **chrony** +
+  An NTP client/server implementation used for network time synchronization.
+
+<<<
+
+== References
+
+* ClockManager Functional Specification  
+  ** link:../../../spec/esf/clock_manager/ClockManager_ja.adoc[ClockManager_ja.adoc]
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.0.1
+|Initial release
+|===

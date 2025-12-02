@@ -1,0 +1,588 @@
+= PL LogManager機能仕様書
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc:
+:toc-title: 目次
+:toclevels: 3
+:lang: ja
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== 目的と適用範囲
+
+本書はAITRIOS Edge Software FrameworkのPorting Layer (PL) におけるLogManagerモジュールについて定義します。 +
+PL LogManagerは、デバイス/カメラ依存のログ管理機能を抽象化し、ESF LogManagerがデバイス差分を意識せずにログ管理機能を利用できるようにするためのインターフェースを提供します。
+
+<<<
+
+== 用語
+本書中で使用する用語の一覧を示します。
+
+=== PL
+Porting Layer。デバイス/カメラ/ OS 差分を吸収する層。
+
+=== ESF
+Edge Software Framework。AITRIOSエッジデバイス向けのソフトウェアフレームワーク。
+
+<<<
+
+== コンポーネントの説明
+=== コンポーネントの概要
+PL LogManagerは、ESF LogManagerに対してデバイス依存のログ管理機能を提供します。 +
+主な機能として、ログデータの読み込み/保存対象ブロックの取得、ローカルアップロード可否の判定を行います。
+
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    log_manager[ESF LogManager]
+    style pl_log_manager fill:#f9f
+  end
+  subgraph PL
+    pl_log_manager[PL LogManager]
+  end
+  subgraph Device/Camera
+    impl[OS/Camera Implementation]
+  end
+
+log_manager --> |"ログブロック情報取得{mermaid_br}ローカルアップロード可否判定"| pl_log_manager
+pl_log_manager --> |"デバイス固有実装呼び出し"| impl
+....
+
+<<<
+
+=== コンポーネントの詳細説明
+PL LogManagerと他モジュールとの関係を、以下のようにコンポーネント図で表しています。 +
+各矢印はデータの流れ、入出力を示しています。
+
+.コンポーネント図
+[{mermaid_block}]
+....
+flowchart TB
+subgraph master
+  subgraph left
+    subgraph ESF
+      ESF_LogManager[ESF LogManager]
+    end
+  end
+  style left color:#fff, fill:#fff, stroke:#fff
+
+  subgraph center
+    direction TB
+    subgraph PL_LogManager
+      PL_API[PL API層]
+      style PL_API fill:#f9f
+    end
+  end
+  style center color:#fff, fill:#fff, stroke:#fff
+
+  subgraph right
+    subgraph Implementation
+      OS_Impl[OS Implementation]
+      Camera_Impl[Camera Implementation]
+    end
+  end
+  style right color:#fff, fill:#fff, stroke:#fff
+  style master color:#fff, fill:#fff, stroke:#fff
+
+ESF_LogManager --> |"読み込み可能ブロック取得{mermaid_br}保存可能ブロック取得{mermaid_br}ローカルアップロード可否判定"| PL_API
+PL_API --> |実装呼び出し| OS_Impl
+OS_Impl --> |カメラ固有実装呼び出し| Camera_Impl
+end
+....
+
+==== 依存ブロック
+.依存ブロック
+[width="100%",options="header"]
+|===
+|ブロック名 |利用用途 |コメント
+
+|OS Implementation
+|OS固有の実装を呼び出します。
+|NuttX、Linux等のOS依存実装
+
+|Camera Implementation
+|カメラ固有の実装を呼び出します。
+|T3、T5、T4R、RPI等のカメラ依存実装
+
+|===
+
+<<<
+
+=== 状態遷移
+PL LogManagerは状態遷移を持ちません。各APIは独立して呼び出し可能です。
+
+=== コンポーネントの機能一覧
+<<#_TableFunction>>に機能の一覧を示します。
+
+[#_TableFunction]
+.機能一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|読み込み可能ブロック取得
+|ログデータの読み込みが可能なブロックタイプのリストを取得します。
+|<<#_GetLoadableBlock>>
+
+|保存可能ブロック取得
+|指定されたブロックタイプに対して、ログデータの保存が可能なブロックタイプのリストを取得します。
+|<<#_GetSaveableBlock>>
+
+|ローカルアップロード可否判定
+|ローカルアップロード機能が利用可能かどうかを判定します。
+|<<#_LocalUploadAvailabilityCheck>>
+
+|===
+
+<<<
+
+=== コンポーネントの機能説明
+[#_GetLoadableBlock]
+==== 読み込み可能ブロック取得
+* 機能概要
+    ** デバイス/カメラで読み込み可能なログブロックタイプのリストを取得します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** デバイス/カメラの構成に応じて、読み込み可能なブロックタイプ（Main、Sensor、CompanionFw、CompanionApp）のリストを返します。
+    ** 読み込み可能なブロック数も合わせて返します。
+    ** 例えば、T5カメラの場合は4つすべてのブロックタイプをサポートし、T4Rの場合はMainブロックのみをサポートします。
+
+[#_GetSaveableBlock]
+==== 保存可能ブロック取得
+* 機能概要
+    ** 指定されたブロックタイプに対して、保存可能なログブロックタイプのリストを取得します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** 指定されたターゲットブロック（target_block）に対して、保存可能なブロックタイプのリストを返します。
+    ** kPlLogManagerBlockTypeAllが指定された場合、デバイスでサポートされるすべてのブロックタイプを返します。
+    ** 特定のブロックタイプ（Main、Sensor、CompanionFw、CompanionApp）が指定された場合、そのブロックタイプが保存可能であれば、そのブロックのみを返します。
+    ** 保存可能なブロック数も合わせて返します。
+    ** サポートされていないブロックタイプが指定された場合、ブロック数0を返します。
+
+[#_LocalUploadAvailabilityCheck]
+==== ローカルアップロード可否判定
+* 機能概要
+    ** デバイス/カメラでローカルアップロード機能が利用可能かどうかを判定します。
+    
+* 前提条件
+    ** 特にありません。
+
+* 機能詳細
+    ** デバイス/カメラの構成に応じて、ローカルアップロード機能の利用可否を返します。
+    ** 利用可能な場合はtrue、利用不可の場合はfalseを返します。
+    ** 例えば、T5カメラではtrue、T4RやRPIではfalseを返します。
+
+=== コンポーネントの非機能要件一覧
+
+<<#_TableNonFunction>>に非機能要件の一覧を示します。
+
+[#_TableNonFunction]
+.非機能要件一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|機能名 |概要  |節番号
+|Stack最大使用量
+|最小限のスタック使用量
+|<<#_Maximum_Stack_Usage>>
+
+|スレッド使用数
+|スレッドを使用しません
+|<<#_Number_of_Threads_Used>>
+
+|最大処理時間
+|即座に応答
+|<<#_Maximum_Processing_Time>>
+
+|ヒープメモリ使用量
+|ヒープメモリを使用しません
+|<<#_HeapMemoryUsage>>
+
+|===
+
+<<<
+
+=== コンポーネントの非機能要件説明
+
+[#_Maximum_Stack_Usage]
+==== Stack最大使用量
+関数呼び出しに必要な最小限のスタックのみを使用します。動的なメモリ確保は行いません。
+
+[#_Number_of_Threads_Used]
+==== スレッド使用数
+スレッドを生成しません。呼び出し元のスレッドコンテキストで同期的に処理を行います。
+
+[#_Maximum_Processing_Time]
+==== 最大処理時間
+静的データの参照のみを行うため、即座に応答します（マイクロ秒オーダー）。
+
+[#_HeapMemoryUsage]
+==== ヒープメモリ使用量
+ヒープメモリの動的確保は行いません。すべて静的データで管理されます。
+
+<<<
+
+== API仕様
+=== 定義一覧
+==== データ型一覧
+<<#_TableDataType>>にデータ型の一覧を示します。
+
+[#_TableDataType]
+.データ型一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|データ型名 |概要  |節番号
+|PlLogManagerBlockType
+|ログブロックタイプを定義する列挙型です。
+|<<#_PlLogManagerBlockType>>
+
+|===
+
+==== API一覧
+<<#_TableAPI>>にAPIの一覧を示します。
+
+[#_TableAPI]
+.API一覧
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API名 |概要  |節番号
+|PlLogManagerGetLoadableBlock
+|読み込み可能なログブロックタイプのリストを取得します。
+|<<#_PlLogManagerGetLoadableBlock>>
+
+|PlLogManagerGetSaveableBlock
+|保存可能なログブロックタイプのリストを取得します。
+|<<#_PlLogManagerGetSaveableBlock>>
+
+|PlLogManagerLocalUploadAvailabilityCheck
+|ローカルアップロード機能の利用可否を判定します。
+|<<#_PlLogManagerLocalUploadAvailabilityCheck>>
+
+|===
+
+<<<
+
+=== データ型定義
+
+[#_PlLogManagerBlockType]
+==== PlLogManagerBlockType
+
+* 説明
+    ** ログブロックタイプを定義する列挙型です。
+
+* 定義
+[source, c]
+----
+typedef enum {
+  kPlLogManagerBlockTypeMain,           // Mainブロック
+  kPlLogManagerBlockTypeSensor,         // Sensorブロック
+  kPlLogManagerBlockTypeCompanionFw,    // CompanionFwブロック
+  kPlLogManagerBlockTypeCompanionApp,   // CompanionAppブロック
+  kPlLogManagerBlockTypeAll,            // すべてのブロック
+  kPlLogManagerBlockTypeNum             // ブロックタイプの数
+} PlLogManagerBlockType;
+----
+
+* 値
+[width="100%",cols="30%,70%",options="header"]
+|===
+|列挙値 |説明
+
+|kPlLogManagerBlockTypeMain
+|Mainブロックのログを示します。
+
+|kPlLogManagerBlockTypeSensor
+|Sensorブロックのログを示します。
+
+|kPlLogManagerBlockTypeCompanionFw
+|CompanionFwブロックのログを示します。
+
+|kPlLogManagerBlockTypeCompanionApp
+|CompanionAppブロックのログを示します。
+
+|kPlLogManagerBlockTypeAll
+|すべてのブロック（Main/Sensor/CompanionFw/CompanionApp）を示します。
+
+|kPlLogManagerBlockTypeNum
+|PlLogManagerBlockTypeの要素数を示します。
+
+|===
+
+<<<
+
+=== API定義
+
+[#_PlLogManagerGetLoadableBlock]
+==== PlLogManagerGetLoadableBlock
+
+* 機能
+    ** デバイス/カメラで読み込み可能なログブロックタイプのリストを取得します。
+
+* 形式
+[source, c]
+----
+const PlLogManagerBlockType *PlLogManagerGetLoadableBlock(
+    size_t *loadable_block_num);
+----
+
+* 引数
+[width="100%",cols="20%,10%,70%",options="header"]
+|===
+|引数名 |I/O |説明
+
+|loadable_block_num
+|出力
+|読み込み可能なブロック数を格納するポインタ。NULLを指定した場合、NULLを返します。
+
+|===
+
+* 返り値
+[width="100%",cols="20%,80%",options="header"]
+|===
+|返り値 |説明
+
+|PlLogManagerBlockType配列へのポインタ
+|読み込み可能なブロックタイプの配列へのポインタ。loadable_block_numがNULLの場合はNULLを返します。
+
+|===
+
+* 備考
+    ** 返されるポインタは内部の静的配列を指しており、呼び出し元で解放してはいけません。
+    ** loadable_block_numには、返される配列の要素数が格納されます。
+
+<<<
+
+[#_PlLogManagerGetSaveableBlock]
+==== PlLogManagerGetSaveableBlock
+
+* 機能
+    ** 指定されたブロックタイプに対して、保存可能なログブロックタイプのリストを取得します。
+
+* 形式
+[source, c]
+----
+const PlLogManagerBlockType *PlLogManagerGetSaveableBlock(
+    PlLogManagerBlockType target_block,
+    size_t *saveable_block_num);
+----
+
+* 引数
+[width="100%",cols="20%,10%,70%",options="header"]
+|===
+|引数名 |I/O |説明
+
+|target_block
+|入力
+|対象となるブロックタイプ。kPlLogManagerBlockTypeAllを指定すると、サポートされるすべてのブロックタイプを取得します。
+
+|saveable_block_num
+|出力
+|保存可能なブロック数を格納するポインタ。NULLを指定した場合、NULLを返します。
+
+|===
+
+* 返り値
+[width="100%",cols="20%,80%",options="header"]
+|===
+|返り値 |説明
+
+|PlLogManagerBlockType配列へのポインタ
+|保存可能なブロックタイプの配列へのポインタ。saveable_block_numがNULLの場合、またはサポートされていないブロックタイプが指定された場合はNULLを返します。
+
+|===
+
+* 備考
+    ** 返されるポインタは内部の静的配列を指しており、呼び出し元で解放してはいけません。
+    ** saveable_block_numには、返される配列の要素数が格納されます。
+    ** サポートされていないブロックタイプが指定された場合、saveable_block_numには0が格納されます。
+
+<<<
+
+[#_PlLogManagerLocalUploadAvailabilityCheck]
+==== PlLogManagerLocalUploadAvailabilityCheck
+
+* 機能
+    ** デバイス/カメラでローカルアップロード機能が利用可能かどうかを判定します。
+
+* 形式
+[source, c]
+----
+bool PlLogManagerLocalUploadAvailabilityCheck(void);
+----
+
+* 引数
+    ** なし
+
+* 返り値
+[width="100%",cols="20%,80%",options="header"]
+|===
+|返り値 |説明
+
+|true
+|ローカルアップロード機能が利用可能
+
+|false
+|ローカルアップロード機能が利用不可
+
+|===
+
+* 備考
+    ** この関数の返り値は、デバイス/カメラの構成によって決定されます。
+    ** 例えば、T5カメラではtrue、T4RやRPIではfalseを返します。
+
+<<<
+
+== API使用時の呼び出し例
+
+各APIを使用する場合の呼び出し例を以下に示します。
+
+=== 読み込み可能ブロック取得シーケンス
+[#_SequenceForGettingReadableBlock]
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF LogManager
+    participant PL as PL LogManager
+    participant Impl as OS/Camera Implementation
+
+    note over ESF,Impl : 読み込み可能ブロック取得
+    ESF ->> +PL : PlLogManagerGetLoadableBlock(&block_num)
+    PL ->> +Impl : PlLogManagerGetLoadableBlockOsImpl(&block_num)
+    Impl ->> +Impl : PlLogManagerGetLoadableBlockCamImpl(&block_num)
+    note over Impl : カメラ固有のブロック情報を返却
+    Impl -->> -Impl : block_type配列, block_num
+    Impl -->> -PL : block_type配列, block_num
+    PL -->> -ESF : block_type配列, block_num
+....
+
+<<<
+
+=== 保存可能ブロック取得シーケンス
+[#_SequenceForGettingSaveableBlock]
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF LogManager
+    participant PL as PL LogManager
+    participant Impl as OS/Camera Implementation
+
+    note over ESF,Impl : 保存可能ブロック取得
+    ESF ->> +PL : PlLogManagerGetSaveableBlock(target_block, &block_num)
+    PL ->> +Impl : PlLogManagerGetSaveableBlockOsImpl(target_block, &block_num)
+    Impl ->> +Impl : PlLogManagerGetSaveableBlockCamImpl(target_block, &block_num)
+    note over Impl : target_blockに応じた保存可能ブロック情報を返却
+    Impl -->> -Impl : block_type配列, block_num
+    Impl -->> -PL : block_type配列, block_num
+    PL -->> -ESF : block_type配列, block_num
+....
+
+<<<
+
+=== ローカルアップロード可否判定シーケンス
+[#_SequenceToCheckLocalUploadPossible]
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF LogManager
+    participant PL as PL LogManager
+    participant Impl as OS/Camera Implementation
+
+    note over ESF,Impl : ローカルアップロード可否判定
+    ESF ->> +PL : PlLogManagerLocalUploadAvailabilityCheck()
+    PL ->> +Impl : PlLogManagerLocalUploadAvailabilityCheckOsImpl()
+    Impl ->> +Impl : PlLogManagerLocalUploadAvailabilityCheckCamImpl()
+    note over Impl : カメラ固有のローカルアップロード可否を判定
+    Impl -->> -Impl : true/false
+    Impl -->> -PL : true/false
+    PL -->> -ESF : true/false
+....
+
+<<<
+
+== 特記事項やコンポーネントごとの特有の説明事項
+
+=== 制約等
+** デバイス/カメラ依存性
+*** 本モジュールの動作は、デバイス/カメラの構成に依存します。
+*** 各デバイス/カメラでサポートされるブロックタイプやローカルアップロード機能の可否は、カメラ固有実装（Camera Implementation）で定義されます。
+
+** スレッドセーフ性
+*** 本モジュールのAPIは、内部で静的データを参照するのみであり、スレッドセーフです。
+*** 複数のスレッドから同時に呼び出しても安全です。
+
+=== デバイス/カメラ別のサポート状況
+
+.デバイス/カメラ別サポート状況
+[width="100%",cols="20%,40%,20%,20%",options="header"]
+|===
+|デバイス/カメラ |サポートブロックタイプ |ローカルアップロード |備考
+
+|T5 (NuttX)
+|Main, Sensor, CompanionFw, CompanionApp
+|利用可能（true）
+|すべてのブロックタイプをサポート
+
+|T3 (NuttX)
+|Main
+|利用不可（false）
+|Mainブロックのみサポート
+
+|T4R (Linux)
+|Main
+|利用不可（false）
+|Mainブロックのみサポート
+
+|RPI (Linux)
+|Main
+|利用不可（false）
+|Mainブロックのみサポート
+
+|===
+
+<<<
+
+== 使用しているOSSの一覧
+
+本モジュールでは、特定のOSSライブラリを直接使用していません。
+
+<<<
+
+== 参考文献
+
+* LogManager機能仕様書 (docs/spec/esf/log_manager/LogManager_ja.adoc)
+
+<<<
+
+== 更新履歴
+
+.更新履歴
+[width="100%",cols="10%,70%",options="header"]
+|===
+|Version |Changes
+
+|0.0.1
+|初版作成
+
+|===
+
