@@ -1,0 +1,588 @@
+= PL LogManager Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.0.1
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document defines the LogManager module in the Porting Layer (PL) of the AITRIOS Edge Software Framework. +
+The PL LogManager provides an interface that abstracts device- and camera-dependent log management functions, enabling the ESF LogManager to utilize log management functionality without being aware of device-specific differences.
+
+<<<
+
+== Terminology
+This section lists the terms used in this document.
+
+=== PL
+Porting Layer. A layer that abstracts differences among devices, cameras, and operating systems.
+
+=== ESF
+Edge Software Framework. A software framework designed for AITRIOS edge devices.
+
+<<<
+
+== Component Description
+=== Component Overview
+The PL LogManager provides device-dependent log management functionality to the ESF LogManager. +
+Its main functions include obtaining target blocks for reading and saving log data, and determining whether local upload is permitted.
+
+[{mermaid_block}]
+....
+graph TB;
+  subgraph ESF
+    log_manager[ESF LogManager]
+    style pl_log_manager fill:#f9f
+  end
+  subgraph PL
+    pl_log_manager[PL LogManager]
+  end
+  subgraph Device/Camera
+    impl[OS/Camera Implementation]
+  end
+
+log_manager --> |"Retrieve log block information{mermaid_br}Determine local upload permission"| pl_log_manager
+pl_log_manager --> |"Call device-specific implementation"| impl
+....
+
+<<<
+
+=== Detailed Component Description
+The relationship between the PL LogManager and other modules is represented in the component diagram below. +
+Each arrow indicates the flow of data and input/output relationships.
+
+.Component Diagram
+[{mermaid_block}]
+....
+flowchart TB
+subgraph master
+  subgraph left
+    subgraph ESF
+      ESF_LogManager[ESF LogManager]
+    end
+  end
+  style left color:#fff, fill:#fff, stroke:#fff
+
+  subgraph center
+    direction TB
+    subgraph PL_LogManager
+      PL_API[PL API Layer]
+      style PL_API fill:#f9f
+    end
+  end
+  style center color:#fff, fill:#fff, stroke:#fff
+
+  subgraph right
+    subgraph Implementation
+      OS_Impl[OS Implementation]
+      Camera_Impl[Camera Implementation]
+    end
+  end
+  style right color:#fff, fill:#fff, stroke:#fff
+  style master color:#fff, fill:#fff, stroke:#fff
+
+ESF_LogManager --> |"Get readable block{mermaid_br}Get writable block{mermaid_br}Determine local upload permission"| PL_API
+PL_API --> |Invoke implementation| OS_Impl
+OS_Impl --> |Invoke camera-specific implementation| Camera_Impl
+end
+....
+
+==== Dependent Blocks
+.Dependent Blocks
+[width="100%",options="header"]
+|===
+|Block Name |Usage |Comments
+
+|OS Implementation
+|Calls OS-specific implementations.
+|OS-dependent implementations such as NuttX and Linux.
+
+|Camera Implementation
+|Calls camera-specific implementations.
+|Camera-dependent implementations such as T3, T5, T4R, and RPI.
+
+|===
+
+<<<
+
+=== State Transition
+The PL LogManager does not have any state transitions. Each API can be invoked independently.
+
+=== List of Component Functions
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+|Get Loadable Block
+|Retrieves a list of block types from which log data can be read.
+|<<#_GetLoadableBlock>>
+
+|Get Saveable Block
+|Retrieves a list of block types to which log data can be saved, based on the specified block type.
+|<<#_GetSaveableBlock>>
+
+|Local Upload Availability Check
+|Determines whether the local upload feature is available.
+|<<#_LocalUploadAvailabilityCheck>>
+
+|===
+
+<<<
+
+=== Component Function Description
+[#_GetLoadableBlock]
+==== Get Loadable Block
+* Function Overview
+    ** Retrieves a list of log block types that can be read on the device/camera.
+    
+* Prerequisites
+    ** None.
+
+* Function Details
+    ** Returns a list of readable block types (Main, Sensor, CompanionFw, CompanionApp) according to the configuration of the device/camera.
+    ** Also returns the number of readable blocks.
+    ** For example, a T5 camera supports all four block types, while a T4R supports only the Main block.
+
+[#_GetSaveableBlock]
+==== Get Saveable Block
+* Function Overview
+    ** Retrieves a list of log block types that can be saved for the specified block type.
+    
+* Prerequisites
+    ** None.
+
+* Function Details
+    ** Returns a list of block types that can be saved for the specified target block (target_block).
+    ** If kPlLogManagerBlockTypeAll is specified, all block types supported by the device are returned.
+    ** If a specific block type (Main, Sensor, CompanionFw, CompanionApp) is specified, only that block is returned if it is saveable.
+    ** Also returns the number of saveable blocks.
+    ** If an unsupported block type is specified, a block count of 0 is returned.
+
+[#_LocalUploadAvailabilityCheck]
+==== Local Upload Availability Check
+* Function Overview
+    ** Determines whether the local upload feature can be used on the device/camera.
+    
+* Prerequisites
+    ** None.
+
+* Function Details
+    ** Returns whether the local upload function is available depending on the configuration of the device/camera.
+    ** Returns true if available, and false if unavailable.
+    ** For example, it returns true for the T5 camera and false for the T4R and RPI.
+
+=== List of Non-Functional Requirements
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Description |Section
+|Maximum Stack Usage
+|Minimal stack usage.
+|<<#_Maximum_Stack_Usage>>
+
+|Number of Threads Used
+|No threads are used.
+|<<#_Number_of_Threads_Used>>
+
+|Maximum Processing Time
+|Immediate response.
+|<<#_Maximum_Processing_Time>>
+
+|Heap Memory Usage
+|No heap memory is used.
+|<<#_HeapMemoryUsage>>
+
+|===
+
+<<<
+
+=== Description of Non-Functional Requirements
+
+[#_Maximum_Stack_Usage]
+==== Maximum Stack Usage
+Only the minimum stack required for function calls is used. No dynamic memory allocation is performed.
+
+[#_Number_of_Threads_Used]
+==== Number of Threads Used
+No threads are created. Processing is performed synchronously within the caller’s thread context.
+
+[#_Maximum_Processing_Time]
+==== Maximum Processing Time
+Since only static data is referenced, the response is immediate (on the order of microseconds).
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+No dynamic allocation of heap memory is performed. All data is managed statically.
+
+<<<
+
+== API Specification
+=== List of Definitions
+==== List of Data Types
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.List of Data Types
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+|PlLogManagerBlockType
+|An enumeration that defines the log block types.
+|<<#_PlLogManagerBlockType>>
+
+|===
+
+==== List of APIs
+The list of APIs is shown in <<#_TableAPI>>.
+
+[#_TableAPI]
+.List of APIs
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|API Name |Description |Section
+|PlLogManagerGetLoadableBlock
+|Retrieves a list of log block types that can be read.
+|<<#_PlLogManagerGetLoadableBlock>>
+
+|PlLogManagerGetSaveableBlock
+|Retrieves a list of log block types that can be saved.
+|<<#_PlLogManagerGetSaveableBlock>>
+
+|PlLogManagerLocalUploadAvailabilityCheck
+|Determines whether the local upload feature is available.
+|<<#_PlLogManagerLocalUploadAvailabilityCheck>>
+
+|===
+
+<<<
+
+=== Data Type Definition
+
+[#_PlLogManagerBlockType]
+==== PlLogManagerBlockType
+
+* Description
+    ** An enumeration that defines the log block types.
+
+* Definition
+[source, c]
+----
+typedef enum {
+  kPlLogManagerBlockTypeMain,           // Main block
+  kPlLogManagerBlockTypeSensor,         // Sensor block
+  kPlLogManagerBlockTypeCompanionFw,    // CompanionFw block
+  kPlLogManagerBlockTypeCompanionApp,   // CompanionApp block
+  kPlLogManagerBlockTypeAll,            // All blocks
+  kPlLogManagerBlockTypeNum             // Number of block types
+} PlLogManagerBlockType;
+----
+
+* Values
+[width="100%",cols="30%,70%",options="header"]
+|===
+|Enumerator |Description
+
+|kPlLogManagerBlockTypeMain
+|Indicates the log for the Main block.
+
+|kPlLogManagerBlockTypeSensor
+|Indicates the log for the Sensor block.
+
+|kPlLogManagerBlockTypeCompanionFw
+|Indicates the log for the CompanionFw block.
+
+|kPlLogManagerBlockTypeCompanionApp
+|Indicates the log for the CompanionApp block.
+
+|kPlLogManagerBlockTypeAll
+|Indicates all blocks (Main/Sensor/CompanionFw/CompanionApp).
+
+|kPlLogManagerBlockTypeNum
+|Indicates the number of elements in PlLogManagerBlockType.
+
+|===
+
+<<<
+
+=== API Definition
+
+[#_PlLogManagerGetLoadableBlock]
+==== PlLogManagerGetLoadableBlock
+
+* Function
+    ** Retrieves a list of log block types that can be read on the device/camera.
+
+* Prototype
+[source, c]
+----
+const PlLogManagerBlockType *PlLogManagerGetLoadableBlock(
+    size_t *loadable_block_num);
+----
+
+* Parameters
+[width="100%",cols="20%,10%,70%",options="header"]
+|===
+|Parameter Name |I/O |Description
+
+|loadable_block_num
+|Output
+|Pointer to store the number of readable blocks. If NULL is specified, NULL is returned.
+
+|===
+
+* Return Value
+[width="100%",cols="20%,80%",options="header"]
+|===
+|Return Value |Description
+
+|Pointer to an array of PlLogManagerBlockType
+|Pointer to an array of readable block types. Returns NULL if loadable_block_num is NULL.
+
+|===
+
+* Remarks
+    ** The returned pointer refers to an internal static array and must not be freed by the caller.
+    ** The number of elements in the returned array is stored in loadable_block_num.
+
+<<<
+
+[#_PlLogManagerGetSaveableBlock]
+==== PlLogManagerGetSaveableBlock
+
+* Function
+    ** Retrieves a list of log block types that can be saved for the specified block type.
+
+* Prototype
+[source, c]
+----
+const PlLogManagerBlockType *PlLogManagerGetSaveableBlock(
+    PlLogManagerBlockType target_block,
+    size_t *saveable_block_num);
+----
+
+* Parameters
+[width="100%",cols="20%,10%,70%",options="header"]
+|===
+|Parameter Name |I/O |Description
+
+|target_block
+|Input
+|The target block type. If kPlLogManagerBlockTypeAll is specified, all supported block types are retrieved.
+
+|saveable_block_num
+|Output
+|Pointer to store the number of saveable blocks. If NULL is specified, NULL is returned.
+
+|===
+
+* Return Value
+[width="100%",cols="20%,80%",options="header"]
+|===
+|Return Value |Description
+
+|Pointer to an array of PlLogManagerBlockType
+|Pointer to an array of saveable block types. Returns NULL if saveable_block_num is NULL or if an unsupported block type is specified.
+
+|===
+
+* Remarks
+    ** The returned pointer refers to an internal static array and must not be freed by the caller.
+    ** The number of elements in the returned array is stored in saveable_block_num.
+    ** If an unsupported block type is specified, 0 is stored in saveable_block_num.
+
+<<<
+
+[#_PlLogManagerLocalUploadAvailabilityCheck]
+==== PlLogManagerLocalUploadAvailabilityCheck
+
+* Function
+    ** Determines whether the local upload feature can be used on the device/camera.
+
+* Prototype
+[source, c]
+----
+bool PlLogManagerLocalUploadAvailabilityCheck(void);
+----
+
+* Parameters
+    ** None
+
+* Return Value
+[width="100%",cols="20%,80%",options="header"]
+|===
+|Return Value |Description
+
+|true
+|The local upload feature is available.
+
+|false
+|The local upload feature is not available.
+
+|===
+
+* Remarks
+    ** The return value of this function depends on the configuration of the device/camera.
+    ** For example, it returns true for the T5 camera, and false for the T4R and RPI.
+
+<<<
+
+== Example of API Usage
+
+The following examples show how each API is invoked.
+
+=== Sequence for Getting Readable Blocks
+[#_SequenceForGettingReadableBlock]
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF LogManager
+    participant PL as PL LogManager
+    participant Impl as OS/Camera Implementation
+
+    note over ESF,Impl : Get Readable Blocks
+    ESF ->> +PL : PlLogManagerGetLoadableBlock(&block_num)
+    PL ->> +Impl : PlLogManagerGetLoadableBlockOsImpl(&block_num)
+    Impl ->> +Impl : PlLogManagerGetLoadableBlockCamImpl(&block_num)
+    note over Impl : Returns camera-specific block information
+    Impl -->> -Impl : block_type array, block_num
+    Impl -->> -PL : block_type array, block_num
+    PL -->> -ESF : block_type array, block_num
+....
+
+<<<
+
+=== Sequence for Getting Saveable Blocks
+[#_SequenceForGettingSaveableBlock]
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF LogManager
+    participant PL as PL LogManager
+    participant Impl as OS/Camera Implementation
+
+    note over ESF,Impl : Get Saveable Blocks
+    ESF ->> +PL : PlLogManagerGetSaveableBlock(target_block, &block_num)
+    PL ->> +Impl : PlLogManagerGetSaveableBlockOsImpl(target_block, &block_num)
+    Impl ->> +Impl : PlLogManagerGetSaveableBlockCamImpl(target_block, &block_num)
+    note over Impl : Returns saveable block information according to target_block
+    Impl -->> -Impl : block_type array, block_num
+    Impl -->> -PL : block_type array, block_num
+    PL -->> -ESF : block_type array, block_num
+....
+
+<<<
+
+=== Sequence for Checking Local Upload Availability
+[#_SequenceToCheckLocalUploadPossible]
+[{mermaid_block}]
+....
+sequenceDiagram
+    autonumber
+    participant ESF as ESF LogManager
+    participant PL as PL LogManager
+    participant Impl as OS/Camera Implementation
+
+    note over ESF,Impl : Check Local Upload Availability
+    ESF ->> +PL : PlLogManagerLocalUploadAvailabilityCheck()
+    PL ->> +Impl : PlLogManagerLocalUploadAvailabilityCheckOsImpl()
+    Impl ->> +Impl : PlLogManagerLocalUploadAvailabilityCheckCamImpl()
+    note over Impl : Determines camera-specific local upload availability
+    Impl -->> -Impl : true/false
+    Impl -->> -PL : true/false
+    PL -->> -ESF : true/false
+....
+
+<<<
+
+== Special Notes and Component-Specific Descriptions
+
+=== Constraints
+** Device/Camera Dependency
+*** The operation of this module depends on the configuration of the device/camera.
+*** The supported block types and the availability of the local upload feature for each device/camera are defined in the camera-specific implementation (Camera Implementation).
+
+** Thread Safety
+*** The APIs of this module only reference internal static data and are therefore thread-safe.
+*** It is safe to call these APIs concurrently from multiple threads.
+
+=== Device/Camera-Specific Support Status
+
+.Device/Camera-Specific Support Status
+[width="100%",cols="20%,40%,20%,20%",options="header"]
+|===
+|Device/Camera |Supported Block Types |Local Upload |Remarks
+
+|T5 (NuttX)
+|Main, Sensor, CompanionFw, CompanionApp
+|Available (true)
+|Supports all block types.
+
+|T3 (NuttX)
+|Main
+|Unavailable (false)
+|Supports only the Main block.
+
+|T4R (Linux)
+|Main
+|Unavailable (false)
+|Supports only the Main block.
+
+|RPI (Linux)
+|Main
+|Unavailable (false)
+|Supports only the Main block.
+
+|===
+
+<<<
+
+== List of OSS Used
+
+This module does not directly use any specific OSS libraries.
+
+<<<
+
+== References
+
+* LogManager Functional Specification (docs/spec/esf/log_manager/LogManager_ja.adoc)
+
+<<<
+
+== Revision History
+
+.Revision History
+[width="100%",cols="10%,70%",options="header"]
+|===
+|Version |Changes
+
+|0.0.1
+|Initial version created.
+
+|===
+

@@ -1,0 +1,1090 @@
+= PL SystemManager Functional Specification
+:sectnums:
+:sectnumlevels: 3
+:chapter-label:
+:revnumber: 0.1.0
+:toc:
+:toc-title: Table of Contents
+:toclevels: 3
+:lang: en
+:xrefstyle: short
+:figure-caption: Figure
+:table-caption: Table
+:section-refsig:
+:experimental:
+ifdef::env-github[:mermaid_block: source,mermaid,subs="attributes"]
+ifndef::env-github[:mermaid_block: mermaid,subs="attributes"]
+ifdef::env-github,env-vscode[:mermaid_break: break]
+ifndef::env-github,env-vscode[:mermaid_break: opt]
+ifdef::env-github,env-vscode[:mermaid_critical: critical]
+ifndef::env-github,env-vscode[:mermaid_critical: opt]
+ifdef::env-github[:mermaid_br: pass:p[&lt;br&gt;]]
+ifndef::env-github[:mermaid_br: pass:p[<br>]]
+
+== Purpose and Scope
+
+This document defines the Porting Layer (PL) SystemManager of AITRIOS. +
+The PL SystemManager provides functions for managing hardware information, determining system reboot causes, and performing data migration.
+
+<<<
+
+== Terminology
+
+[#_words]
+.List of Terms
+[options="header"]
+|===
+|Term |Description
+
+|PL
+|Porting Layer. A layer that abstracts differences among cameras and operating systems.
+
+|I/F
+|Interface.
+
+|HwInfo
+|Hardware Information. Represents the hardware information of the device.
+
+|ESF
+|Edge Software Framework.
+
+|===
+
+<<<
+
+== Component Description
+=== Component Overview
+The PL SystemManager provides functions for managing hardware information, determining system reboot requirements, and managing migration data.
+
+<<<
+
+=== Detailed Component Description
+The PL SystemManager is invoked by the ESF SystemManager and provides the following functions:
+
+* Obtaining and parsing hardware information size
+* Checking hardware information support status
+* Determining whether a serial number is required from the device manifest
+* Determining whether a system reboot is necessary
+* Retrieving and deleting migration data
+
+.Component Diagram
+[{mermaid_block}]
+....
+graph TB;
+direction LR
+
+SystemManager --> |HwInfo management / Reboot determination / Migration| PlSystemManager
+PlSystemManager --> |OS-dependent implementation| PlSystemManagerOsImpl
+PlSystemManagerOsImpl --> |Camera-dependent implementation| PlSystemManagerCamImpl
+....
+
+<<<
+
+=== State Transition
+The PL SystemManager does not maintain any state. All APIs can be invoked independently.
+
+<<<
+
+=== List of Component Functions
+The list of functions is shown in <<#_TableFunction>>.
+
+[#_TableFunction]
+.Function List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Function Name |Description |Section
+|Hardware Information Management Function
+|Provides functionality to obtain the size of hardware information, parse it, and check its support status.
+|<<#_HwInfoManagementFunction>>
+
+|System Reboot Judgment Function
+|Determines whether a system reboot is required based on the reset cause.
+|<<#_RebootJudgmentFunction>>
+
+|Migration Data Management Function
+|Retrieves and deletes migration data to maintain compatibility with previous versions.
+|<<#_MigrationDataManagementFunction>>
+|===
+
+<<<
+
+=== Component Function Description
+[#_HwInfoManagementFunction]
+==== Hardware Information Management Function
+* Function Overview
+    ** Provides functions to obtain the size of hardware information, parse it, and check its support status.
+* Prerequisites
+    ** None.
+* Function Details
+    ** Detailed Behavior
+        *** ``PlSystemManagerGetHwInfoSize()`` obtains the size of the hardware information.
+        *** ``PlSystemManagerParseHwInfo()`` parses the hardware information string and stores it in a structure.
+        *** ``PlSystemManagerIsHwInfoSupported()`` checks whether the hardware information is supported.
+        *** ``PlSystemManagerRequiresSerialNumberFromDeviceManifest()`` determines whether it is necessary to obtain the serial number from the device manifest.
+    ** Behavior on Error and Recovery Method
+        *** Returns an error code if the parsing process fails.
+        *** The caller must handle the error appropriately.
+
+[#_RebootJudgmentFunction]
+==== System Reboot Judgment Function
+* Function Overview
+    ** Determines whether a system reboot is required based on the reset cause.
+* Prerequisites
+    ** None.
+* Function Details
+    ** Detailed Behavior
+        *** ``PlSystemManagerIsNeedReboot()`` receives the reset cause and determines whether a reboot is necessary.
+        *** The result of the determination is returned as a boolean flag.
+    ** Behavior on Error and Recovery Method
+        *** Returns an error code if the parameters are invalid.
+        *** The caller must handle the error appropriately.
+
+[#_MigrationDataManagementFunction]
+==== Migration Data Management Function
+* Function Overview
+    ** Provides functions to retrieve and delete migration data to maintain compatibility with previous versions.
+* Prerequisites
+    ** None.
+* Function Details
+    ** Detailed Behavior
+        *** ``PlSystemManagerGetMigrationData()`` retrieves migration data for the specified ID.
+        *** ``PlSystemManagerEraseMigrationData()`` deletes migration data for the specified ID.
+        *** Supports the following types of migration data:
+            **** RootAuth: Root certificate data
+            **** DeviceManifest: Device manifest data
+            **** HwInfo: Hardware information data
+            **** EvpSetupInfo: EVP configuration information
+    ** Behavior on Error and Recovery Method
+        *** Returns an error code if data retrieval or deletion fails.
+        *** The caller must handle the error appropriately.
+
+<<<
+
+=== List of Non-Functional Requirements
+
+The list of non-functional requirements is shown in <<#_TableNonFunction>>.
+
+[#_TableNonFunction]
+.Non-Functional Requirements List
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Requirement Name |Description |Section
+|Continuous Processing Time
+|The maximum processing time required.
+|<<#_ContinuousProcessingTime>>
+
+|Stack Memory Usage
+|The maximum amount of stack memory used.
+|<<#_StackMemoryUsage>>
+
+|Heap Memory Usage
+|The maximum amount of heap memory used.
+|<<#_HeapMemoryUsage>>
+
+|Static Memory Usage
+|The amount of static memory used.
+|<<#_StaticMemoryUsage>>
+
+|Number of Threads Used
+|The number of threads used.
+|<<#_NumberofThreadsUsed>>
+
+|===
+
+<<<
+
+[#_DescriptionofNonFunctionalRequirementsoftheComponent]
+=== Description of Non-Functional Requirements of the Component
+
+[#_ContinuousProcessingTime]
+==== Continuous Processing Time
+The processing time of this component is up to 10 ms. +
+The processing time of the OS-dependent layer is excluded from this value.
+
+[#_StackMemoryUsage]
+==== Stack Memory Usage
+The maximum stack memory usage is 512 bytes.
+
+[#_HeapMemoryUsage]
+==== Heap Memory Usage
+Heap memory is not used.
+
+[#_StaticMemoryUsage]
+==== Static Memory Usage
+Static memory is not used.
+
+[#_NumberofThreadsUsed]
+==== Number of Threads Used
+No threads are used.
+
+<<<
+
+== API Specification
+=== List of Definitions
+
+==== List of Data Types
+The list of data types is shown in <<#_TableDataType>>.
+
+[#_TableDataType]
+.List of Data Types
+[width="100%", cols="30%,55%,15%",options="header"]
+|===
+|Data Type Name |Description |Section
+|PlSystemManagerHwInfo
+|A structure that stores hardware information of the device.
+|<<#_PlSystemManagerHwInfo>>
+
+|PlSystemManagerResetCause
+|An enumeration that defines the system reset causes.
+|<<#_PlSystemManagerResetCause>>
+
+|PlSystemManagerMigrationDataId
+|An enumeration that defines the IDs of migration data.
+|<<#_PlSystemManagerMigrationDataId>>
+
+|PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Model Name.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Manufacturer Name.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Product Serial Number.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Serial Number.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo AIISP Chip ID.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Sensor ID.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Application Processor Type.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Sensor Model Name.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE>>
+
+|PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+|A macro that defines the maximum size of the HwInfo Device Name.
+|<<#_PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE>>
+
+|===
+
+[#_APIList]
+==== List of APIs
+The list of APIs is shown below.
+
+.API List
+[width="100%",options="header"]
+|===
+|API Name |Description |Section
+|PlSystemManagerGetHwInfoSize
+|Retrieves the size of the hardware information.
+|<<#_PlSystemManagerGetHwInfoSize>>
+
+|PlSystemManagerParseHwInfo
+|Parses the hardware information string and stores it in a structure.
+|<<#_PlSystemManagerParseHwInfo>>
+
+|PlSystemManagerIsHwInfoSupported
+|Checks whether the hardware information is supported.
+|<<#_PlSystemManagerIsHwInfoSupported>>
+
+|PlSystemManagerRequiresSerialNumberFromDeviceManifest
+|Determines whether it is necessary to obtain the serial number from the device manifest.
+|<<#_PlSystemManagerRequiresSerialNumberFromDeviceManifest>>
+
+|PlSystemManagerIsNeedReboot
+|Determines whether a system reboot is required based on the reset cause.
+|<<#_PlSystemManagerIsNeedReboot>>
+
+|PlSystemManagerGetMigrationData
+|Retrieves migration data for the specified ID.
+|<<#_PlSystemManagerGetMigrationData>>
+
+|PlSystemManagerEraseMigrationData
+|Deletes migration data for the specified ID.
+|<<#_PlSystemManagerEraseMigrationData>>
+
+|===
+
+<<<
+
+=== Data Type Definition
+
+[#_PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Model Name.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE (33)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Manufacturer Name.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE (33)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Product Serial Number.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE (33)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Serial Number.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE (64)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE
+A macro that defines the maximum size of the HwInfo AIISP Chip ID.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE (37)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Sensor ID.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE (37)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Application Processor Type.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE (64)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Sensor Model Name.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE (64)
+....
+
+[#_PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE]
+==== PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE
+A macro that defines the maximum size of the HwInfo Device Name.
+
+* *Definition*
+
+[source, C]
+....
+#define PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE (33)
+....
+
+[#_PlSystemManagerHwInfo]
+==== PlSystemManagerHwInfo
+A structure that stores the hardware information of the device.
+
+* *Definition*
+
+[source, C]
+....
+typedef struct PlSystemManagerHwInfo {
+  char model_name[PL_SYSTEM_MANAGER_HWINFO_MODEL_NAME_MAX_SIZE];
+  char manufacturer_name[PL_SYSTEM_MANAGER_HWINFO_MANUFACTURER_NAME_MAX_SIZE];
+  char product_serial_number[PL_SYSTEM_MANAGER_HWINFO_PRODUCT_SERIAL_NUMBER_MAX_SIZE];
+  char serial_number[PL_SYSTEM_MANAGER_HWINFO_SERIAL_NUMBER_MAX_SIZE];
+  char aiisp_chip_id[PL_SYSTEM_MANAGER_HWINFO_AIISP_CHIP_ID_MAX_SIZE];
+  char sensor_id[PL_SYSTEM_MANAGER_HWINFO_SENSOR_ID_MAX_SIZE];
+  char app_processor_type[PL_SYSTEM_MANAGER_HWINFO_APP_PROCESSOR_TYPE_MAX_SIZE];
+  char sensor_model_name[PL_SYSTEM_MANAGER_HWINFO_SENSOR_MODEL_NAME_MAX_SIZE];
+  char device_name[PL_SYSTEM_MANAGER_HWINFO_DEVICE_NAME_MAX_SIZE];
+} PlSystemManagerHwInfo;
+....
+
+* *Members*
+
+[#_TablePlSystemManagerHwInfo]
+.Description of PlSystemManagerHwInfo Members
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Member Name |Description
+|model_name
+|Model name.
+
+|manufacturer_name
+|Manufacturer name.
+
+|product_serial_number
+|Product serial number.
+
+|serial_number
+|Serial number.
+
+|aiisp_chip_id
+|AIISP chip ID.
+
+|sensor_id
+|Sensor ID.
+
+|app_processor_type
+|Application processor type.
+
+|sensor_model_name
+|Sensor model name.
+
+|device_name
+|Device name.
+
+|===
+
+[#_PlSystemManagerResetCause]
+==== PlSystemManagerResetCause
+An enumeration that defines system reset causes.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+  kPlSystemManagerResetCauseUnknown = -1,
+  kPlSystemManagerResetCauseSysChipPowerOnReset = 0,
+  kPlSystemManagerResetCauseSysBrownOut,
+  kPlSystemManagerResetCauseCoreSoft,
+  kPlSystemManagerResetCauseCoreDeepSleep,
+  kPlSystemManagerResetCauseWDT,
+  kPlSystemManagerResetCauseDefault,
+  kPlSystemManagerResetCauseClear,
+  kPlSystemManagerResetCauseMax
+} PlSystemManagerResetCause;
+....
+
+* *Values*
+
+[#_TablePlSystemManagerResetCause]
+.Description of PlSystemManagerResetCause Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Enumerator |Description
+|kPlSystemManagerResetCauseUnknown
+|Unknown reset cause.
+
+|kPlSystemManagerResetCauseSysChipPowerOnReset
+|System reset caused by power-on.
+
+|kPlSystemManagerResetCauseSysBrownOut
+|System reset caused by voltage drop.
+
+|kPlSystemManagerResetCauseCoreSoft
+|Software reset.
+
+|kPlSystemManagerResetCauseCoreDeepSleep
+|Wake-up from deep sleep.
+
+|kPlSystemManagerResetCauseWDT
+|Reset caused by watchdog timer.
+
+|kPlSystemManagerResetCauseDefault
+|Default reset cause.
+
+|kPlSystemManagerResetCauseClear
+|Clear reset cause.
+
+|kPlSystemManagerResetCauseMax
+|Maximum value of reset causes (for range check).
+|===
+
+[#_PlSystemManagerMigrationDataId]
+==== PlSystemManagerMigrationDataId
+An enumeration that defines the IDs of migration data.
+
+* *Definition*
+
+[source, C]
+....
+typedef enum {
+  kPlSystemManagerMigrationDataIdRootAuth = 0,
+  kPlSystemManagerMigrationDataIdDeviceManifest = 1,
+  kPlSystemManagerMigrationDataIdHwInfo = 2,
+  kPlSystemManagerMigrationDataIdEvpSetupInfo = 3,
+} PlSystemManagerMigrationDataId;
+....
+
+* *Values*
+
+[#_TablePlSystemManagerMigrationDataId]
+.Description of PlSystemManagerMigrationDataId Values
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Enumerator |Description
+|kPlSystemManagerMigrationDataIdRootAuth
+|Root certificate data.
+
+|kPlSystemManagerMigrationDataIdDeviceManifest
+|Device manifest data.
+
+|kPlSystemManagerMigrationDataIdHwInfo
+|Hardware information data.
+
+|kPlSystemManagerMigrationDataIdEvpSetupInfo
+|EVP configuration data.
+
+|===
+
+<<<
+
+=== API Specification
+
+[#_PlSystemManagerGetHwInfoSize]
+==== PlSystemManagerGetHwInfoSize
+Retrieves the size of the hardware information.
+
+* *Definition*
+
+[source, C]
+....
+size_t PlSystemManagerGetHwInfoSize(void);
+....
+
+* *Parameters*
+
+None
+
+* *Return Value*
+
+[#_TablePlSystemManagerGetHwInfoSizeReturn]
+.Return Values of PlSystemManagerGetHwInfoSize
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|size_t
+|The size of the hardware information in bytes. If 0 is returned, the hardware information is not supported.
+|===
+
+* *Description*
+
+This API retrieves the size of the device’s hardware information.  
+The returned size can be used as the buffer size for storing the hardware information.
+
+* *Blocking*
+
+Non-blocking
+
+* *Remarks*
+
+This API internally calls the OS-dependent implementation.
+
+<<<
+
+[#_PlSystemManagerParseHwInfo]
+==== PlSystemManagerParseHwInfo
+Parses a hardware information string and stores the result in a structure.
+
+* *Definition*
+
+[source, C]
+....
+PlErrCode PlSystemManagerParseHwInfo(char *hw_info,
+                                     PlSystemManagerHwInfo *data);
+....
+
+* *Parameters*
+
+[#_TablePlSystemManagerParseHwInfoArgs]
+.Parameters of PlSystemManagerParseHwInfo
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Parameter Name |I/O |Description
+|hw_info
+|Input
+|The hardware information string to be parsed.
+
+|data
+|Output
+|Pointer to the structure where the parsed result will be stored.
+
+|===
+
+* *Return Value*
+
+[#_TablePlSystemManagerParseHwInfoReturn]
+.Return Values of PlSystemManagerParseHwInfo
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kPlErrCodeOk
+|Processing completed successfully.
+
+|kPlErrInvalidParam
+|An invalid argument value was provided.
+
+|kPlErrNotFound
+|The specified ID data was not found.
+
+|kPlErrCodeError
+|Parsing failed.
+|===
+
+* *Description*
+
+This API parses a string representing hardware information and stores the result in a ``PlSystemManagerHwInfo`` structure.  
+The string format depends on the OS-dependent implementation.
+
+* *Blocking*
+
+Non-blocking
+
+* *Remarks*
+
+* If ``hw_info`` or ``data`` is NULL, ``kPlErrInvalidParam`` is returned.  
+* This API internally calls the OS-dependent implementation.
+
+<<<
+
+[#_PlSystemManagerIsHwInfoSupported]
+==== PlSystemManagerIsHwInfoSupported
+Checks whether hardware information is supported.
+
+* *Definition*
+
+[source, C]
+....
+bool PlSystemManagerIsHwInfoSupported(void);
+....
+
+* *Parameters*
+
+None
+
+* *Return Value*
+
+[#_TablePlSystemManagerIsHwInfoSupportedReturn]
+.Return Values of PlSystemManagerIsHwInfoSupported
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|true
+|Hardware information is supported.
+
+|false
+|Hardware information is not supported.
+|===
+
+* *Description*
+
+This API checks whether hardware information is supported on the current platform.  
+If not supported, functions for retrieving or parsing hardware information cannot be used.
+
+* *Blocking*
+
+Non-blocking
+
+* *Remarks*
+
+This API internally calls the OS-dependent implementation.
+
+<<<
+
+[#_PlSystemManagerRequiresSerialNumberFromDeviceManifest]
+==== PlSystemManagerRequiresSerialNumberFromDeviceManifest
+Determines whether it is necessary to obtain the serial number from the device manifest.
+
+* *Definition*
+
+[source, C]
+....
+bool PlSystemManagerRequiresSerialNumberFromDeviceManifest(void);
+....
+
+* *Parameters*
+
+None
+
+* *Return Value*
+
+[#_TablePlSystemManagerRequiresSerialNumberFromDeviceManifestReturn]
+.Return Values of PlSystemManagerRequiresSerialNumberFromDeviceManifest
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|true
+|It is necessary to obtain the serial number from the device manifest.
+
+|false
+|The serial number can be obtained from the hardware information.
+|===
+
+* *Description*
+
+This API determines whether the device serial number needs to be obtained from the device manifest.  
+Depending on the platform, the serial number may not be included in the hardware information.
+
+* *Blocking*
+
+Non-blocking
+
+* *Remarks*
+
+This API internally calls the OS-dependent implementation.
+
+<<<
+
+[#_PlSystemManagerIsNeedReboot]
+==== PlSystemManagerIsNeedReboot
+Determines whether a system reboot is required based on the reset cause.
+
+* *Definition*
+
+[source, C]
+....
+PlErrCode PlSystemManagerIsNeedReboot(PlSystemManagerResetCause reset_cause,
+                                      bool *reset_flag);
+....
+
+* *Parameters*
+
+[#_TablePlSystemManagerIsNeedRebootArgs]
+.Parameters of PlSystemManagerIsNeedReboot
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Parameter Name |I/O |Description
+|reset_cause
+|Input
+|Reset cause.
+
+|reset_flag
+|Output
+|Pointer to a flag indicating whether a reboot is required.  
+True indicates that a reboot is required, and false indicates that it is not.
+|===
+
+* *Return Value*
+
+[#_TablePlSystemManagerIsNeedRebootReturn]
+.Return Values of PlSystemManagerIsNeedReboot
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kPlErrCodeOk
+|Processing completed successfully.
+
+|kPlErrInvalidParam
+|An invalid argument value was provided.
+|===
+
+* *Description*
+
+This API determines whether a system reboot is required based on the specified reset cause.  
+The result of the determination is stored in ``reset_flag``.
+
+* *Blocking*
+
+Non-blocking
+
+* *Remarks*
+
+* If ``reset_flag`` is NULL, ``kPlErrInvalidParam`` is returned.  
+* This API internally calls the OS-dependent implementation.
+
+<<<
+
+[#_PlSystemManagerGetMigrationData]
+==== PlSystemManagerGetMigrationData
+Retrieves migration data for the specified ID.
+
+* *Definition*
+
+[source, C]
+....
+PlErrCode PlSystemManagerGetMigrationData(PlSystemManagerMigrationDataId id,
+                                          void *dst, size_t dst_size);
+....
+
+* *Parameters*
+
+[#_TablePlSystemManagerGetMigrationDataArgs]
+.Parameters of PlSystemManagerGetMigrationData
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Parameter Name |I/O |Description
+|id
+|Input
+|The ID of the migration data to be retrieved.
+
+|dst
+|Output
+|Pointer to the buffer where the retrieved data will be stored.
+
+|dst_size
+|Input
+|Size of the buffer in bytes.
+|===
+
+* *Return Value*
+
+[#_TablePlSystemManagerGetMigrationDataReturn]
+.Return Values of PlSystemManagerGetMigrationData
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kPlErrCodeOk
+|Processing completed successfully.
+
+|kPlErrInvalidParam
+|An invalid argument value was provided.
+
+|kPlErrInternal
+|Failed to retrieve the data.
+|===
+
+* *Description*
+
+This API retrieves migration data stored for migration from an older version.  
+If data corresponding to the specified ID exists, it is copied to the ``dst`` buffer.
+
+* *Blocking*
+
+Blocking (due to storage access)
+
+* *Remarks*
+
+* If ``dst`` is NULL or ``dst_size`` is 0, ``kPlErrInvalidParam`` is returned.  
+* This API internally calls the OS-dependent implementation.
+
+<<<
+
+[#_PlSystemManagerEraseMigrationData]
+==== PlSystemManagerEraseMigrationData
+Deletes migration data for the specified ID.
+
+* *Definition*
+
+[source, C]
+....
+PlErrCode PlSystemManagerEraseMigrationData(PlSystemManagerMigrationDataId id);
+....
+
+* *Parameters*
+
+[#_TablePlSystemManagerEraseMigrationDataArgs]
+.Parameters of PlSystemManagerEraseMigrationData
+[width="100%", cols="20%,20%,60%",options="header"]
+|===
+|Parameter Name |I/O |Description
+|id
+|Input
+|The ID of the migration data to be deleted.
+|===
+
+* *Return Value*
+
+[#_TablePlSystemManagerEraseMigrationDataReturn]
+.Return Values of PlSystemManagerEraseMigrationData
+[width="100%", cols="30%,70%",options="header"]
+|===
+|Return Value |Description
+|kPlErrCodeOk
+|Processing completed successfully.
+
+|kPlErrInvalidParam
+|An invalid argument value was provided.
+
+|kPlErrInternal
+|Failed to delete the data.
+|===
+
+* *Description*
+
+This API deletes migration data stored for migration from an older version.  
+It can be called after data migration is completed to remove unnecessary data.
+
+* *Blocking*
+
+Blocking (due to storage access)
+
+* *Remarks*
+
+* Even if the data does not exist, this API may return ``kPlErrCodeOk`` (implementation-dependent).  
+* This API internally calls the OS-dependent implementation.
+
+<<<
+
+== Sequence Diagrams
+
+=== Hardware Information Retrieval Sequence
+
+.Hardware Information Retrieval Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant ESF as SystemManager
+    participant PL as PlSystemManager
+    participant OS as PlSystemManagerOsImpl
+    
+    ESF ->> +PL : PlSystemManagerIsHwInfoSupported()
+    PL ->> +OS : PlSystemManagerIsHwInfoSupportedOsImpl()
+    OS -->> -PL : true/false
+    PL -->> -ESF : true/false
+    
+    alt When HwInfo is supported
+        ESF ->> +PL : PlSystemManagerGetHwInfoSize()
+        PL ->> +OS : PlSystemManagerGetHwInfoSizeOsImpl()
+        OS -->> -PL : size
+        PL -->> -ESF : size
+        
+        ESF ->> ESF : Allocate buffer
+        
+        Note over ESF: Obtain the HwInfo string<br>(via PSM, etc.)
+        
+        ESF ->> +PL : PlSystemManagerParseHwInfo(hw_info, data)
+        PL ->> +OS : PlSystemManagerParseHwInfoOsImpl(hw_info, data)
+        OS ->> OS : Parse the string
+        OS -->> -PL : kPlErrCodeOk
+        PL -->> -ESF : kPlErrCodeOk
+        
+        ESF ->> +PL : PlSystemManagerRequiresSerialNumberFromDeviceManifest()
+        PL ->> +OS : PlSystemManagerRequiresSerialNumberFromDeviceManifestOsImpl()
+        OS -->> -PL : true/false
+        PL -->> -ESF : true/false
+        
+        alt When the serial number must be obtained from the device manifest
+            Note over ESF: Obtain the serial number<br>from the device manifest
+        end
+    end
+....
+<<<
+
+=== System Reboot Judgment Sequence
+
+.System Reboot Judgment Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant Main as EsfMain
+    participant ESF as SystemManager
+    participant PL as PlSystemManager
+    participant OS as PlSystemManagerOsImpl
+    
+    Main ->> +ESF : EsfSystemManagerIsNeedReboot()
+    
+    Note over ESF: Obtain reset cause<br>(via PowerManager)
+    
+    ESF ->> +PL : PlSystemManagerIsNeedReboot(reset_cause, &reset_flag)
+    PL ->> +OS : PlSystemManagerIsNeedRebootOsImpl(reset_cause, &reset_flag)
+    OS ->> OS : Determine reset cause
+    OS -->> -PL : kPlErrCodeOk
+    PL -->> -ESF : kPlErrCodeOk
+    
+    ESF -->> -Main : reset_flag(true/false)
+    
+    alt reset_flag == true
+        Main ->> Main : System reboot
+        Note over Main: Return to system startup process
+    end
+....
+<<<
+
+=== Migration Data Management Sequence
+
+.Migration Data Retrieval Sequence Diagram
+[{mermaid_block}]
+....
+%%{init: {'noteAlign':'center'}}%%
+sequenceDiagram
+    autonumber
+    participant ESF as SystemManager
+    participant PL as PlSystemManager
+    participant OS as PlSystemManagerOsImpl
+    
+    alt When migration data exists
+        ESF ->> +PL : PlSystemManagerGetMigrationData(id, dst, dst_size)
+        PL ->> +OS : PlSystemManagerGetMigrationDataOsImpl(id, dst, dst_size)
+        OS ->> OS : Read data from storage
+        OS -->> -PL : kPlErrCodeOk
+        PL -->> -ESF : kPlErrCodeOk
+        
+        Note over ESF: Convert data to the new format and save
+        
+        ESF ->> +PL : PlSystemManagerEraseMigrationData(id)
+        PL ->> +OS : PlSystemManagerEraseMigrationDataOsImpl(id)
+        OS ->> OS : Delete data from storage
+        OS -->> -PL : kPlErrCodeOk
+        PL -->> -ESF : kPlErrCodeOk
+    else When migration data does not exist
+        ESF ->> +PL : PlSystemManagerGetMigrationData(id, dst, dst_size)
+        PL ->> +OS : PlSystemManagerGetMigrationDataOsImpl(id, dst, dst_size)
+        OS -->> -PL : kPlErrInternal
+        PL -->> -ESF : kPlErrInternal
+        Note over ESF: Continue processing as migration is not required
+    end
+....
+<<<
+
+== Special Notes and Component-Specific Descriptions
+None.
+
+<<<
+
+== List of OSS Used
+No OSS is used.
+
+<<<
+
+== References
+
+* SystemManager Functional Specification  
+** link:../../../spec/esf/system_manager/SystemManager.adoc[SystemManager.adoc]
+
+<<<
+
+== Revision History
+[width="100%", cols="20%,80%",options="header"]
+|===
+|Version |Changes 
+|v0.1.0
+|Initial release.
+|===
