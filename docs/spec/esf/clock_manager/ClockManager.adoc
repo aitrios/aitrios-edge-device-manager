@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 4
 :chapter-label:
-:revnumber: 0.0.7
+:revnumber: 0.0.8
 :toc:
 :toc-title: Table of Contents
 :toclevels: 4
@@ -43,7 +43,8 @@ This refers to the time taken for a packet to make a round trip between the syst
 
 === NTP Information
 A parameter used for time synchronization. +
-There are two types of parameters required for time synchronization: (1) the hostname of the NTP server or its IPv4 address, and (2) auxiliary inputs for the NTP time synchronization algorithm.
+Consists of the host name or IPv4 address of the primary NTP server, the host name or IPv4 address of the secondary NTP server (optional), and auxiliary inputs for the NTP time-synchronization algorithm. +
+The secondary NTP server is used when the primary NTP server connection fails or when redundancy is required. +
 The parameters that have been verified to work correctly are stored by the Parameter Storage Manager.  
 This design philosophy is based on the principle that only verified parameters should be saved to non-volatile memory.
 
@@ -248,12 +249,12 @@ Refer to <<#_TableFunction>> for details of each function.
 |===
 |Function |Overview  |Section
 |Parameter setting including NTP Client
-|1. Obtain the NTP server's host name or its IPv4 address, the parameters required for NTP time synchronization, and the frequency at which the Clock Manager's threads monitor the NTP Client Daemon from higher-level modules. +
+|1. Obtain the primary NTP server's host name or its IPv4 address, the secondary NTP server's host name or its IPv4 address (optional), the parameters required for NTP time synchronization, and the frequency at which the Clock Manager's threads monitor the NTP Client Daemon from higher-level modules. +
 2. Save the parameters obtained from the previous section 1 to the Parameter Storage Manager upon the completion of NTP time synchronization.
 |<<#_Function1>>
 
 |Read parameters from non-volatile storage, such as those used by the NTP Client.
-|1. Obtain the NTP server's host name or its IPv4 address, the parameters required for NTP time synchronization, and the frequency at which the Clock Manager's threads monitor the NTP Client Daemon from Parameter Storage Manager.
+|1. Obtain the primary and secondary NTP servers' host names or their IPv4 addresses, the parameters required for NTP time synchronization, and the frequency at which the Clock Manager's threads monitor the NTP Client Daemon from the Parameter Storage Manager.
 |<<#_Function2>>
 
 |Thread management within the Clock Manager
@@ -444,8 +445,6 @@ When `EsfClockManagerSetParamsForcibly`or`EsfClockManagerSetParams` has not been
     ** Parameter Storage Manager module is started.
 * Details
     ** Detailed Behavior +
-        本機能は、旧形式のNTPサーバーのhostnameを新形式に変換して保存し直す。 +
-        具体的な移行処理としては、以下のような処理を行う： +
         This function converts and saves the legacy type of NTP server hostname to the new format. +
         The specific migration process includes the following steps: +
         1. Read the legacy data. +
@@ -858,11 +857,13 @@ typedef struct EsfClockManagerParams {
 |Member name|Description|Range of setting values|Default Value
 
 |`connect`
-|Host name or +
-IPv4 address of the destination NTP server.
+|The connection information that includes the host names of the primary and secondary NTP servers, +
+or their IPv4 addresses. +
+For details, refer to <<#_EsfClockManagerConnection>>. +
 |<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
 bytes or less.
-|`"time.aitrios.sony-semicon.com"`
+|hostname: "time.aitrios.sony-semicon.com" +
+hostname2: "" (empty string) +
 
 |`common`
 |Refer to <<#_EsfClockManagerCommon>>.
@@ -929,7 +930,8 @@ typedef struct EsfClockManagerParamsMask {
 
 [#_EsfClockManagerConnection]
 ==== EsfClockManagerConnection
-Structure that contains the host name or IPv4 address of the NTP server.
+Structure that contains the host name or IPv4 address of the NTP server. +
+Two NTP servers can be configured: the primary NTP server (hostname) and the secondary NTP server (hostname2). +
 
 * *Format*
 
@@ -937,6 +939,7 @@ Structure that contains the host name or IPv4 address of the NTP server.
 ....
 typedef struct EsfClockManagerSettingConnection {
   char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } EsfClockManagerConnection;
 ....
 
@@ -946,13 +949,22 @@ typedef struct EsfClockManagerSettingConnection {
 |Member name  |Description |  Range of setting values | Default Value
 
 |`hostname`
-|Host name or  +
-IPv4 address of the destination NTP server.
+|Host name or +
+IPv4 address of the primary NTP server. +
 |Including the last null character,<<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>> +
 〔B〕 or less.
 |`"time.aitrios.sony-semicon.com"`
 
+|hostname2
+|The host name of the secondary NTP server, +
+or the IPv4 address of the secondary NTP server. +
+If an empty string is specified, the secondary NTP server is not used.
+|Including the terminating null character, the size must be less than or equal to <<#_ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE,ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE>>.
+|"" (empty string)
+
 |===
+
+NOTE: If the connection to the primary NTP server fails, the secondary NTP server (when hostname2 is configured) is used.
 
 [#_EsfClockManagerConnectionMask]
 ==== EsfClockManagerConnectionMask
@@ -965,6 +977,7 @@ Indicates whether the member variables of the object have been set when passing 
 ....
 typedef struct EsfClockManagerSettingConnectionMask {
   uint8_t hostname : 1;
+  uint8_t hostname2 : 1;
 } EsfClockManagerConnectionMask;
 ....
 
@@ -975,6 +988,11 @@ typedef struct EsfClockManagerSettingConnectionMask {
 
 |`hostname`
 |Contains 1 if the hostname in the `EsfClockManagerConnection` object, which pairs with this structure's object, is set or required; otherwise, contains 0.
+|1 or 0
+|0
+
+|hostname2
+|Contains 1 if hostname2 in the EsfClockManagerConnection object, which pairs with this structure's object, is set or required; otherwise, contains 0.
 |1 or 0
 |0
 
@@ -1843,10 +1861,12 @@ typedef struct EsfClockManagerParamsForPsmMask {
 
 typedef struct EsfClockManagerSettingConnectionForPsm {
   char hostname[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
+  char hostname2[ESF_CLOCK_MANAGER_NTPADDR_MAX_SIZE];
 } EsfClockManagerConnectionForPsm;
 
 typedef struct EsfClockManagerSettingConnectionForPsmMask {
   uint8_t hostname : 1;
+  uint8_t hostname2 : 1;
 } EsfClockManagerConnectionForPsmMask;
 
 typedef struct EsfClockManagerSettingCommonForPsm {
@@ -2191,7 +2211,7 @@ image::./images/ClockManager_4.png[scaledwidth="100%",align="center"]
 [#_thebibliography1]
 * [1] D. Mills, J. Martin, Ed., J. Burbank, W. Kasch, ``Network Time Protocol Version 4: Protocol and Algorithms Specification'', RFC 5905, https://www.rfc-editor.org/rfc/rfc5905.txt, Internet Engineering Task Force, June 2010.
 [#_thebibliography2]
-* [2] ```Parameter Storage Manager 機能仕様書', Version 0.1.2, https://github.com/aitrios/aitrios-edge-device-manager.git.
+* [2] ```Parameter Storage Manager Function Specification', Version 0.1.2, https://github.com/aitrios/aitrios-edge-device-manager.git.
 <<<
 
 == Update History
@@ -2266,4 +2286,7 @@ The default NTP server: "pool.ntp.org" to "time.aitrios.sony-semicon.com" +
 　・Added data migration feature to function list +
 　・Added detailed description of API definition +
 　・Updated state transition table
+|v0.0.8
+|Additions +
+Added support for secondary NTP.
 |===
