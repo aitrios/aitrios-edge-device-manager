@@ -1507,7 +1507,6 @@ STATIC enum SYS_result EsfLogManagerInternalLocalUploadCallback(
 STATIC enum SYS_result EsfLogManagerInternalCloudUploadCallback(
     struct SYS_client *client, struct SYS_blob_data *blob,
     enum SYS_callback_reason reason, void *user) {
-  EsfLogManagerStatus ret = kEsfLogManagerStatusOk;
 
   if (!EsfLogManagerInternalCheckBlobCallbackArguments(client, blob, user)) {
     ESF_LOG_MANAGER_ERROR("%s Invalid Parameter.\n", __func__);
@@ -1803,7 +1802,6 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalDestroyDlogCollector(void) {
 }
 
 STATIC void EsfLogManagerInternalDestroyBlobCollector(void) {
-  EsfLogManagerStatus ret = 0;
   int ret_thread = 0;
 
   s_blob_thread_fin_flag = true;
@@ -1897,7 +1895,6 @@ STATIC EsfLogManagerStatus EsfLogManagerInternalBackupBuffer(
 }
 
 STATIC EsfLogManagerStatus EsfLogManagerInternalChangeDlogByteBuffer(void) {
-  uint8_t *byte_buffer_ret = NULL;
   s_dlog_oldest_buff_idx = s_dlog_buff_idx;
 
   if (s_is_dlog_buffer_status == kBufferStatusHalfUse) {
@@ -2802,10 +2799,10 @@ EsfLogManagerStatus EsfLogManagerInternalGetParameter(
   value->dlog_level = s_parameter.m_value[block_type].dlog_level;
   value->elog_level = s_parameter.m_value[block_type].elog_level;
   value->dlog_filter = s_parameter.m_value[block_type].dlog_filter;
-  strncpy(value->storage_name, s_parameter.m_value[block_type].storage_name,
-          strlen(s_parameter.m_value[block_type].storage_name) + 1);
-  strncpy(value->storage_path, s_parameter.m_value[block_type].storage_path,
-          strlen(s_parameter.m_value[block_type].storage_path) + 1);
+  snprintf(value->storage_name, sizeof(value->storage_name), "%s",
+           s_parameter.m_value[block_type].storage_name);
+  snprintf(value->storage_path, sizeof(value->storage_path), "%s",
+           s_parameter.m_value[block_type].storage_path);
 
   if (pthread_mutex_unlock(&s_parameter.m_mutex) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_unlock.\n");
@@ -2856,12 +2853,10 @@ void EsfLogManagerInternalChangeDlogCallback(
       info.value.dlog_level = s_parameter.m_value[block_type].dlog_level;
       info.value.elog_level = s_parameter.m_value[block_type].elog_level;
       info.value.dlog_filter = s_parameter.m_value[block_type].dlog_filter;
-      strncpy(info.value.storage_name,
-              s_parameter.m_value[block_type].storage_name,
-              sizeof(info.value.storage_name));
-      strncpy(info.value.storage_path,
-              s_parameter.m_value[block_type].storage_path,
-              sizeof(info.value.storage_path));
+      snprintf(info.value.storage_name, sizeof(info.value.storage_name), "%s",
+               s_parameter.m_value[block_type].storage_name);
+      snprintf(info.value.storage_path, sizeof(info.value.storage_path), "%s",
+               s_parameter.m_value[block_type].storage_path);
       callback = entry->m_callback;
 
       if (pthread_mutex_unlock(&s_parameter.m_mutex) != 0) {
@@ -2900,7 +2895,6 @@ EsfLogManagerStatus EsfLogManagerInternalRegisterChangeDlogCallback(
 #ifndef CONFIG_EXTERNAL_DLOG_DISABLE
 EsfLogManagerStatus EsfLogManagerInternalUnregisterChangeDlogCallback(
     uint32_t module_id) {
-  bool found = false;
   if (module_id == 0) {
     ESF_LOG_MANAGER_ERROR("Invalid parameter. module_id=%d\n", module_id);
     return kEsfLogManagerStatusParamError;

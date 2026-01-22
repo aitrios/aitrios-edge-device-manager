@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/sys.h>
+#include <unistd.h>
 
 // enum
 enum SYS_event_type {

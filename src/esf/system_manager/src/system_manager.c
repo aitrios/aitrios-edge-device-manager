@@ -271,7 +271,7 @@ EsfSystemManagerResult EsfSystemManagerSetDpsUrl(const char *data,
     (void)EsfParameterStorageManagerClose(handle);
     return kEsfSystemManagerResultInternalError;
   }
-  strncpy(data_struct->dps_url, data, sizeof(data_struct->dps_url));
+  snprintf(data_struct->dps_url, sizeof(data_struct->dps_url), "%s", data);
 
   EsfSystemManagerResult result =
       EsfSystemManagerSaveEnrollmentToPsm(handle, &mask, data_struct);
@@ -434,7 +434,8 @@ EsfSystemManagerResult EsfSystemManagerSetCommonName(const char *data,
     (void)EsfParameterStorageManagerClose(handle);
     return kEsfSystemManagerResultInternalError;
   }
-  strncpy(data_struct->common_name, data, sizeof(data_struct->common_name));
+  snprintf(data_struct->common_name, sizeof(data_struct->common_name), "%s",
+           data);
 
   EsfSystemManagerResult result =
       EsfSystemManagerSaveEnrollmentToPsm(handle, &mask, data_struct);
@@ -597,7 +598,8 @@ EsfSystemManagerResult EsfSystemManagerSetDpsScopeId(const char *data,
     (void)EsfParameterStorageManagerClose(handle);
     return kEsfSystemManagerResultInternalError;
   }
-  strncpy(data_struct->dps_scope_id, data, sizeof(data_struct->dps_scope_id));
+  snprintf(data_struct->dps_scope_id, sizeof(data_struct->dps_scope_id), "%s",
+           data);
 
   EsfSystemManagerResult result =
       EsfSystemManagerSaveEnrollmentToPsm(handle, &mask, data_struct);
@@ -760,7 +762,8 @@ EsfSystemManagerResult EsfSystemManagerSetProjectId(const char *data,
     (void)EsfParameterStorageManagerClose(handle);
     return kEsfSystemManagerResultInternalError;
   }
-  strncpy(data_struct->project_id, data, sizeof(data_struct->project_id));
+  snprintf(data_struct->project_id, sizeof(data_struct->project_id), "%s",
+           data);
 
   EsfSystemManagerResult result =
       EsfSystemManagerSaveEnrollmentToPsm(handle, &mask, data_struct);
@@ -924,8 +927,8 @@ EsfSystemManagerResult EsfSystemManagerSetRegisterToken(const char *data,
                      "system_manager.c", __LINE__);
     return kEsfSystemManagerResultInternalError;
   }
-  strncpy(data_struct->register_token, data,
-          sizeof(data_struct->register_token));
+  snprintf(data_struct->register_token, sizeof(data_struct->register_token),
+           "%s", data);
 
   EsfSystemManagerResult result =
       EsfSystemManagerSaveEnrollmentToPsm(handle, &mask, data_struct);
@@ -1071,7 +1074,7 @@ EsfSystemManagerResult EsfSystemManagerSetEvpHubUrl(const char *data,
   EsfParameterStorageManagerEvpMask mask = {.evp_url = 1};
 
   EsfParameterStorageManagerEvp data_struct;
-  strncpy(data_struct.evp_url, data, sizeof(data_struct.evp_url));
+  snprintf(data_struct.evp_url, sizeof(data_struct.evp_url), "%s", data);
 
   EsfSystemManagerResult result = EsfSystemManagerSaveEvpToPsm(handle, &mask,
                                                                &data_struct);
@@ -1214,7 +1217,7 @@ EsfSystemManagerResult EsfSystemManagerSetEvpHubPort(const char *data,
   EsfParameterStorageManagerEvpMask mask = {.evp_port = 1};
 
   EsfParameterStorageManagerEvp data_struct;
-  strncpy(data_struct.evp_port, data, sizeof(data_struct.evp_port));
+  snprintf(data_struct.evp_port, sizeof(data_struct.evp_port), "%s", data);
 
   EsfSystemManagerResult result = EsfSystemManagerSaveEvpToPsm(handle, &mask,
                                                                &data_struct);
@@ -1358,7 +1361,8 @@ EsfSystemManagerResult EsfSystemManagerSetEvpIotPlatform(const char *data,
   EsfParameterStorageManagerEvpMask mask = {.iot_platform = 1};
 
   EsfParameterStorageManagerEvp data_struct;
-  strncpy(data_struct.iot_platform, data, sizeof(data_struct.iot_platform));
+  snprintf(data_struct.iot_platform, sizeof(data_struct.iot_platform), "%s",
+           data);
 
   EsfSystemManagerResult result = EsfSystemManagerSaveEvpToPsm(handle, &mask,
                                                                &data_struct);
@@ -2236,8 +2240,6 @@ EsfSystemManagerResult EsfSystemManagerSetResetCause(
 }
 
 EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
-  EsfSystemManagerResult result = kEsfSystemManagerResultOk;
-
   /* get PowerManager ResetCause */
   EsfPwrMgrResetCause pm_reset_cause = kEsfPwrMgrResetCauseUnknown;
   EsfPwrMgrError pm_result = EsfPwrMgrGetResetCause(&pm_reset_cause);
@@ -2251,13 +2253,14 @@ EsfSystemManagerResult EsfSystemManagerSetExceptionInfo(void) {
   WRITE_DLOG_INFO(MODULE_ID_SYSTEM, "%s-%d:ResetCause is %d.",
                   "system_manager.c", __LINE__, pm_reset_cause);
 
+  bool is_exception = false;
+
+#ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
+  EsfSystemManagerResult result = kEsfSystemManagerResultOk;
   EsfSystemManagerResetCause get_sm_reset_cause =
       kEsfSystemManagerResetCauseUnknown;
   struct EsfPwrMgrExceptionInfo *info = NULL;
   uint32_t info_size = 0;
-  bool is_exception = false;
-
-#ifndef CONFIG_EXTERNAL_SYSTEM_MANAGER_EXCEPTION_UPLOAD_DISABLE
   if ((pm_reset_cause == kEsfPwrMgrResetCauseWDT) ||
       (pm_reset_cause == kEsfPwrMgrResetCauseCoreSoft)) {
     WRITE_DLOG_INFO(MODULE_ID_SYSTEM,

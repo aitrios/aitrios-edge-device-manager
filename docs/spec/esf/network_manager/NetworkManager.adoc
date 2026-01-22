@@ -2,7 +2,7 @@
 :sectnums:
 :sectnumlevels: 3
 :chapter-label:
-:revnumber: 0.1.14
+:revnumber: 0.1.16
 :toc:
 :toc-title: Table of Contents
 :toclevels: 3
@@ -576,6 +576,10 @@ The list of functions is shown in <<#_TableFunction>>.
 |Network Connection Information Storage
 |Handles saving and retrieval of network connection information.
 |<<#_FunctionNetworkSetting>>
+
+|Data Migration Function
+|Migrates old-format configuration data to the new format to maintain compatibility with previous versions.
+|<<#_FunctionMigration>>
 |===
 
 <<<
@@ -691,6 +695,20 @@ None.
 
     ** Error Behavior and Recovery +
         See <<#_SampleFunctionSaveParameter, Network Connection Information Storage API>> for details in each API description.
+
+[#_FunctionMigration]
+==== Data Migration Function
+* Function Overview +
+Migrates old-format configuration data to the new format to maintain compatibility with previous versions.
+* Preconditions +
+ParameterStorageManager must be initialized. +
+Network Manager must be initialized.
+* Function Details
+    ** Detailed Behavior +
+        *** By calling **EsfNetworkManagerExecMigration** migrates old-format configuration data to the new format. +
+        *** By calling **EsfNetworkManagerEraseMigrationSrcData** deletes old-format configuration data. +
+    ** Error Behavior and Recovery +
+        See <<#_SampleFunctionExecMigration, Data Migration API>> for details in each API description.
 
 <<<
 
@@ -983,12 +1001,20 @@ Connection information is specified as a union.
 |Loads network connection information via the Parameter Storage Manager. +
 Connection information is specified as a union.
 |<<#_SampleFunctionLoadVariantParameter>>
+
+|EsfNetworkManagerExecMigration
+|Migrates old-format configuration data to the new format.
+|<<#_SampleFunctionExecMigration>>
+
+|EsfNetworkManagerEraseMigrationSrcData
+|Deletes old-format configuration data.
+|<<#_SampleFunctionEraseMigrationSrcData>>
+
 |===
 
 <<<
 
 === Data Type Definitions
-
 [#_SampleResult]
 ==== EsfNetworkManagerResult
 Enumeration that defines the result of executing a Network Manager API. +
@@ -1512,6 +1538,7 @@ typedef struct EsfNetworkManagerIPInfo {
     char subnet_mask[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
     char gateway[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
     char dns[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
+    char dns2[ESF_NETWORK_MANAGER_IP_ADDRESS_LEN];
 } EsfNetworkManagerIPInfo;
 ....
 
@@ -1534,7 +1561,11 @@ Specify in IP address format.
 Specify in IP address format.
 
 |dns
-|DNS. +
+|Primary DNS. +
+Specify in IP address format.
+
+|dns2
+|Secondary DNS. +
 Specify in IP address format.
 |===
 
@@ -1841,6 +1872,7 @@ typedef struct EsfNetworkManagerIPInfoMask {
     uint8_t subnet_mask : 1;
     uint8_t gateway : 1;
     uint8_t dns : 1;
+    uint8_t dns2 : 1;
 } EsfNetworkManagerIPInfoMask;
 ....
 
@@ -2264,7 +2296,7 @@ Returns one of the values from <<#_TableReturnValueResult, EsfNetworkManagerResu
     On success, the retrieved information is saved internally. +
 *** If `start_type` is ``**kEsfNetworkManagerStartTypeLastStartSuccessParameter**``, the connection is established using the previously saved internal data. +
 *** Registers event handlers for the interface corresponding to the connection mode via PL. +
-    Sets IP address, subnet mask, gateway, and DNS. +
+    Sets IP address, subnet mask, gateway, primary DNS, and secondary DNS. +
     The following shows how to configure fixed IP and DHCP: +
 
 [#_TableAPIStartIP]
@@ -2272,16 +2304,19 @@ Returns one of the values from <<#_TableReturnValueResult, EsfNetworkManagerResu
 [width="100%", cols="20%,40%,40%",options="header"]
 |===
 |Category |Setting Operation |Notes
-|Normal Mode + Fixed IP
-|Set IP address, subnet mask, gateway, and DNS for the target interface.
+|Normal Mode 
++ Fixed IP
+|Set the IP address, subnet mask, gateway, primary DNS, and secondary DNS for the target interface.
 |Performed before initiating connection via PL.
 
-|Normal Mode + DHCP
-|Set IP address, subnet mask, gateway, and DNS to 0.0.0.0 (disabled).
+|Normal Mode + 
+DHCP
+|Set the IP address, subnet mask, and gateway of the target interface to 0.0.0.0 (disabled). +
 |Performed before initiating connection via PL.
 
-|Normal Mode + DHCP
-|Obtain IP using DHCP client and set IP address, subnet mask, gateway, and DNS on target interface.
+|Normal Mode +
+DHCP
+|Obtain the IP address using the DHCP client and set the obtained IP address, subnet mask, gateway, primary DNS, and secondary DNS on the target interface. +
 |Performed after IFUP during connection.
 
 |Access Point Mode
@@ -3251,6 +3286,121 @@ Returns one of the values from <<#_TableReturnValueResult, EsfNetworkManagerResu
 |kEsfNetworkManagerResultInternalError |Internal Error |Internal processing failure |System reboot
 |===
 
+[#_SampleFunctionExecMigration]
+==== EsfNetworkManagerExecMigration
+
+Function +
+Migrates old-format configuration data to the new format to maintain compatibility with previous versions.
+
+Format +
+** EsfNetworkManagerResult EsfNetworkManagerExecMigration(void)**
+
+Description of Arguments +
+There are no arguments.
+
+Return Value +
+Returns one of the values of <<#_TableReturnValueResult, EsfNetworkManagerResult>> depending on the execution result.
+
+Description +
+** Operation Details +
+*** Migrates the following configuration data:
+**** IPAddress: IP address +
+**** SubnetMask: Subnet mask +
+**** Gateway: Gateway +
+**** DNS: Primary DNS +
+**** IPMethod: Selection of DHCP usage (dhcp / static) +
+**** NetifKind: Selection of network interface type (WiFi / Eth) +
+**** ProxyURL: Proxy URL +
+**** ProxyPort: Proxy port +
+**** ProxyUserName: Proxy user name +
+**** ProxyPassword: Proxy password
+*** Secondary DNS is not included in the migration. +
+*** If "IPAddress" cannot be obtained from the old-format configuration data, the new format will not set “IPAddress, SubnetMask, Gateway, Primary DNS”, and “IPMethod” will be set to dhcp. +
+*** If "ProxyURL" cannot be obtained from the old-format configuration data, the new format will not set “ProxyURL, ProxyPort, ProxyUserName, ProxyPassword”. +
+*** If the old-format configuration data cannot be read or contains invalid values, “IPMethod” will be set to dhcp in the new format.
+
+** Notes +
+*** Cannot be called concurrently. +
+*** Cannot be called from multiple threads. +
+*** Cannot be called from multiple tasks. +
+*** This API blocks internally for the following reasons. +
+The maximum blocking time is less than 1000 ms. +
+**** For exclusive control of resource access +
+**** For blocking caused by simultaneous access executions in the Parameter Storage Manager +
+
+** Error Information +
+
+[#_ErrorTableExecMigration]
+.Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+
+|kEsfNetworkManagerResultSuccess
+|Success
+|Success
+|None
+
+|kEsfNetworkManagerResultStatusUnexecutable
+|Invalid state
+|Not initialized
+|Initialize and retry
+
+|kEsfNetworkManagerResultExternalError
+|External API error
+|Error response from the Parameter Storage Manager API
+|Retry; if recovery does not occur after retries, restart the system
+
+|kEsfNetworkManagerResultHWIFError
+|PL API error
+|Error response from the PL API
+|Retry; if recovery does not occur after retries, restart the system
+
+|kEsfNetworkManagerResultInternalError
+|Internal error
+|Abnormality occurred during internal processing
+|Restart the system
+
+|===
+
+[#_SampleFunctionEraseMigrationSrcData]
+==== EsfNetworkManagerEraseMigrationSrcData
+
+Function +
+Deletes old-format configuration data.
+
+Format +
+** void EsfNetworkManagerEraseMigrationSrcData(void)**
+
+Description of Arguments +
+There are no arguments.
+
+Return Value +
+There is no return value.
+
+Description +
+** Operation Details +
+*** Deletes old-format configuration data. +
+*** Intended to be called after migrating old-format configuration data to the new format.
+
+** Notes +
+*** Cannot be called concurrently. +
+*** Cannot be called from multiple threads. +
+*** Cannot be called from multiple tasks. +
+
+** Error Information +
+
+[#_ErrorTableEraseMigrationSrcData]
+.Error Information
+[width="100%", options="header"]
+|===
+|Return Value |Description |Error Condition |Recovery Method
+|None
+|None
+|None
+|None
+|===
+
 <<<
 
 == Example API Usage
@@ -3608,22 +3758,105 @@ Check items are listed below. +
 [width="100%", options="header"]
 |===
 |Item |Check (on Save) |Check (on Connect) |Remarks
-|normal_mode.dev_ip.* |Empty string or IPv4 format parsable by inet_pton |IPv4 format parsable by inet_pton |
-|normal_mode.dev_ip_v6.* |Empty string or IPv6 format parsable by inet_pton |IPv6 format parsable by inet_pton |Error if IPv6 is disabled
-|normal_mode.wifi_sta.ssid |0–32 chars |1–32 chars |Content not validated as it's the target SSID
-|normal_mode.wifi_sta.password |0–64 chars |Same as left |Content not validated as it's the target password
-|normal_mode.wifi_sta.encryption |0–2 |Same as left |
-|normal_mode.ip_method |0–1 |Same as left |
-|normal_mode.netif_kind |0–1 |Same as left |0 (WiFi) cannot be used on T3P
-|accesspoint_mode.dev_ip.* |Empty string or IPv4 format parsable by inet_pton |IPv4 format parsable by inet_pton |
-|accesspoint_mode.wifi_ap.ssid |0–32 ASCII printable chars |1–32 ASCII printable chars |Characters must be ASCII 33 (!) to 126 (~)
-|accesspoint_mode.wifi_ap.password |Empty or 8–63 ASCII printable chars or 64 hex chars |8–63 ASCII printable chars or 64 hex chars |ASCII chars must be in range 33 (!) to 126 (~)
-|accesspoint_mode.wifi_ap.encryption |0–2 |Same as left |
-|accesspoint_mode.wifi_ap.channel |Not checked |Same as left |
-|proxy.url |0–256 chars |Same as left |
-|proxy.port |0–65535 |Same as left |
-|proxy.username |0–32 chars |Same as left |
-|proxy.password |0–32 chars |Same as left |
+|normal_mode.dev_ip.ip
+|Empty string or IPv4 format parsable by inet_pton
+|IPv4 format parsable by inet_pton
+|
+
+|normal_mode.dev_ip.subnet_mask
+|Empty string or IPv4 format parsable by inet_pton
+|IPv4 format parsable by inet_pton 
+|
+
+|normal_mode.dev_ip.gateway
+|Empty string or IPv4 format parsable by inet_pton
+|IPv4 format parsable by inet_pton 
+|
+
+|normal_mode.dev_ip.dns
+|Empty string or IPv4 format parsable by inet_pton
+|Empty string or IPv4 format parsable by inet_pton
+|
+
+|normal_mode.dev_ip.dns2
+|Empty string or IPv4 format parsable by inet_pton
+|Empty string or IPv4 format parsable by inet_pton
+|
+
+|normal_mode.dev_ip_v6.*
+|Empty string or IPv6 format parsable by inet_pton
+|IPv6 format parsable by inet_pton 
+|Results in an error when IPv6 is disabled.
+
+|normal_mode.wifi_sta.ssid 
+|0–32 chars 
+|1–32 chars 
+|Content not validated as it's the target SSID
+
+|normal_mode.wifi_sta.password 
+|0–64 chars 
+|Same as left 
+|Content not validated as it's the target password
+
+|normal_mode.wifi_sta.encryption 
+|0–2 
+|Same as left 
+|
+
+|normal_mode.ip_method 
+|0–1 
+|Same as left 
+|
+
+|normal_mode.netif_kind 
+|0–1 
+|Same as left 
+|0 (WiFi) cannot be used on T3P
+
+|accesspoint_mode.dev_ip.* 
+|Empty string or IPv4 format parsable by inet_pton 
+|IPv4 format parsable by inet_pton 
+|
+
+|accesspoint_mode.wifi_ap.ssid 
+|0–32 ASCII printable chars 
+|1–32 ASCII printable chars 
+|Characters must be ASCII 33 (!) to 126 (~)
+
+|accesspoint_mode.wifi_ap.password 
+|Empty or 8–63 ASCII printable chars or 64 hex chars 
+|8–63 ASCII printable chars or 64 hex chars 
+|ASCII chars must be in range 33 (!) to 126 (~)
+
+|accesspoint_mode.wifi_ap.encryption 
+|0–2 
+|Same as left 
+|
+
+|accesspoint_mode.wifi_ap.channel 
+|Not checked 
+|Same as left 
+|
+
+|proxy.url 
+|0–256 chars 
+|Same as left 
+|
+
+|proxy.port 
+|0–65535 
+|Same as left 
+|
+
+|proxy.username 
+|0–32 chars 
+|Same as left 
+|
+
+|proxy.password 
+|0–32 chars 
+|Same as left 
+|
 |===
 
 [#_Notice_NonstandardExtensions]
@@ -3985,5 +4218,29 @@ Used netutils for DHCP operations and IP information configuration/acquisition
   ** Modified blocking behavior descriptions for:
     *** EsfNetworkManagerSaveParameter
     *** EsfNetworkManagerLoadParameter
+
+|v0.1.15
+|Added migration functionality
+
+* Component Description
+** Added data migration functionality
+
+* API Definitions
+** Added the following APIs
+*** EsfNetworkManagerExecMigration
+*** EsfNetworkManagerEraseMigrationSrcData
+
+|v0.1.16
+|Added support for secondary DNS
+
+* Data Type Definitions
+** Added secondary DNS to the following data types
+*** EsfNetworkManagerIPInfo
+*** EsfNetworkManagerIPInfoMask
+
+* API Definitions
+** Added descriptions regarding secondary DNS to the following APIs
+*** EsfNetworkManagerStart
+*** EsfNetworkManagerExecMigration
 
 |===

@@ -268,12 +268,7 @@ STATIC EsfSystemManagerResult EsfSystemManagerParseJwtPayload(
   }
 
   // Copy to serial_number
-  size_t uuid_length = strlen(cert_uuid);
-  if (uuid_length >= serial_number_size) {
-    uuid_length = serial_number_size - 1;
-  }
-  strncpy(serial_number, cert_uuid, uuid_length);
-  serial_number[uuid_length] = '\0';
+  snprintf(serial_number, serial_number_size, "%s", cert_uuid);
 
   EsfJsonClose(json_handle);
   return kEsfSystemManagerResultOk;

@@ -22,3 +22,8 @@ subdir('system_manager')
 if config_h.get('CONFIG_EXTERNAL_PL_CLOCK_MANAGER', false)
   subdir('clock_manager')
 endif
+
+if get_option('target') == 't4r'
+  subdir('cipher_util')
+  subdir('nvm_mgr')
+endif
