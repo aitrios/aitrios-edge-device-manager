@@ -6,6 +6,8 @@
 
 #include "log_manager_list.h"
 
+#include <stdlib.h>
+
 #include "log_manager.h"
 #include "log_manager_internal.h"
 
@@ -266,7 +268,6 @@ int32_t EsfLogManagerCheckLocalListNum(void) {
   uint32_t count = 0;
   LocalUploadDlogDataT *entry = (LocalUploadDlogDataT *)NULL;
   LocalUploadDlogDataT *temp = (LocalUploadDlogDataT *)NULL;
-  LocalUploadDlogDataT *keep = (LocalUploadDlogDataT *)NULL;
 
   if (pthread_mutex_lock(&s_local_upload_dlog_data_list_mutex) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");
@@ -291,7 +292,6 @@ int32_t EsfLogManagerCheckCloudListNum(void) {
   uint32_t count = 0;
   CloudUploadDlogDataT *entry = (CloudUploadDlogDataT *)NULL;
   CloudUploadDlogDataT *temp = (CloudUploadDlogDataT *)NULL;
-  CloudUploadDlogDataT *keep = (CloudUploadDlogDataT *)NULL;
 
   if (pthread_mutex_lock(&s_cloud_upload_dlog_data_list_mutex) != 0) {
     ESF_LOG_MANAGER_ERROR("Failed to pthread_mutex_lock.\n");

@@ -492,8 +492,8 @@ STATIC UtilityLogStatus UtilityLogWriteDlogInternal(
     } else {
       // Define newline code with warning prevention variable and then execute
       // strncat.
-      const char cr_char = '\n';
-      strncat(log_str, &cr_char, LOG_STRING_CR_SIZE);
+      log_str[idx] = '\n';
+      log_str[idx + 1] = '\0';
       idx++;
     }
   }

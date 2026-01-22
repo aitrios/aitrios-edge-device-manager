@@ -25,6 +25,7 @@ enum SYS_result stub_SYS_put_blob_mstp(struct SYS_client *c,
 enum SYS_result stub_SYS_send_telemetry(struct SYS_client *c, const char *topic,
                                         const char *value, SYS_telemetry_cb cb,
                                         void *user);
+enum evp_agent_status stub_EVP_getAgentStatus(void);
 enum SYS_result stub_mstp_SYS_process_event(struct SYS_client *c, int ms);
 enum SYS_result stub_telemetry_SYS_process_event(struct SYS_client *c, int ms);
 enum SYS_result stub_SYS_process_event(struct SYS_client *c, int ms);

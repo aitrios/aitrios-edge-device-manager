@@ -580,15 +580,13 @@ EsfLogManagerStatus EsfLogManagerSaveParamsForPsm(
   psm_mask->use_flash = 0;
   if (mask->storage_name) {
     psm_mask->storage_name = mask->storage_name;
-    size_t len = strlen(value->storage_name);
-    strncpy(psm_data->storage_name, value->storage_name, len);
-    psm_data->storage_name[len] = '\0';
+    snprintf(psm_data->storage_name, sizeof(psm_data->storage_name), "%s",
+             value->storage_name);
   }
   if (mask->storage_path) {
     psm_mask->storage_path = mask->storage_path;
-    size_t len = strlen(value->storage_path);
-    strncpy(psm_data->storage_path, value->storage_path, len);
-    psm_data->storage_path[len] = '\0';
+    snprintf(psm_data->storage_path, sizeof(psm_data->storage_path), "%s",
+             value->storage_path);
   }
 
   EsfLogManagerStatus log_manager_status = kEsfLogManagerStatusOk;

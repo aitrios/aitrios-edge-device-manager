@@ -175,11 +175,13 @@ EsfClockManagerReturnValue EsfClockManagerInit(void) {
   (void)pthread_mutex_unlock(&s_state_mutex);
   return kClockManagerSuccess;
 
+#ifndef CONFIG_EXTERNAL_CLOCK_MANAGER_DISABLE
 error_exit:
   (void)pthread_mutex_lock(&s_state_mutex);
   s_state = kEsfClockManagerStateIdle;
   (void)pthread_mutex_unlock(&s_state_mutex);
   return rv;
+#endif
 
 unlock_exit:
   (void)pthread_mutex_unlock(&s_state_mutex);
@@ -319,11 +321,13 @@ EsfClockManagerReturnValue EsfClockManagerStart(void) {
   (void)pthread_mutex_unlock(&s_state_mutex);
   return rv;
 
+#ifndef CONFIG_EXTERNAL_CLOCK_MANAGER_DISABLE
 error_exit:
   (void)pthread_mutex_lock(&s_state_mutex);
   s_state = kEsfClockManagerStateReady;
   (void)pthread_mutex_unlock(&s_state_mutex);
   return rv;
+#endif
 
 unlock_exit:
   (void)pthread_mutex_unlock(&s_state_mutex);
@@ -394,11 +398,13 @@ EsfClockManagerReturnValue EsfClockManagerStop(void) {
   (void)pthread_mutex_unlock(&s_state_mutex);
   return rv;
 
+#ifndef CONFIG_EXTERNAL_CLOCK_MANAGER_DISABLE
 error_exit:
   (void)pthread_mutex_lock(&s_state_mutex);
   s_state = kEsfClockManagerStateRunning;
   (void)pthread_mutex_unlock(&s_state_mutex);
   return rv;
+#endif
 
 unlock_exit:
   (void)pthread_mutex_unlock(&s_state_mutex);

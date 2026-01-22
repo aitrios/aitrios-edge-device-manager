@@ -5,6 +5,9 @@
 subdir('esf')
 subdir('hal')
 subdir('porting_layer')
+if get_option('target') == 't4r'
+  subdir('security')
+endif
 
 subdir('utility')
 subdir('wasm_binding')
@@ -68,12 +71,32 @@ porting_layer = static_library(
     libnm_dep,
     sqlite3_dep,
     utility_dep,
-  ] + (get_option('target') == 't4r' ? [libchrony_dep] : []),
+  ] + (get_option('target') == 't4r' ? [libchrony_dep, mbedtls_dep] : []),
 )
 porting_layer_dep = declare_dependency(
   link_with : porting_layer,
   include_directories : pl_includes_public
 )
+
+# And likewise the Security Module if target is t4r
+if get_option('target') == 't4r'
+  security = static_library(
+    'security',
+    security_sources,
+    include_directories : [
+      security_includes_public,
+      security_includes_internal,
+      pl_includes_public,
+      utility_includes_public,
+    ],
+    dependencies : [
+    ]
+  )
+  security_dep = declare_dependency(
+    link_with : security,
+    include_directories : security_includes_public
+  )
+endif
 
 # And finally the HAL (small as it is)
 
